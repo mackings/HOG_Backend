@@ -5,7 +5,6 @@ import errorMiddleware from './src/middlewares/error.middleware.js';
 import limiter from './src/middlewares/rateLimit.js';
 import connectDB from './src/connection/database.js';
 import userRouter from './src/modules/user/routes/user.routes.js';
-import bvnRouter from './src/modules/user/routes/bvn.routes.js';
 
 
  
@@ -27,7 +26,6 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/v1/user', userRouter);
-app.use('/api/v1/bvn', bvnRouter);
 app.use((req, res)=>{
   res.status(404).json({message: "Endpoint not found. please, check the url and try again."})
 });
