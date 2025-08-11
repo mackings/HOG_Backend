@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { register, verifyToken, login, forgotPassword, resetPassword, updateProfile, uploadImage, getProfile,
   uploadBillImage, getAllusers
   } from '../controller/user.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-const { imageUpload, imageKitUpload} = require('../../../utils/imagekit');
+import { isAuth } from '../../middlewares/auth.middleware';
+const { imageUpload, imageKitUpload} = require('../../utils/imagekit');
 
 
 const router = Router();
