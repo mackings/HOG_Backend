@@ -28,6 +28,10 @@ const tokenSchema = new mongoose.Schema({
             message: props => `${props.value} is not a valid password!`
         }
     },
+    phoneNumber: {
+        type: String,
+        default: null
+    },
     token: {
         type: String,
         required: true

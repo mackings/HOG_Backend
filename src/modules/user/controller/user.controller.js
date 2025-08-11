@@ -10,14 +10,20 @@ import axios from "axios";
 
 export const register = async (req, res, next) => {
     try {
-        const { fullName, email, password } = req.body;
+        const { fullName, email, password, phoneNumber } = req.body;
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(409).json({ message: "User already exists, please login or use forgot password" });
         }
         const hashedPassword = await bcrypt.hash(password, 10);
         const otp = crypto.randomInt(100000, 999999);
-        const token = await Token.create({ fullName, email, password: hashedPassword, token: otp });
+        const token = await Token.create({
+           fullName, 
+           email, 
+           password: hashedPassword, 
+           phoneNumber, 
+           token: otp 
+          });
 
         await sendVerifyTokenEmail(token);
         return res.status(201).json({ message: "Email Verification Token Sent" });
@@ -40,7 +46,7 @@ export const verifyToken = async (req, res, next) => {
       return res.status(400).json({ message: "Invalid or expired token" });
     }
 
-    const { fullName, email, password } = existingToken;
+    const { fullName, email, password, phoneNumber } = existingToken;
 
     const alreadyExists = await User.findOne({ email });
     if (alreadyExists) {
@@ -51,7 +57,8 @@ export const verifyToken = async (req, res, next) => {
       fullName,
       email,
       password,
-      isVerified: true
+      isVerified: true,
+      phoneNumber
     });
 
     await Token.deleteOne({ token });

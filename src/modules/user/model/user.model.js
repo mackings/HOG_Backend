@@ -46,10 +46,6 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: null
     },
-    dateOfBirth: {
-        type: String,
-        default: null
-    },
     phoneNumber: {
         type: String,
         default: null
