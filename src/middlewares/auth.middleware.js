@@ -1,5 +1,5 @@
 const jwt = require ('jsonwebtoken');
-import User from '../user/model/user.model';
+import User from '../modules/user/model/user.model';
 
 
 export const isAuth = async (req, res, next) => {

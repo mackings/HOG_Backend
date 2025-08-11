@@ -4,7 +4,7 @@ import helmet from 'helmet';
 import errorMiddleware from './src/middlewares/error.middleware.js';
 import limiter from './src/middlewares/rateLimit.js';
 import connectDB from './src/connection/database.js';
-import userRouter from './src/user/routes/user.routes.js';
+import userRouter from './src/modules/user/routes/user.routes.js';
 
 
  

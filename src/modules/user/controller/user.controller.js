@@ -1,6 +1,6 @@
 import User from "../model/user.model";
 import Token from "../model/token.model";
-import { sendVerifyTokenEmail, sendResetPasswordEmail } from "../../utils/emailService.utils";
+import { sendVerifyTokenEmail, sendResetPasswordEmail } from "../../../utils/emailService.utils";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto"
