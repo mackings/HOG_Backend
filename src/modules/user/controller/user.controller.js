@@ -7,10 +7,6 @@ import crypto from "crypto"
 import axios from "axios";
 
 
-const QUIDAX_SECRET_KEY=process.env.QUIDAX_SECRET_KEY;
-const QUIDAX_API_KEY = process.env.QUIDAX_API_KEY;
-const BASE_URL = "https://app.quidax.io/api/v1/users"; 
-
 
 export const register = async (req, res, next) => {
     try {
@@ -51,31 +47,12 @@ export const verifyToken = async (req, res, next) => {
       return res.status(409).json({ message: "User with this email already exists" });
     }
 
-    const response = await axios.post(
-      `${BASE_URL}`,
-      { 
-        email: email, 
-        first_name: fullName.split(" ")[0], 
-        last_name: fullName.split(" ")[1]
-      },
-      {
-        headers: {
-          "Authorization": `Bearer ${QUIDAX_SECRET_KEY}`,
-          "accept": "application/json",
-          "Content-Type": "application/json",
-        },
-      }
-    );
-    const data = response.data.data;   
-
     const newUser = await User.create({
       fullName,
       email,
       password,
-      isVerified: true,
-      quidaxId: data.id,
+      isVerified: true
     });
-
 
     await Token.deleteOne({ token });
 
@@ -87,12 +64,7 @@ export const verifyToken = async (req, res, next) => {
     });
 
   } catch (error) {
-    const errorMessage =
-      error.response?.data?.message ||
-      error.response?.data?.error ||
-      error.message ||
-      "Something went wrong";
-      next({ message: errorMessage })
+      next(error)
   }
 };
 
@@ -197,19 +169,6 @@ export const updateProfile = async (req, res, next) => {
     const first_name = nameParts[0];
     const last_name = nameParts.slice(1).join(" ") || "-"; // fallback if no last name
 
-    // Sync with Quidax
-    const response = await axios.put(
-      `https://app.quidax.io/api/v1/users/${user.quidaxId}`,
-      { first_name, last_name },
-      {
-        headers: {
-          Authorization: `Bearer ${QUIDAX_SECRET_KEY}`,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
     await user.save();
 
     const { password: _, ...userWithoutPassword } = user.toObject();
@@ -219,13 +178,7 @@ export const updateProfile = async (req, res, next) => {
       user: userWithoutPassword,
     });
   } catch (error) {
-    const status = error.response?.status || 500;
-    const message =
-      error.response?.data?.message ||
-      error.response?.data?.error ||
-      error.message;
-
-    return res.status(status).json({ success: false, message });
+    next(error);
   }
 };
 
@@ -284,24 +237,6 @@ export const uploadBillImage = async (req, res, next) => {
 
 
 
-export const uploadNINImage = async (req, res, next) => {
-    try {
-        const id = req.user;
-        const user = await User.findById(id);
-        if (!user) {
-            return res.status(404).json({ message: "User not found" });
-        }
-        if (req.file) {
-            user.ninImage = req.imageUrl;
-        }
-        await user.save();
-        return res.status(200).json({ message: "NIN image updated successfully" });
-    } catch (error) {
-        next(error);
-    }
-}
-
-
 export const getAllusers = async (req, res, next) => {
     try {
         const users = await User.find();
@@ -310,62 +245,5 @@ export const getAllusers = async (req, res, next) => {
       next(error);
     }
 }
-
-
-  export const moveDollarToNairaWallet = async (req, res, next) => {
-  try {
-    const { amount } = req.body;
-    const { id } = req.user;
-
-    // Validate amount
-    if (!amount || typeof amount !== "number" || amount <= 0) {
-      return res.status(400).json({ message: "Invalid amount" });
-    }
-
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    if (user.dollarWallet < amount) {
-      return res.status(400).json({ message: "Insufficient funds in your dollar wallet" });
-    }
-
-    const response = await axios.get(`https://api.exchangerate-api.com/v4/latest/USD`);
-    const usdRate = response?.data?.rates?.["NGN"];
-
-    if (!usdRate) {
-      return res.status(500).json({ message: "Unable to fetch exchange rate for NGN" });
-    }
-
-    // Convert amount with proper rounding
-    const convertedAmount = Math.round(amount * usdRate * 100) / 100;
-
-    // Update wallet in a single DB operation
-    const updatedWallet = await User.findByIdAndUpdate(
-      user._id,
-      { 
-        $inc: { 
-          dollarWallet: -amount, 
-          nairaWallet: convertedAmount 
-        } 
-      },
-      { new: true }
-    ).select("-password");
-
-    if (!updatedWallet) {
-      return res.status(400).json({ message: "Wallet update failed" });
-    }
-
-    return res.status(200).json({
-      message: "Funds moved from dollar to naira wallet successfully",
-      exchangeRate: usdRate,
-      convertedAmount,
-      wallet: updatedWallet
-    });
-  } catch (error) {
-    next(error);
-  }
-};
 
     
