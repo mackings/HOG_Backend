@@ -46,6 +46,14 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    address: {
+        type: Array
+    },
+    subscriptionPlan: {
+        type: String,
+        enum: ['free', 'premium', 'standard', 'enterprise'],
+        default: 'free'
+    },
     phoneNumber: {
         type: String,
         default: null

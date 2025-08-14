@@ -3,7 +3,7 @@ import { register, verifyToken, login, forgotPassword, resetPassword, updateProf
   uploadBillImage, getAllusers
   } from '../controller/user.controller';
 import { isAuth } from '../../../middlewares/auth.middleware';
-const { imageUpload, imageKitUpload} = require('../../../utils/imagekit');
+import { imageUpload, imageKitUpload } from '../../../utils/imagekit';
 
 
 const router = Router();

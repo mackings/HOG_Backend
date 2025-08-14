@@ -2,13 +2,15 @@ import { Router } from 'express';
 import { createTailor, getTailor, updateTailor 
   } from '../controller/vendor.controller';
 import { isAuth } from '../../../middlewares/auth.middleware';
-const { imageUpload, imageKitUpload} = require('../../../utils/imagekit');
+import { userCheckRole } from '../../../middlewares/checkRole.middleware'
+import { imageUpload, imageKitUpload } from '../../../utils/imagekit';
 
 
 const router = Router();
 
 router.use(isAuth);
-router.post('/createTailor', createTailor);
+router.use(userCheckRole(['tailor']));
+router.post('/createTailor', imageUpload, imageKitUpload, createTailor);
 router.get('/getTailor', getTailor);
 router.put('/updateTailor/:tailorId', updateTailor);
 

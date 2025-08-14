@@ -7,6 +7,8 @@ import connectDB from './src/connection/database.js';
 import userRouter from './src/modules/user/routes/user.routes.js';
 import tailorRouter from './src/modules/vendor/routes/vendor.routes.js';
 import materialRouter from './src/modules/material/routes/materilas.routes.js';
+import bankRouter from './src/modules/bank/routes/bank.routes.js';
+import transactionRouter from './src/modules/bank/routes/transaction.routes.js';
 
 
  
@@ -30,6 +32,8 @@ app.get('/', (req, res) => {
 app.use('/api/v1/user', userRouter);
 app.use('/api/v1/tailor', tailorRouter);
 app.use('/api/v1/material', materialRouter);
+app.use('/api/v1/bank', bankRouter);
+app.use('/api/v1/transaction', transactionRouter);
 app.use((req, res)=>{
   res.status(404).json({message: "Endpoint not found. please, check the url and try again."})
 });

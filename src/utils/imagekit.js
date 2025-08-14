@@ -1,7 +1,7 @@
-const multer = require("multer");
-const fs = require("fs");
-const ImageKit = require("imagekit");
-const path = require("path");
+import multer from "multer";
+import fs from "fs";
+import ImageKit from "imagekit";
+import path from "path";
 
 const imagekit = new ImageKit({
   publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
@@ -9,10 +9,17 @@ const imagekit = new ImageKit({
   urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT, // e.g., https://ik.imagekit.io/arosebine
 });
 
-// Multer setup
-const upload = multer({ dest: "reva" });
 
-const imageKitUpload = async (req, res, next) => {
+const storage = multer.diskStorage({
+  destination: 'uploads/',
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + '-' + file.originalname);
+  }
+});
+
+export const imageUpload = multer({ storage }).single('image'); // 
+
+export const imageKitUpload = async (req, res, next) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No image file provided" });
@@ -37,9 +44,4 @@ const imageKitUpload = async (req, res, next) => {
       error: error.message,
     });
   }
-};
-
-module.exports = {
-  imageUpload: upload.single("image"),
-  imageKitUpload,
 };

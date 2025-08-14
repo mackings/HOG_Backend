@@ -16,6 +16,7 @@ export const createTailor = async (req, res, next) => {
       description
     } = req.body;
 
+    // Validate required fields
     const requiredFields = {
       businessName,
       businessEmail,
@@ -27,17 +28,25 @@ export const createTailor = async (req, res, next) => {
       description
     };
 
-    for (const [key, value] of Object.entries(requiredFields)) {
-      if (!value) {
-        return res.status(400).json({ message: `${key} is required` });
-      }
+    const missingField = Object.entries(requiredFields)
+      .find(([_, value]) => !value)?.[0];
+
+    if (missingField) {
+      return res.status(400).json({ message: `${missingField} is required` });
     }
 
+    // Check if vendor already exists
     const existingTailor = await Vendor.findOne({ userId: id });
     if (existingTailor) {
-      return res.status(400).json({ message: 'Tailor(Vendor) already exists' });
+      return res.status(400).json({ message: 'Tailor (Vendor) already exists' });
     }
 
+    // Validate image upload
+    if (!req.imageUrl) {
+      return res.status(400).json({ message: "Nepa bill image is required" });
+    }
+
+    // Create vendor
     const newTailor = await Vendor.create({
       userId: id,
       businessName,
@@ -55,12 +64,12 @@ export const createTailor = async (req, res, next) => {
       message: 'Tailor created successfully',
       data: newTailor
     });
+
   } catch (error) {
-    console.error(error);
     next(error);
   }
 };
-   
+
 
 
 
@@ -82,34 +91,31 @@ export const updateTailor = async (req, res, next) => {
   try {
     const { id } = req.user;
     const { tailorId } = req.params;
-    const {
-      businessName,
-      businessEmail,
-      BusinessPhone,
-      address,
-      city,
-      state,
-      yearOfExperience,
-      description
-    } = req.body;
 
-    const tailor = await Vendor.findOne({ where: { id: tailorId, userId: id } });
+    const updates = req.body;
+
+    const tailor = await Vendor.findOneAndUpdate(
+      { _id: tailorId, userId: id },
+      {
+        $set: {
+          businessName: updates.businessName,
+          businessEmail: updates.businessEmail,
+          businessPhone: updates.businessPhone,
+          address: updates.address,
+          city: updates.city,
+          state: updates.state,
+          yearOfExperience: updates.yearOfExperience,
+          description: updates.description
+        }
+      },
+      { new: true, runValidators: true }
+    );
+
     if (!tailor) {
       return res.status(404).json({ message: "Tailor not found or unauthorized" });
     }
 
-    await tailor.update({
-      businessName,
-      businessEmail,
-      BusinessPhone,
-      address,
-      city,
-      state,
-      yearOfExperience,
-      description
-    });
-
-    return res.status(200).json({
+    res.status(200).json({
       message: "Tailor updated successfully",
       data: tailor
     });
@@ -118,3 +124,4 @@ export const updateTailor = async (req, res, next) => {
     next(error);
   }
 };
+

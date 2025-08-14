@@ -1,0 +1,20 @@
+import { Router } from 'express';
+import { createBankAccount, getBankAccount, updateBankAccount, verifyingBankAccount,
+    transferToBankAccount
+ } from '../controller/bank.controller';
+import { isAuth } from '../../../middlewares/auth.middleware';
+import { userCheckRole } from '../../../middlewares/checkRole.middleware';
+
+
+const router = Router();
+
+router.use(isAuth);
+router.use(userCheckRole(["tailor"]));
+router.post('/create', createBankAccount);
+router.get('/account', getBankAccount);
+router.put('/account/:bankId', updateBankAccount);
+router.post('/verify', verifyingBankAccount);
+router.post('/transfer/:bankId', transferToBankAccount);
+
+
+export default router;

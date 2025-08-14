@@ -10,7 +10,7 @@ import axios from "axios";
 
 export const register = async (req, res, next) => {
     try {
-        const { fullName, email, password, phoneNumber } = req.body;
+        const { fullName, email, password, phoneNumber, role } = req.body;
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(409).json({ message: "User already exists, please login or use forgot password" });
@@ -22,7 +22,8 @@ export const register = async (req, res, next) => {
            email, 
            password: hashedPassword, 
            phoneNumber, 
-           token: otp 
+           token: otp,
+           role
           });
 
         await sendVerifyTokenEmail(token);
@@ -46,7 +47,7 @@ export const verifyToken = async (req, res, next) => {
       return res.status(400).json({ message: "Invalid or expired token" });
     }
 
-    const { fullName, email, password, phoneNumber } = existingToken;
+    const { fullName, email, password, phoneNumber, role } = existingToken;
 
     const alreadyExists = await User.findOne({ email });
     if (alreadyExists) {
@@ -58,7 +59,8 @@ export const verifyToken = async (req, res, next) => {
       email,
       password,
       isVerified: true,
-      phoneNumber
+      phoneNumber,
+      role
     });
 
     await Token.deleteOne({ token });

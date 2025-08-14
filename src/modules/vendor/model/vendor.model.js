@@ -15,7 +15,7 @@ const vendorSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
-    BusinessPhone: {
+    businessPhone: {
         type: String,
         required: true,
     },
