@@ -110,9 +110,9 @@ export const transferToBankAccount = async (req, res, next ) => {
     if (!bank) {
         return res.status(400).json({ message: 'Invalid Bank Name' });
        }
-    // if (user.wallet < amount) {
-    //     return res.status(400).json({ message: 'Insufficient funds' });
-    // }
+    if (user.wallet < amount) {
+        return res.status(400).json({ message: 'Insufficient funds' });
+    }
 
     // const confirmPin = await Pin.findOne({ userId: user._id, pin: req.body.pin });
     // if (!confirmPin) {

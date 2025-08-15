@@ -45,3 +45,40 @@ export const imageKitUpload = async (req, res, next) => {
     });
   }
 };
+
+
+
+export const multipleImageUpload = multer({ storage }).array("images", 10); 
+
+export const multipleImageKitUpload = async (req, res, next) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: "No image files provided" });
+    }
+
+    const uploadedImages = [];
+
+    for (const file of req.files) {
+      const fileBuffer = fs.readFileSync(file.path);
+
+      const result = await imagekit.upload({
+        file: fileBuffer,
+        fileName: file.originalname,
+        folder: "/uploads",
+      });
+
+      fs.unlinkSync(file.path); // delete local file
+
+      uploadedImages.push(result.url);
+    }
+
+    req.imageUrls = uploadedImages; // store all image URLs in req
+    next();
+  } catch (error) {
+    return res.status(500).json({
+      message: "Image upload failed",
+      error: error.message,
+    });
+  }
+};
+

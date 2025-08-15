@@ -13,8 +13,8 @@ export const createMaterial = async (req, res, next) => {
             });
         }
 
-        if (!req.file || !req.imageUrl) {
-            return res.status(400).json({ message: "Sample image is required" });
+        if (!req.imageUrls || req.imageUrls.length === 0) {
+            return res.status(400).json({ message: "Sample images are required" });
         }
 
         const material = await Material.create({
@@ -25,7 +25,7 @@ export const createMaterial = async (req, res, next) => {
             brand,
             measurement,
             price,
-            sampleImage: req.imageUrl
+            sampleImage: req.imageUrls
         });
 
         if (!material) {
@@ -89,8 +89,8 @@ export const updateMaterial = async (req, res, next) => {
             });
         }
 
-        if (!req.file || !req.imageUrl) {
-            return res.status(400).json({ message: "Sample image is required" });
+        if (!req.imageUrls || req.imageUrls.length === 0) {
+            return res.status(400).json({ message: "Sample images are required" });
         }
 
         const updateMaterial = await Material.findByIdAndUpdate(
@@ -102,7 +102,7 @@ export const updateMaterial = async (req, res, next) => {
                 brand,
                 measurement,
                 price,
-                sampleImage: req.imageUrl
+                sampleImage: req.imageUrls
             },
             { new: true }
         );

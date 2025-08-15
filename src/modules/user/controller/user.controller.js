@@ -96,7 +96,7 @@ export const login = async (req, res, next) => {
         if (user.isBlocked) {
             return res.status(401).json({ message: "Your have been blocked, kindly contact admin" });
         }
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "24h" });
         const userWithoutPassword = { ...user.toObject() };
         delete userWithoutPassword.password;
         return res.status(200).json({ message: "Login successful", token, user: userWithoutPassword });

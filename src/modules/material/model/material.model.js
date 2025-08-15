@@ -28,7 +28,7 @@ const materialSchema = new mongoose.Schema({
         required: true,
     },
     sampleImage: {
-        type: String,
+        type: Array,
         required: true,
     },
     price: {
