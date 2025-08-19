@@ -9,12 +9,10 @@ const transactionSchema = new mongoose.Schema({
     },
     vendorId: {
         type: mongoose.Schema.Types.ObjectId,
-        required: true,
         ref: "Vendor",
     },
       materialId: {
         type: mongoose.Schema.Types.ObjectId,
-        required: true,
         ref: "Material",
     },
     cartItems: {
