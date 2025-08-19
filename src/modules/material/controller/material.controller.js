@@ -457,6 +457,8 @@ export const orderWebhook = async (req, res, next) => {
         Material.findById(order.materialId),
       ]);
 
+      await User.findByIdAndUpdate(vendor.userId, { $inc: { wallet: order.amountPaid } });
+
       if (user && vendor && material) {
         await sendTransactionEmail(user, vendor.businessEmail, transaction, material);
       }
