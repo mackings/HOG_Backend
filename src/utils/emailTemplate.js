@@ -104,7 +104,7 @@ export const sendBankTransferEmailTemplate = (transaction, email) => {
         <p>If you did not initiate this transfer, please contact our support team immediately.</p>
       </div>
       <div class="footer">
-        <p>© ${new Date().getFullYear()} Your Company Name. All rights reserved.</p>
+        <p>© ${new Date().getFullYear()} House of GLAME. All rights reserved.</p>
       </div>
     </div>
   </body>
@@ -249,3 +249,85 @@ export const sendTransactionEmailTemplate = (user, transaction, material) => {
   </html>
   `;
 };
+
+
+export const sendSubscriptionEmailTemplate = (user, amount) => {
+  return `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Subscription Successful</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f7f7f7;
+        margin: 0;
+        padding: 0;
+      }
+      .container {
+        max-width: 600px;
+        margin: 30px auto;
+        background: #ffffff;
+        border-radius: 10px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        overflow: hidden;
+      }
+      .header {
+        background: #4CAF50;
+        color: #ffffff;
+        padding: 20px;
+        text-align: center;
+      }
+      .content {
+        padding: 20px;
+        color: #333333;
+        line-height: 1.6;
+      }
+      .details {
+        background: #f1f1f1;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 20px 0;
+      }
+      .details p {
+        margin: 5px 0;
+      }
+      .footer {
+        text-align: center;
+        padding: 15px;
+        background: #f9f9f9;
+        color: #666666;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h2>Subscription Successful 🎉</h2>
+      </div>
+      <div class="content">
+        <p>Hi <strong>${user.fullName || "User"}</strong>,</p>
+        <p>Thank you for subscribing to our <strong>${user.subscriptionPlan}</strong> plan. Your subscription has been successfully activated.</p>
+        
+        <div class="details">
+          <p><strong>Plan:</strong> ${user.subscriptionPlan}</p>
+          <p><strong>Billing Term:</strong> ${user.billTerm}</p>
+          <p><strong>Amount Paid:</strong> ₦${amount.toLocaleString()}</p>
+          <p><strong>Start Date:</strong> ${(user.subscriptionStartDate).toDateString()}</p>
+          <p><strong>End Date:</strong> ${(user.subscriptionEndDate).toDateString()}</p>
+        </div>
+
+        <p>You now have full access to all features included in your plan. We’re excited to have you onboard 🚀.</p>
+        <p>If you have any questions, feel free to reach out to our support team anytime.</p>
+      </div>
+      <div class="footer">
+        <p>© ${new Date().getFullYear()} Houese Of Glame. All rights reserved.</p>
+      </div>
+    </div>
+  </body>
+  </html>
+  `;
+};
+

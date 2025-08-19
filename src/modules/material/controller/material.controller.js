@@ -3,19 +3,10 @@ import Material from '../../material/model/material.model';
 import Vendor from '../../vendor/model/vendor.model.js';
 import InitializedOrder from '../../material/model/InitializedOrder.model.js';
 import Transactions from '../../transaction/model/transaction.model.js';
-import { sendTransactionEmail } from '../../../utils/emailService.utils.js';
+import { sendTransactionEmail, sendSubscriptionEmail } from '../../../utils/emailService.utils.js';
 import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance";
-const { Paystack } = require( 'paystack-sdk');
-const paystack = new Paystack(process.env.PAYSTACK_MAIN_KEY );
 import axios from "axios";
 import crypto from "crypto"
-const GEOAPIFY_API_KEY = process.env.GEOAPIFY_API_KEY;
-const NodeGeocoder = require('node-geocoder');
-
-const geocoder = NodeGeocoder({
-    provider: 'opencage',
-    apiKey: process.env.GEOAPIFY_API_KEY
-});
 
 
 
@@ -410,24 +401,135 @@ export const createPartPaymentOnline = async (req, res, next) => {
 
 
 
+// export const orderWebhook = async (req, res, next) => { 
+//   try {
+//     const { data, event } = req.body;
+
+//     if (event === "charge.success") {
+//       const { reference } = data;
+
+//       const order = await InitializedOrder.findOne({ paymentReference: reference });
+//       if (!order) {
+//         return res.status(200).json({
+//           success: false,
+//           message: "Order not found",
+//         });
+//       }
+
+//       // Ensure transaction isn’t duplicated
+//       // const existingTransaction = await Transactions.findOne({ paymentReference: reference });
+//       // if (existingTransaction) {
+//       //   return res.status(200).json({
+//       //     success: true,
+//       //     message: "Transaction already processed",
+//       //   });
+//       // }
+
+//       // Save transaction
+//       const transaction = await Transactions.create({
+//         userId: order.userId,
+//         cartItems: order.cartItems,
+//         totalAmount: order.totalAmount,
+//         paymentMethod: order.paymentMethod,
+//         paymentReference: order.paymentReference,
+//         deliveryAddress: order.deliveryAddress,
+//         paymentStatus: order.paymentStatus,
+//         subscriptionEndDate: order.subscriptionEndDate,
+//         subscriptionStartDate: order.subscriptionStartDate,
+//         plan: order.plan,                   // ✅ fixed
+//         billTerm: order.billTerm,           // ✅ fixed
+//         paymentCurrency: "NGN",
+//         orderStatus: "completed",
+//         amountPaid: order.amountPaid, 
+//         vendorId: order.vendorId || null,
+//         materialId: order.materialId || null,
+//       });
+
+//       // Handle subscription payments
+//       if (["Standard", "Premium", "Enterprise"].includes(transaction.plan)) {
+//         const user = await User.findById(transaction.userId);
+
+//         await User.findByIdAndUpdate(
+//           transaction.userId,
+//           {
+//             $set: { 
+//               subscriptionEndDate: transaction.subscriptionEndDate, 
+//               subscriptionStartDate: transaction.subscriptionStartDate, 
+//               subscriptionPlan: transaction.plan.toLowerCase(),
+//               billTerm: transaction.billTerm,
+//             }
+//           },
+//           { new: true }
+//         );
+
+//         await sendSubscriptionEmail(user, transaction.totalAmount);
+//         await InitializedOrder.findByIdAndDelete(order._id);
+
+//         return res.status(200).json({
+//           success: true,
+//           message: "Subscription payment successful",
+//           order: transaction,
+//         });
+//       }
+
+//       // Handle vendor/material payments
+//       if (order.vendorId && order.materialId) {
+//         const [user, vendor, material] = await Promise.all([
+//           User.findById(order.userId),
+//           Vendor.findById(order.vendorId),
+//           Material.findById(order.materialId),
+//         ]);
+
+//         if (vendor?.userId) {
+//           await User.findByIdAndUpdate(
+//             vendor.userId, 
+//             { $inc: { wallet: order.amountPaid } }, 
+//             { new: true }
+//           );
+//         }
+
+//         if (user && vendor && material) {
+//           await sendTransactionEmail(user, vendor.businessEmail, transaction, material);
+//         }
+//       }
+
+//       await InitializedOrder.findByIdAndDelete(order._id);
+
+//       return res.status(200).json({
+//         success: true,
+//         message: "Payment successful",
+//         order: transaction,
+//       });
+//     }
+
+//     return res.status(200).json({ message: "Unhandled event" });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
 
 
 export const orderWebhook = async (req, res, next) => {
   try {
     const { data, event } = req.body;
 
-    if (event === "charge.success") {
-      const { reference } = data;
+    if (event !== "charge.success") {
+      return res.status(200).json({ message: "Unhandled event" });
+    }
 
-      const order = await InitializedOrder.findOne({ paymentReference: reference });
-      if (!order) {
-        return res.status(200).json({
-          success: false,
-          message: "Order not found",
-        });
-      }
+    const { reference } = data;
 
-      // Ensure transaction isn’t duplicated
+    // ✅ Find initialized order
+    const order = await InitializedOrder.findOne({ paymentReference: reference });
+    if (!order) {
+      return res.status(200).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // Ensure transaction isn’t duplicated
       const existingTransaction = await Transactions.findOne({ paymentReference: reference });
       if (existingTransaction) {
         return res.status(200).json({
@@ -436,48 +538,86 @@ export const orderWebhook = async (req, res, next) => {
         });
       }
 
-      const transaction = await Transactions.create({
-        userId: order.userId,
-        cartItems: order.cartItems,
-        totalAmount: order.totalAmount,
-        paymentMethod: order.paymentMethod,
-        paymentReference: order.paymentReference,
-        deliveryAddress: order.deliveryAddress,
-        paymentStatus: order.paymentStatus,
-        paymentCurrency: "NGN",
-        orderStatus: "completed",
-        amountPaid: order.amountPaid, 
-        vendorId: order.vendorId,
-        materialId: order.materialId,
-      });
+    // ✅ Create transaction
+    const transaction = await Transactions.create({
+      userId: order.userId,
+      cartItems: order.cartItems,
+      totalAmount: order.totalAmount,
+      paymentMethod: order.paymentMethod,
+      paymentReference: order.paymentReference,
+      deliveryAddress: order.deliveryAddress,
+      paymentStatus: "success",
+      subscriptionEndDate: order.subscriptionEndDate,
+      subscriptionStartDate: order.subscriptionStartDate,
+      plan: order.plan,
+      billTerm: order.billTerm,
+      paymentCurrency: "NGN",
+      orderStatus: "completed",
+      amountPaid: order.totalAmount, // ✅ safer than order.amountPaid
+      vendorId: order.vendorId || null,
+      materialId: order.materialId || null,
+    });
 
-      const [user, vendor, material] = await Promise.all([
-        User.findById(order.userId),
-        Vendor.findById(order.vendorId), 
-        Material.findById(order.materialId),
-      ]);
+    // ✅ If it's a subscription plan
+    if (["Standard", "Premium", "Enterprise"].includes(transaction.plan)) {
+      const user = await User.findById(transaction.userId);
 
-      await User.findByIdAndUpdate(vendor.userId, { $inc: { wallet: order.amountPaid } });
+      if (user) {
+        await User.findByIdAndUpdate(
+          transaction.userId,
+          {
+            $set: {
+              subscriptionEndDate: transaction.subscriptionEndDate,
+              subscriptionStartDate: transaction.subscriptionStartDate,
+              subscriptionPlan: transaction.plan.toLowerCase(),
+              billTerm: transaction.billTerm,
+            },
+          },
+          { new: true }
+        );
 
-      if (user && vendor && material) {
-        await sendTransactionEmail(user, vendor.businessEmail, transaction, material);
+        await sendSubscriptionEmail(user, transaction.totalAmount);
       }
 
       await InitializedOrder.findByIdAndDelete(order._id);
 
       return res.status(200).json({
         success: true,
-        message: "Payment successful",
+        message: "Subscription payment successful",
         order: transaction,
       });
     }
 
-    return res.status(200).json({ message: "Unhandled event" });
+    // ✅ If it's a vendor/material purchase
+    if (order.vendorId && order.materialId) {
+      const [user, vendor, material] = await Promise.all([
+        User.findById(order.userId),
+        Vendor.findById(order.vendorId),
+        Material.findById(order.materialId),
+      ]);
+
+      if (vendor?.userId) {
+        await User.findByIdAndUpdate(
+          vendor.userId,
+          { $inc: { wallet: transaction.totalAmount } }, // ✅ vendor gets money
+          { new: true }
+        );
+      }
+
+      if (user && vendor && material) {
+        await sendTransactionEmail(user, vendor.businessEmail, transaction, material);
+      }
+    }
+
+    // ✅ Delete initialized order after processing
+    await InitializedOrder.findByIdAndDelete(order._id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment successful",
+      order: transaction,
+    });
   } catch (error) {
     next(error);
   }
 };
-
-
-
-

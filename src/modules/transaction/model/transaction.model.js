@@ -51,15 +51,6 @@ const transactionSchema = new mongoose.Schema({
     title: {
         type: String,
     },
-    amount: {
-        type: Number,
-    },
-    currency: {
-        type: String,
-    },
-    reference: {
-        type: String,
-    },
     accountName: {
         type: String,
     },
@@ -67,6 +58,9 @@ const transactionSchema = new mongoose.Schema({
         type: String,
     },
     accountNumber: {
+        type: String,
+    },
+    billTerm: {
         type: String,
     },
     destination: {
@@ -80,8 +74,16 @@ const transactionSchema = new mongoose.Schema({
     },
     reason: {
         type: String,
-    }
-
+    },
+    plan: {
+    type: String,
+    },
+    subscriptionStartDate: {
+        type: Date,
+    },
+    subscriptionEndDate: {
+        type: Date,
+    },
 },
     {
         timestamps: true,

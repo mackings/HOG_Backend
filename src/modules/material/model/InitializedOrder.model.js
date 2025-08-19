@@ -33,30 +33,28 @@ const cartItemSchema = new mongoose.Schema({
 const initializedOrderSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
-    required: true,
     ref: "User",
   },
   vendorId: {
     type: mongoose.Schema.Types.ObjectId,
-    required: true,
     ref: "Vendor",
   }, 
   materialId: {
     type: mongoose.Schema.Types.ObjectId,
-    required: true,
     ref: "Material",
   },
   cartItems: {
     type: [cartItemSchema],
-    required: true,
   },
   totalAmount: {
     type: Number,
-    required: true,
   },
   orderStatus: {
     type: String,
     default: "Not Processed",
+  },
+  billTerm: {
+    type: String,
   },
   paymentMethod: {
     type: String,
@@ -74,6 +72,39 @@ const initializedOrderSchema = new mongoose.Schema({
   amountPaid: {
     type: Number,
     default: 0,
+  },  
+  title: {
+      type: String,
+  },
+  accountName: {
+      type: String,
+  },
+  bankName: {
+      type: String,
+  },
+  accountNumber: {
+      type: String,
+  },
+  destination: {
+      type: String,
+  },
+  sessionId: {
+      type: String
+  },
+  status: {
+      type: String,
+  },
+  reason: {
+      type: String,
+  },
+  plan: {
+  type: String,
+  },
+  subscriptionStartDate: {
+      type: Date,
+  },
+  subscriptionEndDate: {
+      type: Date,
   },
 }, { timestamps: true });
 

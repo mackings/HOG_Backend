@@ -1,7 +1,8 @@
 
 import nodemailer from "nodemailer";
 // const { SendMailClient } = require("zeptomail");
-const { sendVerifyTokenEmailTemplate, sendResetPasswordEmailTemplate, sendBankTransferEmailTemplate, sendTransactionEmailTemplate
+const { sendVerifyTokenEmailTemplate, sendResetPasswordEmailTemplate, sendBankTransferEmailTemplate, 
+  sendTransactionEmailTemplate, sendSubscriptionEmailTemplate
   
  } = require("../utils/emailTemplate");
 // const url = "api.zeptomail.com/";
@@ -114,3 +115,11 @@ export const sendTransactionEmail = async (user, vendor, transaction, material) 
 };
 
         
+export const sendSubscriptionEmail = async(user, amount)=>{
+  return sendEmail({
+    to: user.email,
+    subject: "Subscription Successful",
+    htmlContent: sendSubscriptionEmailTemplate(user, amount),
+  });
+
+}

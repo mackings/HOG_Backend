@@ -54,10 +54,18 @@ const userSchema = new mongoose.Schema({
         type: String,
         enum: ['free', 'premium', 'standard', 'enterprise'],
         default: 'free'
+    },  
+    subscriptionStartDate: {
+        type: Date,
+    },
+    subscriptionEndDate: {
+        type: Date,
+    },
+    billTerm: {
+        type: String,
     },
     phoneNumber: {
         type: String,
-        default: null
     },
     role: {
         type: String,

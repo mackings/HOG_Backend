@@ -1,8 +1,6 @@
 import Bank from '../model/bank.model';
 import User from '../../user/model/user.model.js';
 import Transaction from '../../transaction/model/transaction.model.js';
-const {Paystack} = require( 'paystack-sdk');
-const paystack = new Paystack(process.env.PAYSTACK_MAIN_KEY );
 import axios from "axios";
 import { sendBankTransferEmail } from "../../../utils/emailService.utils";
 import crypto from "crypto";
@@ -152,8 +150,8 @@ export const transferToBankAccount = async (req, res, next ) => {
     const transferData = paystackResponse.data;
     
     const transaction = await Transaction.create({
-      reference: crypto.randomBytes(9).toString("hex"),
-      amount: amount,
+      paymentReference: crypto.randomBytes(9).toString("hex"),
+      totalAmount: amount,
       title: "Transfer to bank account",
       email: user.email,
       userId: user._id,
@@ -163,7 +161,7 @@ export const transferToBankAccount = async (req, res, next ) => {
       accountNumber: bankAcct.accountNumber,
       reason: reason,
       status: "successFull",
-      currency: "NGN",
+      paymentCurrency: "NGN",
       destination: "bank",
       sessionId: transferData.data.id,
     });
