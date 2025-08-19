@@ -107,9 +107,9 @@ export const sendBankTransferEmail = async (transaction, email) => {
 
 export const sendTransactionEmail = async (user, vendor, transaction, material) => {
   return sendEmail({
-    to: [user, vendor],
+    to: [user.email, vendor],
     subject: "Transaction Successful",
-    htmlContent: sendTransactionEmailTemplate( transaction, material),
+    htmlContent: sendTransactionEmailTemplate(user, transaction, material),
   });
 };
 

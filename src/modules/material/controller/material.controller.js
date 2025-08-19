@@ -447,6 +447,8 @@ export const orderWebhook = async (req, res, next) => {
         paymentCurrency: "NGN",
         orderStatus: "completed",
         amountPaid: order.amountPaid, 
+        vendorId: order.vendorId,
+        materialId: order.materialId,
       });
 
       const [user, vendor, material] = await Promise.all([
@@ -456,7 +458,7 @@ export const orderWebhook = async (req, res, next) => {
       ]);
 
       if (user && vendor && material) {
-        await sendTransactionEmail(user.email, vendor.businessEmail, transaction, material);
+        await sendTransactionEmail(user, vendor.businessEmail, transaction, material);
       }
 
       await InitializedOrder.findByIdAndDelete(order._id);

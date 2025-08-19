@@ -113,7 +113,7 @@ export const sendBankTransferEmailTemplate = (transaction, email) => {
 };
 
 
-export const sendTransactionEmailTemplate = (transaction, material) => {
+export const sendTransactionEmailTemplate = (user, transaction, material) => {
   return `
   <!DOCTYPE html>
   <html>
@@ -188,7 +188,7 @@ export const sendTransactionEmailTemplate = (transaction, material) => {
           </tr>
           <tr>
             <th>Delivery Address</th>
-            <td>${transaction.deliveryAddress}</td>
+            <td>${user.address}</td>
           </tr>
           <tr>
             <th>Order Status</th>

@@ -47,7 +47,8 @@ const userSchema = new mongoose.Schema({
         default: null
     },
     address: {
-        type: String
+        type: String,
+        required: true
     },
     subscriptionPlan: {
         type: String,

@@ -5,7 +5,8 @@ import Transaction from "../model/transaction.model";
 export const getAllTransactions = async (req, res, next) => {
     try {
     const { id } = req.user;
-    const transactions = await Transaction.find({ userId: id });
+    const transactions = await Transaction.find({ userId: id })
+    .sort({ createdAt: -1 }) ;
     if (transactions.length === 0) {
         return res.status(404).json({ message: "Transactions not found" });
     }
