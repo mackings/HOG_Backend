@@ -1,5 +1,6 @@
 import User from "../model/user.model";
 import Token from "../model/token.model";
+import Vendor from "../../vendor/model/vendor.model"
 import { sendVerifyTokenEmail, sendResetPasswordEmail } from "../../../utils/emailService.utils";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -156,7 +157,7 @@ export const resetPassword = async (req, res, next) => {
 
 export const updateProfile = async (req, res, next) => {
   try {
-    const { fullName, password } = req.body;
+    const { fullName, password, phoneNumber, address } = req.body;
     const { id } = req.user;
 
     if (!fullName) {
@@ -173,6 +174,8 @@ export const updateProfile = async (req, res, next) => {
       user.password = hashedPassword;
     }
     user.fullName = fullName;
+    user.phoneNumber = phoneNumber;
+    user.address = address;
 
     const nameParts = fullName.trim().split(" ");
     const first_name = nameParts[0];
@@ -254,5 +257,33 @@ export const getAllusers = async (req, res, next) => {
       next(error);
     }
 }
+
+
+
+
+
+export const getAllTailor = async (req, res, next) => {
+  try {
+    const tailor = await Vendor.find()
+      .sort({ createdAt: -1 })
+      .populate("userId", "fullName email phoneNumber");
+
+    if (!tailor || tailor.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "No tailor found" 
+      });
+    }
+
+    return res.status(200).json({ 
+      success: true, 
+      message: "Tailors found", 
+      data: tailor 
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
     

@@ -32,8 +32,19 @@ const materialSchema = new mongoose.Schema({
         required: true,
     },
     price: {
-        type: String,
-        required: true,
+        type: Number,
+    },
+    vendorId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+    },
+    settlement: {
+        type: Number,
+        default: 0,
+    },
+    isDelivered: {
+        type: Boolean,
+        default: false,
     },
 },{
     timestamps: true,

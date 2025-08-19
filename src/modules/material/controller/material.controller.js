@@ -1,5 +1,22 @@
 import User from '../../user/model/user.model.js';
 import Material from '../../material/model/material.model';
+import Vendor from '../../vendor/model/vendor.model.js';
+import InitializedOrder from '../../material/model/InitializedOrder.model.js';
+import Transactions from '../../transaction/model/transaction.model.js';
+import { sendTransactionEmail } from '../../../utils/emailService.utils.js';
+import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance";
+const { Paystack } = require( 'paystack-sdk');
+const paystack = new Paystack(process.env.PAYSTACK_MAIN_KEY );
+import axios from "axios";
+import crypto from "crypto"
+const GEOAPIFY_API_KEY = process.env.GEOAPIFY_API_KEY;
+const NodeGeocoder = require('node-geocoder');
+
+const geocoder = NodeGeocoder({
+    provider: 'opencage',
+    apiKey: process.env.GEOAPIFY_API_KEY
+});
+
 
 
 export const createMaterial = async (req, res, next) => {
@@ -33,6 +50,7 @@ export const createMaterial = async (req, res, next) => {
         }
 
         return res.status(201).json({
+            success: true,
             message: "Material created successfully",
             data: material
         });
@@ -51,6 +69,7 @@ export const getAllMaterials = async (req, res, next )=> {
             return res.status(404).json({ message: "Materials not found" });
         }
         return res.status(200).json({
+            success: true,
             message: "Materials fetched successfully",
             data: materials
         });
@@ -68,6 +87,7 @@ export const getMaterialById = async (req, res, next) => {
             return res.status(404).json({ message: "Material not found" });
         }
         return res.status(200).json({
+            success: true,
             message: "Material fetched successfully",
             data: material
         });
@@ -112,6 +132,7 @@ export const updateMaterial = async (req, res, next) => {
         }
 
         return res.status(200).json({
+            success: true,
             message: "Material updated successfully",
             data: updateMaterial
         });
@@ -146,7 +167,312 @@ export const deleteMaterial = async (req, res, next) => {
 
 
 
+export const createPaymentOnline = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const { amount, shipmentMethod } = req.body;
+    const { materialId } = req.params;
 
+    // Validate user
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Validate material
+    const material = await Material.findById(materialId);
+    if (!material) {
+      return res.status(404).json({ success: false, message: "Material not found" });
+    }
+
+    // Validate vendor & material owner
+    const [vendor, materialOwner] = await Promise.all([
+      Vendor.findById(material.vendorId),
+      User.findById(material.userId),
+    ]);
+
+    if (!vendor || !materialOwner) {
+      return res.status(404).json({
+        success: false,
+        message: "Vendor or Material Owner has not updated material cost",
+      });
+    }
+
+    const pickupAddress = vendor.address;
+    const deliveryAddress = materialOwner.address;
+
+    const geocodeReceiverResponse = await axios.get(`https://api.geoapify.com/v1/geocode/search`, {
+        params: { text: deliveryAddress, apiKey: "14ea724d207e48ebabdcb893aa97217e" }
+    });
+
+    const Location = geocodeReceiverResponse.data.features;
+    if (!Location.length) {
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid deliveryAddress provided',
+            error: `Geocoding failed for deliveryAddress: ${deliveryAddress}`
+        });
+    }
+
+    const deliveryLocation = {
+        latitude: Location[0].geometry.coordinates[1],
+        longitude: Location[0].geometry.coordinates[0]
+    };
+
+    // Geocode sender address
+    const geocodeSenderResponse = await axios.get(`https://api.geoapify.com/v1/geocode/search`, {
+        params: { text: pickupAddress, apiKey: "14ea724d207e48ebabdcb893aa97217e" }
+    });
+
+    const senderAddress = geocodeSenderResponse.data.features;
+    if (!senderAddress.length) {
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid pickupAddress provided',
+            error: `Geocoding failed for pickupAddress: ${pickupAddress}`
+        });
+    }
+
+    const senderLocation = {
+        latitude: senderAddress[0].geometry.coordinates[1],
+        longitude: senderAddress[0].geometry.coordinates[0]
+    };
+
+    // Shipment costs
+    const numberOfPackages = 1;
+    const shipmentCosts = {
+      Express: expressCalculateCost(deliveryLocation, senderLocation, numberOfPackages),
+      Cargo: cargoCalculateCost(deliveryLocation, senderLocation, numberOfPackages),
+      Regular: regularCalculateCost(deliveryLocation, senderLocation, numberOfPackages),
+    };
+
+    const shipmentCost = shipmentCosts[shipmentMethod];
+    if (!shipmentCost) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid shipment method. Choose Express, Cargo, or Regular",
+      });
+    }
+
+    // Payment setup
+    const shipping = Math.round(shipmentCost);
+    const cost = Number(amount)
+    const totalCost = Math.round(shipping + cost);
+    const paymentReference = crypto.randomBytes(5).toString("hex");
+
+    const order = await InitializedOrder.create({
+      userId: user._id,
+      cartItems: [
+        {
+          vendorId: material.vendorId,
+          userId: user._id,
+          attireType: material.attireType,
+          clothMaterial: material.clothMaterial,
+          color: material.color,
+          brand: material.brand,
+          measurement: material.measurement,
+          sampleImage: material.sampleImage,
+          price: material.price,
+        },
+      ],
+      totalAmount: totalCost,
+      paymentMethod: "Paystack",
+      paymentReference,
+      deliveryAddress,
+      vendorId: vendor._id,
+      materialId: material._id,
+      amountPaid: amount,
+      paymentStatus: "full payment",
+    });
+
+    // Paystack payment initialization
+    const paystackResponse = await axios.post(
+      "https://api.paystack.co/transaction/initialize",
+      {
+        email: user.email,
+        amount: totalCost * 100, // Paystack accepts kobo
+        currency: "NGN",
+        reference: paymentReference,
+        callback_url: `${process.env.FRONTEND_URL}/payment-success`,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_MAIN_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    // Handle Paystack response
+    if (paystackResponse.status === 200 && paystackResponse.data?.data) {
+      return res.status(201).json({
+        success: true,
+        message: "Payment initialized successfully",
+        authorizationUrl: paystackResponse.data.data.authorization_url,
+        payment: order,
+      });
+    }
+
+    // Rollback order if Paystack fails
+    await InitializedOrder.findByIdAndDelete(order._id);
+    return res.status(400).json({
+      success: false,
+      message: "Payment initialization failed",
+      error: paystackResponse.data?.message || "Unknown error",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
+
+export const createPartPaymentOnline = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    const { amount } = req.body;
+    const { materialId } = req.params;
+    
+
+
+    const material = await Material.findById(materialId);
+    if (!material) {
+      return res.status(404).json({ success: false, message: "Material not found" });
+    }
+
+    const vendor = await Vendor.findById(material.vendorId);
+    const materialOwner = await User.findById(material.userId);
+    if (!vendor || !materialOwner) {
+      return res.status(404).json({ success: false, message: "Vendor or Material Owner has not yet update material cost" });
+    }
+
+    const paymentMethod = "Paystack";
+    // const orderPercent = amount * 0.1;
+    // const totalCost = Math.round(shipmentCost + amount + orderPercent);
+    const paymentReference = crypto.randomBytes(5).toString("hex");
+
+    const order = await InitializedOrder.create({
+      userId: user._id,
+      cartItems: [{
+        attireType: material.attireType,
+        clothMaterial: material.clothMaterial,
+        color: material.color,
+        brand: material.brand,
+        measurement: material.measurement,   
+        sampleImage: material.sampleImage, 
+        price: material.price
+      }],
+      totalAmount: amount,
+      paymentMethod,
+      paymentReference,
+      vendorId: vendor._id,
+      materialId: material._id,
+      amountPaid: amount,
+      paymentStatus: "part payment" 
+    });
+
+    const paystackUrl = "https://api.paystack.co/transaction/initialize";
+    const paystackResponse = await axios.post(
+        paystackUrl,
+        {
+            email: user.email,
+            amount: order.totalAmount * 100,
+            currency: "NGN",
+            reference: order.paymentReference,
+            callback_url: `${process.env.FRONTEND_URL}/payment-success`,
+        },
+        {
+            headers: {
+                Authorization: `Bearer ${process.env.PAYSTACK_MAIN_KEY}`,
+                "Content-Type": "application/json",
+            },
+        }
+    );
+    if (paystackResponse.status === 200) {
+      return res.status(201).json({
+        success: true,
+        message: "Payment initialized successfully",
+        authorizationUrl: paystackResponse.data.data.authorization_url,
+        payment: order
+      });  
+    }else {
+      await InitializedOrder.findByIdAndDelete(order._id);  
+      return res.status(400).json({ success: false, message: "Payment initialization failed", error: paystackResponse.data.message });
+    }      
+    } catch (error) {
+    next(error);
+  }
+};
+
+
+
+
+
+export const orderWebhook = async (req, res, next) => {
+  try {
+    const { data, event } = req.body;
+
+    if (event === "charge.success") {
+      const { reference } = data;
+
+      const order = await InitializedOrder.findOne({ paymentReference: reference });
+      if (!order) {
+        return res.status(200).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
+
+      // Ensure transaction isn’t duplicated
+      const existingTransaction = await Transactions.findOne({ paymentReference: reference });
+      if (existingTransaction) {
+        return res.status(200).json({
+          success: true,
+          message: "Transaction already processed",
+        });
+      }
+
+      const transaction = await Transactions.create({
+        userId: order.userId,
+        cartItems: order.cartItems,
+        totalAmount: order.totalAmount,
+        paymentMethod: order.paymentMethod,
+        paymentReference: order.paymentReference,
+        deliveryAddress: order.deliveryAddress,
+        paymentStatus: order.paymentStatus,
+        paymentCurrency: "NGN",
+        orderStatus: "completed",
+        amountPaid: order.amountPaid, 
+      });
+
+      const [user, vendor, material] = await Promise.all([
+        User.findById(order.userId),
+        Vendor.findById(order.vendorId), 
+        Material.findById(order.materialId),
+      ]);
+
+      if (user && vendor && material) {
+        await sendTransactionEmail(user.email, vendor.businessEmail, transaction, material);
+      }
+
+      await InitializedOrder.findByIdAndDelete(order._id);
+
+      return res.status(200).json({
+        success: true,
+        message: "Payment successful",
+        order: transaction,
+      });
+    }
+
+    return res.status(200).json({ message: "Unhandled event" });
+  } catch (error) {
+    next(error);
+  }
+};
 
 
 

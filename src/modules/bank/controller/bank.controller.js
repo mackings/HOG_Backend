@@ -1,6 +1,6 @@
 import Bank from '../model/bank.model';
 import User from '../../user/model/user.model.js';
-import Transaction from '../model/transaction.model.js';
+import Transaction from '../../transaction/model/transaction.model.js';
 const {Paystack} = require( 'paystack-sdk');
 const paystack = new Paystack(process.env.PAYSTACK_MAIN_KEY );
 import axios from "axios";

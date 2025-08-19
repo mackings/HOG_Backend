@@ -1,7 +1,9 @@
 
 import nodemailer from "nodemailer";
 // const { SendMailClient } = require("zeptomail");
-const { sendVerifyTokenEmailTemplate, sendResetPasswordEmailTemplate, sendBankTransferEmailTemplate } = require("../utils/emailTemplate");
+const { sendVerifyTokenEmailTemplate, sendResetPasswordEmailTemplate, sendBankTransferEmailTemplate, sendTransactionEmailTemplate
+  
+ } = require("../utils/emailTemplate");
 // const url = "api.zeptomail.com/";
 // const token = process.env.ZEPTO_TOKEN;
 // const client = new SendMailClient({ url, token });
@@ -100,6 +102,15 @@ export const sendBankTransferEmail = async (transaction, email) => {
         subject: "Bank Transfer",
         htmlContent: sendBankTransferEmailTemplate(transaction)
     });
+};
+
+
+export const sendTransactionEmail = async (user, vendor, transaction, material) => {
+  return sendEmail({
+    to: [user, vendor],
+    subject: "Transaction Successful",
+    htmlContent: sendTransactionEmailTemplate( transaction, material),
+  });
 };
 
         

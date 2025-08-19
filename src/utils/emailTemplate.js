@@ -111,3 +111,141 @@ export const sendBankTransferEmailTemplate = (transaction, email) => {
   </html>
   `;
 };
+
+
+export const sendTransactionEmailTemplate = (transaction, material) => {
+  return `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Transaction Successful</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f7f7f7;
+        margin: 0;
+        padding: 0;
+      }
+      .container {
+        max-width: 600px;
+        margin: 20px auto;
+        background: #ffffff;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      }
+      h2 {
+        color: #4CAF50;
+        text-align: center;
+      }
+      .details {
+        margin: 20px 0;
+      }
+      .details table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .details th, .details td {
+        text-align: left;
+        padding: 8px;
+        border-bottom: 1px solid #ddd;
+      }
+      .details th {
+        background-color: #f2f2f2;
+      }
+      .footer {
+        margin-top: 30px;
+        text-align: center;
+        font-size: 14px;
+        color: #666;
+      }
+      .highlight {
+        color: #333;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>✅ Payment Successful</h2>
+      <p>Dear Customer,</p>
+      <p>We’re happy to let you know that your payment was successful. Here are your order details:</p>
+
+      <div class="details">
+        <table>
+          <tr>
+            <th>Transaction Reference</th>
+            <td class="highlight">${transaction.paymentReference}</td>
+          </tr>
+          <tr>
+            <th>Amount Paid</th>
+            <td class="highlight">₦${transaction.amountPaid.toLocaleString()}</td>
+          </tr>
+          <tr>
+            <th>Payment Method</th>
+            <td>${transaction.paymentMethod}</td>
+          </tr>
+          <tr>
+            <th>Delivery Address</th>
+            <td>${transaction.deliveryAddress}</td>
+          </tr>
+          <tr>
+            <th>Order Status</th>
+            <td>${transaction.orderStatus}</td>
+          </tr>
+        </table>
+      </div>
+
+      <h3>🛒 Material Ordered</h3>
+      <div class="details">
+        <table>
+          <tr>
+            <th>Name (Attire Type)</th>
+            <td>${material?.attireType || "N/A"}</td>
+          </tr>
+          <tr>
+            <th>cloth Material</th>
+            <td>${material?.clothMaterial || "N/A"}</td>
+          </tr>
+          <tr>
+            <th>Colour</th>
+            <td>${material?.color || "N/A"}</td>
+          </tr>
+          <tr>
+            <th>Brand Name</th>
+            <td>${material?.brand || "N/A"}</td>
+          </tr>
+          <tr>
+            <th>Measurement</th>
+            <td>${material?.measurement?.join(", ") || "N/A"}</td>
+          </tr>
+          <tr>
+            <th>Price</th>
+            <td>₦${material?.price?.toLocaleString() || "N/A"}</td>
+          </tr>
+          <tr>
+            <th>Sample Image</th>
+            <td><img src="${material?.sampleImage[0]}" alt="Sample Image" style="max-width: 100%; height: auto;"></td>
+          </tr> 
+          <tr>
+            <th>Total Amount Paid</th>
+            <td>₦${transaction.totalAmount.toLocaleString()}</td>
+          </tr>
+          <tr>
+            <th>Payment Status</th>
+            <td>${transaction.paymentStatus}</td>
+          </tr>
+          <tr>
+            <th>Date</th>
+            <td>${new Date().toLocaleString()}</td>
+          </tr>
+        </table>
+      </div>
+
+      <p class="footer">Thank you for shopping with us! <br/> If you have any questions, please contact our support team.</p>
+    </div>
+  </body>
+  </html>
+  `;
+};

@@ -8,7 +8,7 @@ import userRouter from './src/modules/user/routes/user.routes.js';
 import tailorRouter from './src/modules/vendor/routes/vendor.routes.js';
 import materialRouter from './src/modules/material/routes/materilas.routes.js';
 import bankRouter from './src/modules/bank/routes/bank.routes.js';
-import transactionRouter from './src/modules/bank/routes/transaction.routes.js';
+import transactionRouter from './src/modules/transaction/routes/transaction.routes.js';
 
 
  

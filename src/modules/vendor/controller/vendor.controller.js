@@ -1,5 +1,6 @@
 import User from "../../user/model/user.model.js";
 import Vendor from "../model/vendor.model.js";
+import Material from "../../material/model/material.model.js";
 
 
 export const createTailor = async (req, res, next) => {
@@ -61,6 +62,7 @@ export const createTailor = async (req, res, next) => {
     });
 
     return res.status(201).json({
+      success: true,
       message: 'Tailor created successfully',
       data: newTailor
     });
@@ -80,7 +82,7 @@ export const getTailor = async (req, res, next)=>{
         if (!tailor) {
             return res.status(404).json({ message: 'Tailor not found' });
         }
-        return res.status(200).json({ message: 'Tailor found', data: tailor });
+        return res.status(200).json({success: true, message: 'Tailor found', data: tailor });
     } catch (error) {
         next(error);
     }
@@ -116,6 +118,7 @@ export const updateTailor = async (req, res, next) => {
     }
 
     res.status(200).json({
+      success: true,
       message: "Tailor updated successfully",
       data: tailor
     });
@@ -124,4 +127,133 @@ export const updateTailor = async (req, res, next) => {
     next(error);
   }
 };
+
+
+export const deleteTailor = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const { tailorId } = req.params;
+
+    if (!tailorId) {
+      return res.status(400).json({
+        success: false,
+        message: "Tailor ID is required",
+      });
+    }
+
+    const tailor = await Vendor.findOneAndDelete({ _id: tailorId, userId: id });
+
+    if (!tailor) {
+      return res.status(404).json({
+        success: false,
+        message: "Tailor not found or unauthorized",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Tailor deleted successfully",
+      data: tailor,
+    });
+
+  } catch (error) {
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid tailor ID format",
+      });
+    }
+    next(error);
+  }
+};
+
+
+
+
+export const getAllAssignedMaterials = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+
+    const tailor = await Vendor.findOne({ userId: id });
+    if (!tailor) {
+      return res.status(404).json({
+        success: false,
+        message: "Tailor not found",
+      });
+    }
+
+    const assignedMaterials = await Material.find({ vendorId: tailor._id })
+      .populate("userId", "fullName email phoneNumber address city state");
+
+    if (assignedMaterials.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No assigned materials found for you",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Assigned materials fetched successfully",
+      count: assignedMaterials.length,
+      data: assignedMaterials,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export const updateMaterialPrice = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const vendor = await Vendor.findOne({ userId: id });
+
+    if (!vendor) {
+      return res.status(404).json({
+        success: false,
+        message: "Vendor not found",
+      });
+    }
+
+    const { materialId } = req.params;
+    const { price } = req.body;
+
+    if (price === undefined || price === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Price is required",
+      });
+    }
+
+    // Option 1: Increment price
+    // const updateQuery = { $inc: { price: price } };
+
+    // Option 2: Set new price (recommended)
+    const updateQuery = { $set: { price: price, vendorId: vendor._id } };
+
+    const material = await Material.findOneAndUpdate(
+      { _id: materialId },
+      updateQuery,
+      { new: true }
+    );
+
+    if (!material) {
+      return res.status(404).json({
+        success: false,
+        message: "Material not found or unauthorized",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Material price updated successfully",
+      data: material,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
