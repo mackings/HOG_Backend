@@ -272,7 +272,7 @@ export const getAllTailor = async (req, res, next) => {
   try {
     const tailor = await Vendor.find()
       .sort({ createdAt: -1 })
-      .populate("userId", "fullName email phoneNumber");
+      .populate("userId", "fullName email image");
 
     if (!tailor || tailor.length === 0) {
       return res.status(404).json({ 
