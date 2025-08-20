@@ -10,6 +10,7 @@ import materialRouter from './src/modules/material/routes/materilas.routes.js';
 import bankRouter from './src/modules/bank/routes/bank.routes.js';
 import transactionRouter from './src/modules/transaction/routes/transaction.routes.js';
 import subcriptionRouter from './src/modules/subscription/routes/subscription.routes.js';
+import rateRouter from './src/modules/rate/routes/rate.routes.js';
 
 
  
@@ -36,6 +37,9 @@ app.use('/api/v1/material', materialRouter);
 app.use('/api/v1/bank', bankRouter);
 app.use('/api/v1/transaction', transactionRouter);
 app.use('/api/v1/subscription', subcriptionRouter);
+app.use('/api/v1/rate', rateRouter);
+
+
 app.use((req, res)=>{
   res.status(404).json({message: "Endpoint not found. please, check the url and try again."})
 });

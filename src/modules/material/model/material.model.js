@@ -26,6 +26,14 @@ const materialSchema = new mongoose.Schema({
         type: Array,
         required: true,
     },
+    deliveryDate: {
+        type: Date,
+        required: true,
+    },
+    reminderDate: {
+        type: Date,
+        required: true,
+    },
     sampleImage: {
         type: Array,
         required: true,
@@ -35,7 +43,7 @@ const materialSchema = new mongoose.Schema({
     },
     vendorId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        ref: 'Vendor',
     },
     settlement: {
         type: Number,
@@ -44,6 +52,9 @@ const materialSchema = new mongoose.Schema({
     isDelivered: {
         type: Boolean,
         default: false,
+    },
+    specialInstructions: {
+        type: String,
     },
 },{
     timestamps: true,

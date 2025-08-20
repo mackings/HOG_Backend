@@ -11,45 +11,58 @@ import crypto from "crypto"
 
 
 export const createMaterial = async (req, res, next) => {
-    try {
-        const { id } = req.user;
-        const { attireType, clothMaterial, color, brand, measurement, price } = req.body;
+  try {
+    const { id } = req.user;
+    const { vendorId } = req.params;
+    let { attireType, clothMaterial, color, brand, measurement, price, deliveryDate, reminderDate, specialInstructions } = req.body;
 
-        if (!attireType || !clothMaterial || !color || !brand || !measurement ) {
-            return res.status(400).json({
-                message: "Attire type, cloth material, color, brand, measurement  are required"
-            });
-        }
-
-        if (!req.imageUrls || req.imageUrls.length === 0) {
-            return res.status(400).json({ message: "Sample images are required" });
-        }
-
-        const material = await Material.create({
-            userId: id,
-            attireType,
-            clothMaterial,
-            color,
-            brand,
-            measurement,
-            price,
-            sampleImage: req.imageUrls
-        });
-
-        if (!material) {
-            return res.status(400).json({ message: "Material not created" });
-        }
-
-        return res.status(201).json({
-            success: true,
-            message: "Material created successfully",
-            data: material
-        });
-
-    } catch (error) {
-        next(error);
+    if (typeof measurement === "string") {
+      try {
+        measurement = JSON.parse(measurement);
+      } catch (err) {
+        return res.status(400).json({ message: "Invalid measurement format" });
+      }
     }
+
+    if (!attireType || !clothMaterial || !color || !brand || !measurement) {
+      return res.status(400).json({
+        message: "Attire type, cloth material, color, brand, measurement are required"
+      });
+    }
+
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor) {
+      return res.status(404).json({ message: "Vendor not found" });
+    }
+
+    const images = req.imageUrls || [];
+
+    const material = await Material.create({
+      userId: id,
+      vendorId,
+      attireType,
+      clothMaterial,
+      color,
+      brand,
+      measurement,
+      price,
+      deliveryDate,
+      reminderDate,
+      sampleImage: images,
+      specialInstructions
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Material created successfully",
+      data: material
+    });
+  } catch (error) {
+    next(error);
+  }
 };
+
+
 
 
 export const getAllMaterials = async (req, res, next )=> {
@@ -89,48 +102,65 @@ export const getMaterialById = async (req, res, next) => {
 
 
 export const updateMaterial = async (req, res, next) => {
-    try {
-        const { id }=req.user;
-        const { materialId } = req.params;
-        const { attireType, clothMaterial, color, brand, measurement, price } = req.body;
+  try {
+    const { id } = req.user;
+    const { materialId } = req.params;
+    let { attireType, clothMaterial, color, brand, measurement, price, deliveryDate, reminderDate, specialInstructions } = req.body;
 
-        if (!attireType || !clothMaterial || !color || !brand || !measurement ) {
-            return res.status(400).json({
-                message: "Attire type, cloth material, color, brand, measurement  are required"
-            });
-        }
-
-        if (!req.imageUrls || req.imageUrls.length === 0) {
-            return res.status(400).json({ message: "Sample images are required" });
-        }
-
-        const updateMaterial = await Material.findByIdAndUpdate(
-            materialId,
-            {
-                attireType,
-                clothMaterial,
-                color,
-                brand,
-                measurement,
-                price,
-                sampleImage: req.imageUrls
-            },
-            { new: true }
-        );
-
-        if(!updateMaterial){
-            return res.status(404).json({message: "Material not found"});
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: "Material updated successfully",
-            data: updateMaterial
-        });
-    } catch (error) {
-        next(error);
+    if (typeof measurement === "string") {
+      try {
+        measurement = JSON.parse(measurement);
+      } catch (err) {
+        return res.status(400).json({ message: "Invalid measurement format" });
+      }
     }
+
+    if (!attireType || !clothMaterial || !color || !brand || !measurement) {
+      return res.status(400).json({
+        message: "Attire type, cloth material, color, brand, measurement are required"
+      });
+    }
+
+    let images = req.imageUrls;
+    if (!images || images.length === 0) {
+      const existing = await Material.findById(materialId);
+      if (!existing) {
+        return res.status(404).json({ message: "Material not found" });
+      }
+      images = existing.sampleImage;
+    }
+
+    const updatedMaterial = await Material.findByIdAndUpdate(
+      materialId,
+      {
+        attireType,
+        clothMaterial,
+        color,
+        brand,
+        measurement,
+        price,
+        deliveryDate,
+        reminderDate,
+        specialInstructions,
+        sampleImage: images
+      },
+      { new: true }
+    );
+
+    if (!updatedMaterial) {
+      return res.status(404).json({ message: "Material not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Material updated successfully",
+      data: updatedMaterial
+    });
+  } catch (error) {
+    next(error);
+  }
 };
+
 
 
 export const deleteMaterial = async (req, res, next) => {
@@ -150,6 +180,33 @@ export const deleteMaterial = async (req, res, next) => {
       success: true,
       message: "Material deleted successfully",
       data: material,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export const searchMaterials = async (req, res, next) => {
+  try {
+    const { query } = req.query;
+    const materials = await Material.find({
+      $or: [
+        { attireType: { $regex: query, $options: "i" } },
+        { clothMaterial: { $regex: query, $options: "i" } },
+        { color: { $regex: query, $options: "i" } },
+        { brand: { $regex: query, $options: "i" } },
+      ],
+    });
+
+    if (materials.length === 0) {
+      return res.status(404).json({ message: "No materials found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Materials fetched successfully",
+      data: materials,
     });
   } catch (error) {
     next(error);
@@ -401,115 +458,6 @@ export const createPartPaymentOnline = async (req, res, next) => {
 
 
 
-// export const orderWebhook = async (req, res, next) => { 
-//   try {
-//     const { data, event } = req.body;
-
-//     if (event === "charge.success") {
-//       const { reference } = data;
-
-//       const order = await InitializedOrder.findOne({ paymentReference: reference });
-//       if (!order) {
-//         return res.status(200).json({
-//           success: false,
-//           message: "Order not found",
-//         });
-//       }
-
-//       // Ensure transaction isn’t duplicated
-//       // const existingTransaction = await Transactions.findOne({ paymentReference: reference });
-//       // if (existingTransaction) {
-//       //   return res.status(200).json({
-//       //     success: true,
-//       //     message: "Transaction already processed",
-//       //   });
-//       // }
-
-//       // Save transaction
-//       const transaction = await Transactions.create({
-//         userId: order.userId,
-//         cartItems: order.cartItems,
-//         totalAmount: order.totalAmount,
-//         paymentMethod: order.paymentMethod,
-//         paymentReference: order.paymentReference,
-//         deliveryAddress: order.deliveryAddress,
-//         paymentStatus: order.paymentStatus,
-//         subscriptionEndDate: order.subscriptionEndDate,
-//         subscriptionStartDate: order.subscriptionStartDate,
-//         plan: order.plan,                   // ✅ fixed
-//         billTerm: order.billTerm,           // ✅ fixed
-//         paymentCurrency: "NGN",
-//         orderStatus: "completed",
-//         amountPaid: order.amountPaid, 
-//         vendorId: order.vendorId || null,
-//         materialId: order.materialId || null,
-//       });
-
-//       // Handle subscription payments
-//       if (["Standard", "Premium", "Enterprise"].includes(transaction.plan)) {
-//         const user = await User.findById(transaction.userId);
-
-//         await User.findByIdAndUpdate(
-//           transaction.userId,
-//           {
-//             $set: { 
-//               subscriptionEndDate: transaction.subscriptionEndDate, 
-//               subscriptionStartDate: transaction.subscriptionStartDate, 
-//               subscriptionPlan: transaction.plan.toLowerCase(),
-//               billTerm: transaction.billTerm,
-//             }
-//           },
-//           { new: true }
-//         );
-
-//         await sendSubscriptionEmail(user, transaction.totalAmount);
-//         await InitializedOrder.findByIdAndDelete(order._id);
-
-//         return res.status(200).json({
-//           success: true,
-//           message: "Subscription payment successful",
-//           order: transaction,
-//         });
-//       }
-
-//       // Handle vendor/material payments
-//       if (order.vendorId && order.materialId) {
-//         const [user, vendor, material] = await Promise.all([
-//           User.findById(order.userId),
-//           Vendor.findById(order.vendorId),
-//           Material.findById(order.materialId),
-//         ]);
-
-//         if (vendor?.userId) {
-//           await User.findByIdAndUpdate(
-//             vendor.userId, 
-//             { $inc: { wallet: order.amountPaid } }, 
-//             { new: true }
-//           );
-//         }
-
-//         if (user && vendor && material) {
-//           await sendTransactionEmail(user, vendor.businessEmail, transaction, material);
-//         }
-//       }
-
-//       await InitializedOrder.findByIdAndDelete(order._id);
-
-//       return res.status(200).json({
-//         success: true,
-//         message: "Payment successful",
-//         order: transaction,
-//       });
-//     }
-
-//     return res.status(200).json({ message: "Unhandled event" });
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
-
-
 export const orderWebhook = async (req, res, next) => {
   try {
     const { data, event } = req.body;
@@ -520,7 +468,6 @@ export const orderWebhook = async (req, res, next) => {
 
     const { reference } = data;
 
-    // ✅ Find initialized order
     const order = await InitializedOrder.findOne({ paymentReference: reference });
     if (!order) {
       return res.status(200).json({
@@ -529,7 +476,6 @@ export const orderWebhook = async (req, res, next) => {
       });
     }
 
-    // Ensure transaction isn’t duplicated
       const existingTransaction = await Transactions.findOne({ paymentReference: reference });
       if (existingTransaction) {
         return res.status(200).json({
@@ -538,7 +484,6 @@ export const orderWebhook = async (req, res, next) => {
         });
       }
 
-    // ✅ Create transaction
     const transaction = await Transactions.create({
       userId: order.userId,
       cartItems: order.cartItems,
@@ -553,12 +498,11 @@ export const orderWebhook = async (req, res, next) => {
       billTerm: order.billTerm,
       paymentCurrency: "NGN",
       orderStatus: "completed",
-      amountPaid: order.totalAmount, // ✅ safer than order.amountPaid
+      amountPaid: order.totalAmount,
       vendorId: order.vendorId || null,
       materialId: order.materialId || null,
     });
 
-    // ✅ If it's a subscription plan
     if (["Standard", "Premium", "Enterprise"].includes(transaction.plan)) {
       const user = await User.findById(transaction.userId);
 
@@ -599,7 +543,7 @@ export const orderWebhook = async (req, res, next) => {
       if (vendor?.userId) {
         await User.findByIdAndUpdate(
           vendor.userId,
-          { $inc: { wallet: transaction.totalAmount } }, // ✅ vendor gets money
+          { $inc: { wallet: transaction.totalAmount } },
           { new: true }
         );
       }
@@ -609,7 +553,6 @@ export const orderWebhook = async (req, res, next) => {
       }
     }
 
-    // ✅ Delete initialized order after processing
     await InitializedOrder.findByIdAndDelete(order._id);
 
     return res.status(200).json({

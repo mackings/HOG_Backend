@@ -43,7 +43,15 @@ const vendorSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
-    rate: {
+    ratings: {
+        type: Number,
+        default: 0,
+    },
+    totalRatings: {
+        type: Number,
+        default: 0,
+    },
+    ratingSum: {
         type: Number,
         default: 0,
     },

@@ -219,11 +219,14 @@ export const uploadImage = async (req, res, next) => {
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
-        if (req.file) {
-            user.image = req.imageUrl;
-        }
-        await user.save();
-        return res.status(200).json({ message: "Profile image updated successfully" });
+         const images = req.imageUrls || [];
+
+         const uploadImage = await User.findByIdAndUpdate(
+           id,
+           { image: images },
+           { new: true }
+         );
+        return res.status(200).json({ message: "Profile image updated successfully", image: uploadImage.image });
     } catch (error) {
         next(error);
     }
@@ -237,11 +240,14 @@ export const uploadBillImage = async (req, res, next) => {
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
-        if (req.file) {
-            user.billImage = req.imageUrl;
-        }
-        await user.save();
-        return res.status(200).json({ message: "Bill image updated successfully" });
+         const images = req.imageUrls || [];
+
+         const uploadImage = await User.findByIdAndUpdate(
+           id,
+           { billImage: images },
+           { new: true }
+         );
+        return res.status(200).json({ message: "Bill image updated successfully", billImage: uploadImage.billImage });
     } catch (error) {
         next(error);
     }
@@ -274,6 +280,7 @@ export const getAllTailor = async (req, res, next) => {
         message: "No tailor found" 
       });
     }
+    
 
     return res.status(200).json({ 
       success: true, 
