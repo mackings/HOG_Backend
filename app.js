@@ -11,6 +11,7 @@ import bankRouter from './src/modules/bank/routes/bank.routes.js';
 import transactionRouter from './src/modules/transaction/routes/transaction.routes.js';
 import subcriptionRouter from './src/modules/subscription/routes/subscription.routes.js';
 import rateRouter from './src/modules/rate/routes/rate.routes.js';
+import trackingRouter from './src/modules/tracking/routes/tracking.routes.js';
 
 
  
@@ -38,6 +39,7 @@ app.use('/api/v1/bank', bankRouter);
 app.use('/api/v1/transaction', transactionRouter);
 app.use('/api/v1/subscription', subcriptionRouter);
 app.use('/api/v1/rate', rateRouter);
+app.use('/api/v1/tracking', trackingRouter );
 
 
 app.use((req, res)=>{

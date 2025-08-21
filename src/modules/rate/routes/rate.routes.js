@@ -10,9 +10,9 @@ import { userCheckRole } from '../../../middlewares/checkRole.middleware';
 const router = Router();
 
 router.use(isAuth); 
-router.use(userCheckRole(["user", "admin"]));
+router.use(userCheckRole(["user", "admin", "tailor"]));
 router.post('/rate/:vendorId', rateVendor);
-router.get('/rate/:vendorId', getVendorRating);
-router.delete('/rate/:vendorId', deleteVendorRating);
+router.get('/rate', getVendorRating);
+router.delete('/rate', deleteVendorRating);
 
 export default router;
