@@ -17,7 +17,7 @@ export const register = async (req, res, next) => {
             return res.status(409).json({ message: "User already exists, please login or use forgot password" });
         }
         const hashedPassword = await bcrypt.hash(password, 10);
-        const otp = crypto.randomInt(100000, 999999);
+        const otp = crypto.randomInt(1000, 9999);
         const token = await Token.create({
            fullName, 
            email, 
@@ -279,8 +279,7 @@ export const getAllTailor = async (req, res, next) => {
         success: false, 
         message: "No tailor found" 
       });
-    }
-    
+    }    
 
     return res.status(200).json({ 
       success: true, 
