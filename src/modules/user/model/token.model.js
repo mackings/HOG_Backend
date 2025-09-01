@@ -39,6 +39,10 @@ const tokenSchema = new mongoose.Schema({
     role: { 
         type: String
     },
+    address: {
+        type: String,
+        required: true
+    },
     expiresAt: {
         type: Date,
         required: true,
