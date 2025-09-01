@@ -119,13 +119,14 @@ export const forgotPassword = async (req, res, next) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const token = crypto.randomInt(100000, 999999);;
+    const token = crypto.randomInt(1000, 9999);;
 
     const newToken = await Token.create({
         fullName: user.fullName,
         password: user.password,
         email: user.email,
-        token
+        token,
+        address: user.address
     });
 
     await sendResetPasswordEmail(newToken);
