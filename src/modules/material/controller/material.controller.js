@@ -93,7 +93,7 @@ export const getMaterialCategory = async (req, res, next) => {
 export const getAllMaterials = async (req, res, next )=> {
     try {
         const { id } = req.user;
-        const materials = await Material.find({ userId: id });
+        const materials = await Material.find({ });
         if (materials.length === 0 || !materials ) {
             return res.status(404).json({ message: "Materials not found" });
         }
