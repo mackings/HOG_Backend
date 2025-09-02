@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createMaterial, getAllMaterials, getMaterialById, updateMaterial, deleteMaterial, createPaymentOnline,
-  createPartPaymentOnline, orderWebhook, searchMaterials, getMaterialCategory, getVendorDetails
+  createPartPaymentOnline, orderWebhook, searchMaterials, getMaterialCategory, getVendorDetails, deleteAllMaterial
   } from '../controller/material.controller';
 import { isAuth } from '../../../middlewares/auth.middleware';
 const { imageUpload, imageKitUpload} = require('../../../utils/imagekit');
@@ -10,9 +10,10 @@ import { userCheckRole } from '../../../middlewares/checkRole.middleware';
 const router = Router();
 
 router.post("/orderWebhook", orderWebhook);
+router.delete("/deleteAllMaterial", deleteAllMaterial);
 router.use(isAuth);
 router.use(userCheckRole(["user", "admin", "tailor"]));
-router.post("/createMaterial/:vendorId", imageUpload, imageKitUpload, createMaterial);
+router.post("/createMaterial/:categoryId", imageUpload, imageKitUpload, createMaterial);
 router.get("/getAllMaterials", getAllMaterials);
 router.get("/getMaterialById", getMaterialById);
 router.put("/updateMaterial/:materialId", imageUpload, imageKitUpload, updateMaterial);

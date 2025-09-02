@@ -12,6 +12,7 @@ import transactionRouter from './src/modules/transaction/routes/transaction.rout
 import subcriptionRouter from './src/modules/subscription/routes/subscription.routes.js';
 import rateRouter from './src/modules/rate/routes/rate.routes.js';
 import trackingRouter from './src/modules/tracking/routes/tracking.routes.js';
+import categoryRouter from './src/modules/category/routes/category.routes.js';
 
 
  
@@ -40,7 +41,7 @@ app.use('/api/v1/transaction', transactionRouter);
 app.use('/api/v1/subscription', subcriptionRouter);
 app.use('/api/v1/rate', rateRouter);
 app.use('/api/v1/tracking', trackingRouter );
-
+app.use('/api/v1/category', categoryRouter);
 
 app.use((req, res)=>{
   res.status(404).json({message: "Endpoint not found. please, check the url and try again."})

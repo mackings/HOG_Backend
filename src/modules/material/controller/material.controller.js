@@ -1,6 +1,7 @@
 import User from '../../user/model/user.model.js';
 import Material from '../../material/model/material.model';
 import Vendor from '../../vendor/model/vendor.model.js';
+import Category from '../../category/model/category.model.js';
 import InitializedOrder from '../../material/model/InitializedOrder.model.js';
 import Transactions from '../../transaction/model/transaction.model.js';
 import { sendTransactionEmail, sendSubscriptionEmail } from '../../../utils/emailService.utils.js';
@@ -13,8 +14,8 @@ import crypto from "crypto"
 export const createMaterial = async (req, res, next) => {
   try {
     const { id } = req.user;
-    const { vendorId } = req.params;
-    let { attireType, clothMaterial, color, brand, measurement, price, deliveryDate, reminderDate, specialInstructions } = req.body;
+    const { categoryId } = req.params;
+    let { clothMaterial, color, brand, measurement, price, deliveryDate, reminderDate, specialInstructions } = req.body;
 
     if (typeof measurement === "string") {
       try {
@@ -24,13 +25,18 @@ export const createMaterial = async (req, res, next) => {
       }
     }
 
-    if (!attireType || !clothMaterial || !color || !brand || !measurement) {
+    if (!clothMaterial || !color || !brand || !measurement) {
       return res.status(400).json({
-        message: "Attire type, cloth material, color, brand, measurement are required"
+        message: "Cloth material, color, brand, measurement are required"
       });
     }
 
-    const vendor = await Vendor.findById(vendorId);
+    const category = await Category.findById(categoryId);
+    if (!category) {
+      return res.status(404).json({ message: "Category not found" });
+    }
+
+    const vendor = await Vendor.findOne({ userId: id });
     if (!vendor) {
       return res.status(404).json({ message: "Vendor not found" });
     }
@@ -39,8 +45,9 @@ export const createMaterial = async (req, res, next) => {
 
     const material = await Material.create({
       userId: id,
-      vendorId,
-      attireType,
+      vendorId: vendor._id,
+      categoryId,
+      attireType: category.name,
       clothMaterial,
       color,
       brand,
@@ -65,13 +72,13 @@ export const createMaterial = async (req, res, next) => {
 
 export const getMaterialCategory = async (req, res, next) => {
   try {
-    const { attireType } = req.query;
-    
-    if (!attireType) {
-      return res.status(400).json({ message: "attireType Category is required" });
+    const { categoryId } = req.query;
+
+    if (!categoryId) {
+      return res.status(400).json({ message: "Category ID is required" });
     }
 
-    const materials = await Material.find({ attireType });
+    const materials = await Material.find({ categoryId });
 
     if (!materials || materials.length === 0) {
       return res.status(404).json({ message: "Category Materials not found" });
@@ -608,6 +615,22 @@ export const orderWebhook = async (req, res, next) => {
       success: true,
       message: "Payment successful",
       order: transaction,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export const deleteAllMaterial = async (req, res, next) => {
+  try {
+    const result = await Material.deleteMany();
+
+    return res.status(200).json({
+      success: true,
+      message: result.deletedCount > 0 
+        ? `${result.deletedCount} materials deleted successfully` 
+        : "No materials found to delete",
     });
   } catch (error) {
     next(error);
