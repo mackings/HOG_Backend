@@ -45,9 +45,7 @@ const tokenSchema = new mongoose.Schema({
     },
     expiresAt: {
         type: Date,
-        required: true,
-        index: { expires: 0 },
-        default: new Date(Date.now() + 15 * 60 * 1000)
+        required: true
     }
 },
     {

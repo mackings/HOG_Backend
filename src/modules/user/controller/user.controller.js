@@ -25,7 +25,8 @@ export const register = async (req, res, next) => {
            phoneNumber, 
            token: otp,
            role,
-           address
+           address,
+           expiresAt: new Date(Date.now() + 15 * 60 * 1000)
           });
 
         await sendVerifyTokenEmail(token);

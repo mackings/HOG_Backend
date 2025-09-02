@@ -43,9 +43,7 @@ export const createTailor = async (req, res, next) => {
     }
 
     // Validate image upload
-    if (!req.imageUrl) {
-      return res.status(400).json({ message: "Nepa bill image is required" });
-    }
+    const images = req.imageUrls[0]
 
     // Create vendor
     const newTailor = await Vendor.create({
@@ -54,7 +52,7 @@ export const createTailor = async (req, res, next) => {
       businessEmail,
       businessPhone,
       address,
-      nepaBill: req.imageUrl,
+      nepaBill: images,
       city,
       state,
       yearOfExperience,

@@ -63,6 +63,31 @@ export const createMaterial = async (req, res, next) => {
 };
 
 
+export const getMaterialCategory = async (req, res, next) => {
+  try {
+    const { attireType } = req.query;
+    
+    if (!attireType) {
+      return res.status(400).json({ message: "attireType Category is required" });
+    }
+
+    const materials = await Material.find({ attireType });
+
+    if (!materials || materials.length === 0) {
+      return res.status(404).json({ message: "Category Materials not found" });
+    }
+
+    return res.status(200).json({
+      message: "Category materials fetched successfully",
+      materials,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
 
 
 export const getAllMaterials = async (req, res, next )=> {
