@@ -93,7 +93,9 @@ export const getMaterialCategory = async (req, res, next) => {
 export const getAllMaterials = async (req, res, next )=> {
     try {
         const { id } = req.user;
-        const materials = await Material.find({ });
+        const materials = await Material.find({ })
+        .populate('vendorId', 'businessName description ')
+        .populate('userId', 'fullName email');
         if (materials.length === 0 || !materials ) {
             return res.status(404).json({ message: "Materials not found" });
         }
@@ -106,6 +108,28 @@ export const getAllMaterials = async (req, res, next )=> {
         next(error);
     }
 };
+
+
+export const getVendorDetails = async( req, res, next )=>{
+  try {
+    const { vendorId } = req.query;
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor) {
+      return res.status(404).json({ message: "Vendor not found" });
+    }
+    const userProfile = await User.findById(vendor.userId).select('fullName email phoneNumber address image');
+    return res.status(200).json({
+      success: true,
+      message: "Vendor fetched successfully",
+      data: {
+        vendor,
+        userProfile
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
 
 
 export const getMaterialById = async (req, res, next) => {

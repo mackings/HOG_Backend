@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createMaterial, getAllMaterials, getMaterialById, updateMaterial, deleteMaterial, createPaymentOnline,
-  createPartPaymentOnline, orderWebhook, searchMaterials, getMaterialCategory
+  createPartPaymentOnline, orderWebhook, searchMaterials, getMaterialCategory, getVendorDetails
   } from '../controller/material.controller';
 import { isAuth } from '../../../middlewares/auth.middleware';
 const { imageUpload, imageKitUpload} = require('../../../utils/imagekit');
@@ -21,5 +21,6 @@ router.post("/createPaymentOnline/:materialId", createPaymentOnline);
 router.post("/createPartPaymentOnline/:materialId", createPartPaymentOnline);
 router.get("/searchMaterials", searchMaterials);
 router.get("/getMaterialCategory", getMaterialCategory);
+router.get("/getVendorDetails", getVendorDetails);  
 
 export default router;
