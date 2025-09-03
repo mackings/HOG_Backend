@@ -10,7 +10,7 @@ const router = Router();
 
 
 router.use(isAuth);
-router.use(userCheckRole(["admin", "tailor"]));
+router.use(userCheckRole(["admin", "tailor", "user"]));
 router.post("/createCategory", imageUpload, imageKitUpload, createCategory);
 router.get("/getAllCategories", getAllCategories);
 router.get("/getCategoryById", getCategoryById);
