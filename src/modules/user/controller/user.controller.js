@@ -127,7 +127,8 @@ export const forgotPassword = async (req, res, next) => {
         password: user.password,
         email: user.email,
         token,
-        address: user.address
+        address: user.address,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000)
     });
 
     await sendResetPasswordEmail(newToken);
