@@ -4,7 +4,13 @@ const mongoose = require('mongoose');
 const tokenSchema = new mongoose.Schema({
     fullName: {
         type: String,
-        required: true
+        required: true,
+        validate: {
+            validator: function (v) {
+                return v.length >= 3;
+            },
+            message: props => `${props.value} is not a valid name!`
+        }
     },
     email: {
         type: String,
