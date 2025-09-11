@@ -20,30 +20,28 @@ const reviewSchema = new mongoose.Schema({
     },
     materialTotalCost: {
         type: Number,
-        required: true,
+        default: 0,
     },
     workmanshipTotalCost: {
         type: Number,
-        required: true,
+        default: 0,
     },
     totalCost: {
         type: Number,
-        required: true,
+        default: 0,
     },
     deliveryDate: {
         type: Date,
-        required: true,
     },
     reminderDate: {
         type: Date,
-        required: true,
     },
     comment: {
         type: String,
     },
     status: {
         type: String,
-        enum: ["pending", "approved", "rejected"],
+        enum: ["pending", "approved", "rejected", "requesting", "resolved"],
         default: "pending",
     }
 },

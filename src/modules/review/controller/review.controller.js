@@ -5,6 +5,7 @@ import Category from '../../category/model/category.model.js';
 import Transactions from '../../transaction/model/transaction.model.js';
 import Review from '../../review/model/review.model.js';
 import mongoose from "mongoose";
+import { sendReviewUpdateEmail } from "../../../utils/emailService.utils.js";
 
 
 
@@ -286,6 +287,8 @@ export const updateReview = async (req, res, next) => {
     if (comment !== undefined) review.comment = comment;
     if (deliveryDate !== undefined) review.deliveryDate = deliveryDate;
     if (reminderDate !== undefined) review.reminderDate = reminderDate;
+    if (status !== undefined) review.status = "pending";
+
 
     await review.save();
 
@@ -377,7 +380,7 @@ export const deleteReview = async (req, res, next) => {
 
 export const updateReviewStatus = async (req, res, next) => {
   try {
-    const { id } = req.user; // logged-in user
+    const { id } = req.user;
     const { reviewId } = req.params;
     const { status } = req.body;
 
@@ -433,6 +436,9 @@ export const updateReviewStatus = async (req, res, next) => {
       .populate("materialId", "attireType clothMaterial brand")
       .populate("vendorId", "businessName businessEmail businessPhone")
       .lean();
+
+    await sendReviewUpdateEmail(updatedReview);
+
 
     return res.status(200).json({
       success: true,

@@ -331,3 +331,88 @@ export const sendSubscriptionEmailTemplate = (user, amount) => {
   `;
 };
 
+export const sendReviewUpdateEmailTemplate = (review) => {
+  return `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Review Update</title>
+    <style>
+      body {
+        font-family: Arial, Helvetica, sans-serif;
+        background-color: #f7f7f7;
+        margin: 0;
+        padding: 0;
+      }
+      .container {
+        max-width: 600px;
+        margin: 30px auto;
+        background: #ffffff;
+        border-radius: 10px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        overflow: hidden;
+      }
+      .header {
+        background: #004aad;
+        color: #ffffff;
+        padding: 20px;
+        text-align: center;
+        font-size: 20px;
+      }
+      .content {
+        padding: 20px;
+        color: #333333;
+        line-height: 1.6;
+        font-size: 15px;
+      }
+      .details {
+        background: #f1f1f1;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 20px 0;
+      }
+      .details p {
+        margin: 5px 0;
+      }
+      .footer {
+        text-align: center;
+        padding: 15px;
+        font-size: 12px;
+        color: #777;
+        border-top: 1px solid #ddd;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        Review Update Notification
+      </div>
+      <div class="content">
+        <p>Hello ${review?.userId?.fullName || "User"},</p>
+        <p>Your review has been updated. Here are the details:</p>
+        
+        <div class="details">
+          <p><strong>Status:</strong> ${review?.status || "N/A"}</p>
+          <p><strong>Material:</strong> ${review?.materialId?.attireType || "N/A"}</p>
+          <p><strong>Vendor:</strong> ${review?.vendorId?.businessName || "N/A"}</p>
+          <p><strong>Material Total Cost:</strong> ${review?.materialTotalCost || "N/A"}</p>
+          <p><strong>Workmanship Total Cost:</strong> ${review?.workmanshipTotalCost || "N/A"}</p>
+          <p><strong>Total Cost:</strong> ${review?.totalCost || "N/A"}</p>
+          <p><strong>Status:</strong> ${review?.status || "N/A"}</p>
+          <p><strong>Delivery Date:</strong> ${review?.deliveryDate || "N/A"}</p>
+          <p><strong>Comment:</strong> ${review?.comment || "N/A"}</p>
+          <p><strong>Updated At:</strong> ${new Date(review?.updatedAt).toLocaleString()}</p>
+        </div>
+        
+        <p>If you did not request this change, please contact our support team immediately.</p>
+      </div>
+      <div class="footer">
+        &copy; ${new Date().getFullYear()} House of Glame. All rights reserved.
+      </div>
+    </div>
+  </body>
+  </html>
+  `;
+};

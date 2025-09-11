@@ -2,6 +2,9 @@ import User from "../../user/model/user.model.js";
 import Vendor from "../model/vendor.model.js";
 import Published from "../model/published.model.js";
 import Material from "../../material/model/material.model.js";
+import Review from "../../review/model/review.model.js";
+import mongoose from "mongoose";
+
 
 
 export const createPublished = async (req, res, next) => {
@@ -58,20 +61,39 @@ export const createPublished = async (req, res, next) => {
 
 
 export const getAllPublished = async (req, res, next) => {
-    try {
-        const { id } = req.user;
-        const published = await Published.find({ userId: id });
-        if (!published) {
-            return res.status(404).json({ message: "Published not found" });
-        }
-        return res.status(200).json({
-            success: true,
-            message: "Published fetched successfully",
-            data: published
-        }); 
-    } catch (error) {
-        next(error);
+  try {
+    const { id } = req.user;
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
+
+    let published = [];
+
+    if (user.role === "tailor") {
+      published = await Published.find({ userId: id });
+    } else if (user.role === "user") {
+      published = await Published.find({});
+    } else {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized role",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Published fetched successfully",
+      data: published,
+      count: published.length,
+    });
+  } catch (error) {
+    next(error)
+  }
 };
 
 
@@ -229,6 +251,15 @@ export const userPatronizedPublished = async (req, res, next) => {
         measurement,
         sampleImage: published.sampleImage,
         specialInstructions,
+    });
+
+    const vendor = await Vendor.findOne({ userId: published.userId });
+
+    const review = await Review.create({
+      userId: published.userId,
+      vendorId: vendor._id,
+      materialId: material._id,
+      status: "requesting"
     });
 
     return res.status(201).json({
