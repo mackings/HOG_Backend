@@ -24,10 +24,6 @@ const cartItemSchema = new mongoose.Schema({
     type: Array,
     required: true,
   },
-  price: {
-    type: Number,
-    required: true,
-  },
 }, { _id: false });
 
 const initializedOrderSchema = new mongoose.Schema({

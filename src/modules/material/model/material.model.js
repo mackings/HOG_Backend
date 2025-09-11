@@ -31,24 +31,9 @@ const materialSchema = new mongoose.Schema({
         type: Array,
         required: true,
     },
-    deliveryDate: {
-        type: Date,
-        required: true,
-    },
-    reminderDate: {
-        type: Date,
-        required: true,
-    },
     sampleImage: {
         type: Array,
         required: true,
-    },
-    price: {
-        type: Number,
-    },
-    vendorId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Vendor',
     },
     settlement: {
         type: Number,

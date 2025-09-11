@@ -165,93 +165,137 @@ export const deleteTailor = async (req, res, next) => {
   }
 };
 
-
-
-
 export const getAllAssignedMaterials = async (req, res, next) => {
   try {
     const { id } = req.user;
+    const user = await User.findById(id);
 
-    const tailor = await Vendor.findOne({ userId: id });
-    if (!tailor) {
-      return res.status(404).json({
-        success: false,
-        message: "Tailor not found",
-      });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    const assignedMaterials = await Material.find({ vendorId: tailor._id })
-      .populate("userId", "fullName email phoneNumber address city state");
+    const vendor = await Vendor.findOne({ userId: user._id });
+    const materials = await Material.find({ userId: user._id }).select("_id");
+    const materialIds = materials.map((m) => m._id);
 
-    if (assignedMaterials.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No assigned materials found for you",
-      });
+    // Build query conditions safely
+    const query = { $or: [] };
+
+    if (vendor) {
+      query.$or.push({ vendorId: vendor._id });
     }
+    if (materialIds.length > 0) {
+      query.$or.push({ materialId: { $in: materialIds } });
+    }
+
+    // If no vendor & no materials, return empty set
+    if (query.$or.length === 0) {
+      return res.status(200).json({ success: true, count: 0, reviews: [] });
+    }
+
+    const reviews = await Review.find(query)
+      .sort({ createdAt: -1 })
+      .populate("userId", "fullName email image")
+      .populate(
+        "materialId",
+        "userId attireType clothMaterial color brand measurement sampleImage settlement isDelivered specialInstructions"
+      )
+      .populate("vendorId", "userId businessName businessEmail businessPhone")
+      .lean();
 
     return res.status(200).json({
       success: true,
-      message: "Assigned materials fetched successfully",
-      count: assignedMaterials.length,
-      data: assignedMaterials,
+      count: reviews.length,
+      reviews,
     });
-
   } catch (error) {
     next(error);
   }
 };
 
 
-export const updateMaterialPrice = async (req, res, next) => {
+export const updateMaterialPrice  = async (req, res, next) => {
   try {
     const { id } = req.user;
-    const vendor = await Vendor.findOne({ userId: id });
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
 
+    if (user.role !== "tailor") {
+        return res.status(403).json({
+        success: false,
+        message: "You are not authorized to update a review and quote of the material for the vendor",
+      });
+    }
+
+    const { reviewId } = req.params;
+
+    const vendor = await Vendor.findOne({ userId: user._id });
     if (!vendor) {
-      return res.status(404).json({
+      return res.status(403).json({
         success: false,
-        message: "Vendor not found",
+        message: "Your organization has not been set up yet",
       });
     }
 
-    const { materialId } = req.params;
-    const { price } = req.body;
-
-    if (price === undefined || price === null) {
-      return res.status(400).json({
-        success: false,
-        message: "Price is required",
+    let review = await Review.findOne({ _id: reviewId, vendorId: vendor._id });
+    if (!review) {
+      return res.status(200).json({
+        success: true,
+        review: null,
+        message: "Review not found",
       });
     }
 
-    // Option 1: Increment price
-    // const updateQuery = { $inc: { price: price } };
-
-    // Option 2: Set new price (recommended)
-    const updateQuery = { $set: { price: price, vendorId: vendor._id } };
-
-    const material = await Material.findOneAndUpdate(
-      { _id: materialId },
-      updateQuery,
-      { new: true }
-    );
-
-    if (!material) {
-      return res.status(404).json({
-        success: false,
-        message: "Material not found or unauthorized",
-      });
+    if (review.status === "approved") {
+        return res.status(403).json({
+          success: false,
+          message: "You cannot update an approved review",
+        });
     }
+
+    const {
+      comment,
+      materialTotalCost,
+      workmanshipTotalCost,
+      deliveryDate,
+      reminderDate,
+    } = req.body;
+
+    // Update numeric fields safely
+    if (materialTotalCost !== undefined) {
+      review.materialTotalCost = Number(materialTotalCost) || 0;
+    }
+    if (workmanshipTotalCost !== undefined) {
+      review.workmanshipTotalCost = Number(workmanshipTotalCost) || 0;
+    }
+
+    // Always recompute total
+    review.totalCost =
+      (review.materialTotalCost || 0) + (review.workmanshipTotalCost || 0);
+
+    if (comment !== undefined) review.comment = comment;
+    if (deliveryDate !== undefined) review.deliveryDate = deliveryDate;
+    if (reminderDate !== undefined) review.reminderDate = reminderDate;
+
+    await review.save();
+
+    review = await Review.findById(review._id)
+      .populate("userId", "fullName email image")
+      .populate(
+        "materialId",
+        "userId attireType clothMaterial color brand measurement sampleImage settlement isDelivered specialInstructions"
+      )
+      .populate("vendorId", "userId businessName businessEmail businessPhone")
+      .lean();
 
     return res.status(200).json({
       success: true,
-      message: "Material price updated successfully",
-      data: material,
+      message: "Review updated successfully",
+      review,
     });
   } catch (error) {
     next(error);
   }
 };
-
-

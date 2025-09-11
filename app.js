@@ -13,6 +13,7 @@ import subcriptionRouter from './src/modules/subscription/routes/subscription.ro
 import rateRouter from './src/modules/rate/routes/rate.routes.js';
 import trackingRouter from './src/modules/tracking/routes/tracking.routes.js';
 import categoryRouter from './src/modules/category/routes/category.routes.js';
+import reviewRouter from './src/modules/review/routes/review.routes.js';  
 
 
  
@@ -42,6 +43,7 @@ app.use('/api/v1/subscription', subcriptionRouter);
 app.use('/api/v1/rate', rateRouter);
 app.use('/api/v1/tracking', trackingRouter );
 app.use('/api/v1/category', categoryRouter);
+app.use('/api/v1/review', reviewRouter);
 
 app.use((req, res)=>{
   res.status(404).json({message: "Endpoint not found. please, check the url and try again."})

@@ -8,6 +8,7 @@ import { sendTransactionEmail, sendSubscriptionEmail } from '../../../utils/emai
 import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance";
 import axios from "axios";
 import crypto from "crypto"
+import Review from '../../review/model/review.model.js';
 
 
 
@@ -36,16 +37,16 @@ export const createMaterial = async (req, res, next) => {
       return res.status(404).json({ message: "Category not found" });
     }
 
-    const vendor = await Vendor.findOne({ userId: id });
-    if (!vendor) {
-      return res.status(404).json({ message: "Vendor not found" });
-    }
+    // const vendor = await Vendor.findOne({ userId: id });
+    // if (!vendor) {
+    //   return res.status(404).json({ message: "Vendor not found" });
+    // }
 
     const images = req.imageUrls || [];
 
     const material = await Material.create({
       userId: id,
-      vendorId: vendor._id,
+      // vendorId: vendor._id,
       categoryId,
       attireType: category.name,
       clothMaterial,
@@ -101,7 +102,7 @@ export const getAllMaterials = async (req, res, next )=> {
     try {
         const { id } = req.user;
         const materials = await Material.find({ })
-        .populate('vendorId', 'businessName description ')
+        // .populate('vendorId', 'businessName description ')
         .populate('userId', 'fullName email');
         if (materials.length === 0 || !materials ) {
             return res.status(404).json({ message: "Materials not found" });
@@ -289,9 +290,15 @@ export const createPaymentOnline = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Material not found" });
     }
 
+    const review = await Review.findOne({ materialId: material._id});
+    if (!review) {
+      return res.status(404).json({ success: false, message: "Review not found" });
+    }
+
+
     // Validate vendor & material owner
     const [vendor, materialOwner] = await Promise.all([
-      Vendor.findById(material.vendorId),
+      Vendor.findById(review.vendorId),
       User.findById(material.userId),
     ]);
 
@@ -368,7 +375,7 @@ export const createPaymentOnline = async (req, res, next) => {
       userId: user._id,
       cartItems: [
         {
-          vendorId: material.vendorId,
+          vendorId: vendor._id,
           userId: user._id,
           attireType: material.attireType,
           clothMaterial: material.clothMaterial,
@@ -376,7 +383,6 @@ export const createPaymentOnline = async (req, res, next) => {
           brand: material.brand,
           measurement: material.measurement,
           sampleImage: material.sampleImage,
-          price: material.price,
         },
       ],
       totalAmount: totalCost,
@@ -448,7 +454,12 @@ export const createPartPaymentOnline = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Material not found" });
     }
 
-    const vendor = await Vendor.findById(material.vendorId);
+    const review = await Review.findOne({ materialId: material._id});
+    if (!review) {
+      return res.status(404).json({ success: false, message: "Review not found" });
+    }
+
+    const vendor = await Vendor.findById(review.vendorId);
     const materialOwner = await User.findById(material.userId);
     if (!vendor || !materialOwner) {
       return res.status(404).json({ success: false, message: "Vendor or Material Owner has not yet update material cost" });
@@ -468,7 +479,6 @@ export const createPartPaymentOnline = async (req, res, next) => {
         brand: material.brand,
         measurement: material.measurement,   
         sampleImage: material.sampleImage, 
-        price: material.price
       }],
       totalAmount: amount,
       paymentMethod,

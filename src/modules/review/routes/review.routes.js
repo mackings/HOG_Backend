@@ -1,0 +1,21 @@
+import { Router } from 'express';
+import { createReview, getReviews, getReviewById, updateReview, deleteReview, updateReviewStatus
+  } from '../controller/review.controller';
+import { isAuth } from '../../../middlewares/auth.middleware';
+import { userCheckRole } from '../../../middlewares/checkRole.middleware'
+import { imageUpload, imageKitUpload } from '../../../utils/imagekit';
+
+
+const router = Router();
+
+router.use(isAuth);
+router.use(userCheckRole(["tailor", 'admin', 'user']));
+router.post('/createReview/:materialId', createReview);
+router.get('/getReviews', getReviews);
+router.get('/getReviewById/:reviewId', getReviewById);
+router.put('/updateReview/:reviewId', updateReview);
+router.delete('/deleteReview/:reviewId', deleteReview)
+router.put('/updateReviewStatus/:reviewId', updateReviewStatus);
+
+
+export default router;
