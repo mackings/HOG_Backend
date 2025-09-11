@@ -16,7 +16,7 @@ export const createMaterial = async (req, res, next) => {
   try {
     const { id } = req.user;
     const { categoryId } = req.params;
-    let { clothMaterial, color, brand, measurement, price, deliveryDate, reminderDate, specialInstructions } = req.body;
+    let { clothMaterial, color, brand, measurement, specialInstructions } = req.body;
 
     if (typeof measurement === "string") {
       try {
@@ -53,9 +53,6 @@ export const createMaterial = async (req, res, next) => {
       color,
       brand,
       measurement,
-      price,
-      deliveryDate,
-      reminderDate,
       sampleImage: images,
       specialInstructions
     });
