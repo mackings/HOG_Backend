@@ -50,7 +50,8 @@ export const createReview = async (req, res, next) => {
       totalCost,
       deliveryDate,
       reminderDate,
-      comment
+      comment,
+      status: "quote",
     });
 
     if (!review) {
@@ -71,6 +72,56 @@ export const createReview = async (req, res, next) => {
 };
 
 
+export const getAllMaterialOrders = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (user.role !== "tailor") {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to view material orders",
+      });
+    }
+
+    // Ensure vendor exists
+    const vendor = await Vendor.findOne({ userId: user._id });
+    if (!vendor) {
+      return res.status(403).json({
+        success: false,
+        message: "Your organization has not been set up yet",
+      });
+    }
+
+    // Fetch vendor materials
+    const materials = await Material.find({ isDelivered: false }).lean();
+
+    if (materials.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No materials found",
+        materials: [],
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Material orders successfully retrieved",
+      materialsCount: materials.length,
+      materials,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
+
 export const getReviews = async (req, res, next) => {
   try {
     const { id } = req.user;
@@ -78,6 +129,13 @@ export const getReviews = async (req, res, next) => {
 
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (user.role !== "tailor") {
+        return res.status(403).json({
+        success: false,
+        message: "You are not authorized to create a review and quote of the material for the vendor",
+      });
     }
 
     const vendor = await Vendor.findOne({ userId: user._id });
@@ -120,63 +178,16 @@ export const getReviews = async (req, res, next) => {
 };
 
 
-// export const getReviews = async (req, res, next) => {
-//   try {
-//     const { id } = req.user;
-//     const user = await User.findById(id);
-
-//     if (!user) {
-//       return res.status(404).json({ success: false, message: "User not found" });
-//     }
-
-//     const vendor = await Vendor.findOne({ userId: user._id });
-//     const materials = await Material.find({ userId: user._id }).select("_id");
-//     const materialIds = materials.map((m) => m._id);
-
-//     // Build query conditions
-//     const query = { $or: [] };
-//     if (vendor) query.$or.push({ vendorId: vendor._id });
-//     if (materialIds.length > 0) query.$or.push({ materialId: { $in: materialIds } });
-
-//     if (query.$or.length === 0) {
-//       return res.status(200).json({
-//         success: true,
-//         vendorReviews: [],
-//         materialReviews: [],
-//         count: 0,
-//       });
-//     }
-
-//     const reviews = await Review.find(query)
-//       .sort({ createdAt: -1 })
-//       .populate("userId", "fullName email image")
-//       .populate(
-//         "materialId",
-//         "userId attireType clothMaterial color brand measurement sampleImage settlement isDelivered specialInstructions"
-//       )
-//       .populate("vendorId", "userId businessName businessEmail businessPhone")
-//       .lean();
-
-//     // Split into categories
-//     const vendorReviews = reviews.filter((r) => r.vendorId);
-//     const materialReviews = reviews.filter((r) => r.materialId);
-
-//     return res.status(200).json({
-//       success: true,
-//       count: reviews.length,
-//       vendorReviews,
-//       materialReviews,
-//     });
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
-
-
 export const getReviewById = async (req, res, next) => {
   try {
     const { id } = req.user;
+    const user = await User.findById(id);
+    if (user.role !== "tailor") {
+        return res.status(403).json({
+        success: false,
+        message: "You are not authorized to create a review and quote of the material for the vendor",
+      });
+    }
     const { reviewId } = req.params;
 
     // Validate reviewId upfront
@@ -185,20 +196,20 @@ export const getReviewById = async (req, res, next) => {
     }
 
     // Ensure user exists
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
-    }
+    // const user = await User.findById(id);
+    // if (!user) {
+    //   return res.status(404).json({ success: false, message: "User not found" });
+    // }
 
-    const vendor = await Vendor.findOne({ userId: user._id });
+    // const vendor = await Vendor.findOne({ userId: user._id });
 
-    // Fetch materials owned by vendor
-    const materialIds = await Material.find({ userId: user._id }).distinct("_id");
+    // // Fetch materials owned by vendor
+    // const materialIds = await Material.find({ userId: user._id }).distinct("_id");
 
     // Look up review by ID that belongs either to vendor or vendor’s materials
     const review = await Review.findOne({
       _id: reviewId,
-      $or: [{ vendorId: vendor._id }, { materialId: { $in: materialIds } }],
+      // $or: [{ vendorId: vendor._id }, { materialId: { $in: materialIds } }],
     })
       .populate("userId", "fullName email image")
       .populate(
@@ -219,8 +230,6 @@ export const getReviewById = async (req, res, next) => {
     next(error);
   }
 };
-
-
 
 
 export const updateReview = async (req, res, next) => {
@@ -375,6 +384,86 @@ export const deleteReview = async (req, res, next) => {
   }
 };
 
+
+
+export const getAllMaterialsForReview = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (user.role !== "user") {
+      return res.status(403).json({
+        success: false,
+        message: "You must be a user to view your materials",
+      });
+    }
+
+    const materials = await Material.find({ userId: user._id });
+
+    return res.status(200).json({
+      success: true,
+      count: materials.length,
+      materials,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export const getReviewsForMaterialById = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (user.role !== "user") {
+      return res.status(403).json({
+        success: false,
+        message: "You must be a user to view reviews",
+      });
+    }
+
+    const { materialId } = req.params;
+
+    // Validate materialId
+    if (!materialId || !mongoose.Types.ObjectId.isValid(materialId)) {
+      return res.status(400).json({ success: false, message: "Invalid material ID" });
+    }
+
+    const material = await Material.findById(materialId);
+    if (!material) {
+      return res.status(404).json({ success: false, message: "Material not found" });
+    }
+
+    // Optional: Ensure material belongs to this user
+    if (!material.userId.equals(user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to view reviews for this material",
+      });
+    }
+
+    const reviews = await Review.find({ materialId: material._id })
+      .populate("userId", "fullName email image")
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      count: reviews.length,
+      reviews,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 
 

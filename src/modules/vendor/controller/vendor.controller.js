@@ -1,6 +1,7 @@
 import User from "../../user/model/user.model.js";
 import Vendor from "../model/vendor.model.js";
 import Material from "../../material/model/material.model.js";
+import Review from "../../review/model/review.model.js";
 
 
 export const createTailor = async (req, res, next) => {
@@ -69,9 +70,6 @@ export const createTailor = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
 
 export const getTailor = async (req, res, next)=>{
     try {
@@ -214,88 +212,3 @@ export const getAllAssignedMaterials = async (req, res, next) => {
 };
 
 
-export const updateMaterialPrice  = async (req, res, next) => {
-  try {
-    const { id } = req.user;
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
-    }
-
-    if (user.role !== "tailor") {
-        return res.status(403).json({
-        success: false,
-        message: "You are not authorized to update a review and quote of the material for the vendor",
-      });
-    }
-
-    const { reviewId } = req.params;
-
-    const vendor = await Vendor.findOne({ userId: user._id });
-    if (!vendor) {
-      return res.status(403).json({
-        success: false,
-        message: "Your organization has not been set up yet",
-      });
-    }
-
-    let review = await Review.findOne({ _id: reviewId, vendorId: vendor._id });
-    if (!review) {
-      return res.status(200).json({
-        success: true,
-        review: null,
-        message: "Review not found",
-      });
-    }
-
-    if (review.status === "approved") {
-        return res.status(403).json({
-          success: false,
-          message: "You cannot update an approved review",
-        });
-    }
-
-    const {
-      comment,
-      materialTotalCost,
-      workmanshipTotalCost,
-      deliveryDate,
-      reminderDate,
-    } = req.body;
-
-    // Update numeric fields safely
-    if (materialTotalCost !== undefined) {
-      review.materialTotalCost = Number(materialTotalCost) || 0;
-    }
-    if (workmanshipTotalCost !== undefined) {
-      review.workmanshipTotalCost = Number(workmanshipTotalCost) || 0;
-    }
-
-    // Always recompute total
-    review.totalCost =
-      (review.materialTotalCost || 0) + (review.workmanshipTotalCost || 0);
-
-    if (comment !== undefined) review.comment = comment;
-    if (deliveryDate !== undefined) review.deliveryDate = deliveryDate;
-    if (reminderDate !== undefined) review.reminderDate = reminderDate;
-
-    await review.save();
-
-    review = await Review.findById(review._id)
-      .populate("userId", "fullName email image")
-      .populate(
-        "materialId",
-        "userId attireType clothMaterial color brand measurement sampleImage settlement isDelivered specialInstructions"
-      )
-      .populate("vendorId", "userId businessName businessEmail businessPhone")
-      .lean();
-
-    return res.status(200).json({
-      success: true,
-      message: "Review updated successfully",
-      review,
-    });
-  } catch (error) {
-    next(error);
-  }
-};

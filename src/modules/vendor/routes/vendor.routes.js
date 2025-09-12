@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createTailor, getTailor, updateTailor, deleteTailor, getAllAssignedMaterials, updateMaterialPrice
+import { createTailor, getTailor, updateTailor, deleteTailor, getAllAssignedMaterials,
   } from '../controller/vendor.controller';
 import { isAuth } from '../../../middlewares/auth.middleware';
 import { userCheckRole } from '../../../middlewares/checkRole.middleware'
@@ -15,7 +15,6 @@ router.get('/getTailor', getTailor);
 router.put('/updateTailor/:tailorId', updateTailor);
 router.delete('/deleteTailor/:tailorId', deleteTailor);
 router.get('/getAllAssignedMaterials', getAllAssignedMaterials);
-router.put('/updateMaterialPrice/:materialId', updateMaterialPrice);
 
 
 export default router;

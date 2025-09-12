@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { createReview, getReviews, getReviewById, updateReview, deleteReview, updateReviewStatus
+import { createReview, getReviews, getReviewById, updateReview, deleteReview, updateReviewStatus, 
+  getAllMaterialsForReview, getReviewsForMaterialById, getAllMaterialOrders   
   } from '../controller/review.controller';
 import { isAuth } from '../../../middlewares/auth.middleware';
 import { userCheckRole } from '../../../middlewares/checkRole.middleware'
@@ -16,6 +17,11 @@ router.get('/getReviewById/:reviewId', getReviewById);
 router.put('/updateReview/:reviewId', updateReview);
 router.delete('/deleteReview/:reviewId', deleteReview)
 router.put('/updateReviewStatus/:reviewId', updateReviewStatus);
+router.get('/getAllMaterialsForReview', getAllMaterialsForReview);
+router.get('/getReviewsForMaterialById/:materialId', getReviewsForMaterialById);
+router.get('/getAllMaterialOrders', getAllMaterialOrders);
+
+
 
 
 export default router;
