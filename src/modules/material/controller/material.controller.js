@@ -618,7 +618,7 @@ export const orderWebhook = async (req, res, next) => {
         );
         await Review.findByIdAndUpdate(
           review._id,
-          { $set: { status: "approved" } },
+          { $set: { status: order.paymentStatus } },
           { new: true }
         );
 
