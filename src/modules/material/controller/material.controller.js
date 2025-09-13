@@ -566,7 +566,7 @@ export const orderWebhook = async (req, res, next) => {
       plan: order.plan,
       billTerm: order.billTerm,
       paymentCurrency: "NGN",
-      orderStatus: "completed",
+      orderStatus: order.paymentStatus,
       amountPaid: order.totalAmount,
       vendorId: order.vendorId || null,
       materialId: order.materialId || null,
