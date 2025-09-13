@@ -8,6 +8,7 @@ import { sendTransactionEmail, sendSubscriptionEmail } from '../../../utils/emai
 import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance";
 import axios from "axios";
 import crypto from "crypto"
+import mongoose from "mongoose";
 import Review from '../../review/model/review.model.js';
 
 
@@ -275,13 +276,16 @@ export const createPaymentOnline = async (req, res, next) => {
     const { amount, shipmentMethod } = req.body;
     const { reviewId } = req.params;
 
+    if (!reviewId || !mongoose.Types.ObjectId.isValid(reviewId)) {
+      return res.status(400).json({ success: false, message: "Invalid review ID" });
+    }
     // Validate user
     const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    const review = await Review.findById(reviewId);
+    const review = await Review.findOne({ _id: reviewId });
     if (!review) {
       return res.status(404).json({ success: false, message: "Review not found" });
     }
