@@ -39,6 +39,10 @@ const initializedOrderSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Material",
   },
+  reviewId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Review",
+  },
   cartItems: {
     type: [cartItemSchema],
   },

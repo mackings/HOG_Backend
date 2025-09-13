@@ -273,7 +273,7 @@ export const createPaymentOnline = async (req, res, next) => {
   try {
     const { id } = req.user;
     const { amount, shipmentMethod } = req.body;
-    const { materialId } = req.params;
+    const { reviewId } = req.params;
 
     // Validate user
     const user = await User.findById(id);
@@ -281,16 +281,16 @@ export const createPaymentOnline = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
+    const review = await Review.findById(reviewId);
+    if (!review) {
+      return res.status(404).json({ success: false, message: "Review not found" });
+    }
     // Validate material
-    const material = await Material.findById(materialId);
+    const material = await Material.findOne({ _id: review.materialId });
     if (!material) {
       return res.status(404).json({ success: false, message: "Material not found" });
     }
 
-    const review = await Review.findOne({ materialId: material._id});
-    if (!review) {
-      return res.status(404).json({ success: false, message: "Review not found" });
-    }
 
 
     // Validate vendor & material owner
@@ -388,6 +388,7 @@ export const createPaymentOnline = async (req, res, next) => {
       deliveryAddress,
       vendorId: vendor._id,
       materialId: material._id,
+      reviewId,
       amountPaid: amount,
       paymentStatus: "full payment",
     });
@@ -442,19 +443,19 @@ export const createPartPaymentOnline = async (req, res, next) => {
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
     const { amount } = req.body;
-    const { materialId } = req.params;
+    const { reviewId } = req.params;
     
 
+    const review = await Review.findById(reviewId);
+    if (!review) {
+      return res.status(404).json({ success: false, message: "Review not found" });
+    }
 
-    const material = await Material.findById(materialId);
+    const material = await Material.findOne({ _id: review.materialId });
     if (!material) {
       return res.status(404).json({ success: false, message: "Material not found" });
     }
 
-    const review = await Review.findOne({ materialId: material._id});
-    if (!review) {
-      return res.status(404).json({ success: false, message: "Review not found" });
-    }
 
     const vendor = await Vendor.findById(review.vendorId);
     const materialOwner = await User.findById(material.userId);
@@ -482,6 +483,7 @@ export const createPartPaymentOnline = async (req, res, next) => {
       paymentReference,
       vendorId: vendor._id,
       materialId: material._id,
+      reviewId,
       amountPaid: amount,
       paymentStatus: "part payment" 
     });
@@ -597,10 +599,11 @@ export const orderWebhook = async (req, res, next) => {
 
     // ✅ If it's a vendor/material purchase
     if (order.vendorId && order.materialId) {
-      const [user, vendor, material] = await Promise.all([
+      const [user, vendor, material, review] = await Promise.all([
         User.findById(order.userId),
         Vendor.findById(order.vendorId),
         Material.findById(order.materialId),
+        Review.findById(order.reviewId),
       ]);
 
       if (vendor?.userId) {
@@ -609,6 +612,12 @@ export const orderWebhook = async (req, res, next) => {
           { $inc: { wallet: transaction.totalAmount } },
           { new: true }
         );
+        await Review.findByIdAndUpdate(
+          review._id,
+          { $set: { status: "approved" } },
+          { new: true }
+        );
+
       }
 
       if (user && vendor && material) {
