@@ -2,6 +2,7 @@ import User from '../../user/model/user.model.js';
 import InitializedOrder from '../../material/model/InitializedOrder.model.js';
 import axios from "axios";
 import crypto from "crypto"
+import Plan from '../model/plan.model.js';
 
 export const subscriptionPayments = async (req, res, next) => {
   try {
@@ -94,11 +95,141 @@ export const subscriptionPayments = async (req, res, next) => {
   }
 };
 
-            
 
 
-        
+export const createSubscriptionPlan = async (req, res, next) => {
+  try {
+    let { name, amount, duration, description } = req.body;
+
+    if (!name || !amount || !duration || !description) {
+      return res.status(400).json({ success: false, message: "All fields are required" });
+    }
+
+    name = name.trim();
+    description = description.trim();
+
+    const parsedAmount = Number(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid amount" });
+    }
+
+    const allowedDurations = ["monthly", "quarterly", "yearly"];
+    if (!allowedDurations.includes(duration.toLowerCase())) {
+      return res.status(400).json({ success: false, message: "Invalid duration" });
+    }
+
+    const existingPlan = await Plan.findOne({ name: new RegExp(`^${name}$`, "i"), duration: duration.toLowerCase() });
+    if (existingPlan) {
+      return res.status(400).json({
+        success: false,
+        message: "A subscription plan with this name already exists. Please update it instead.",
+      });
+    }
+
+    const plan = await Plan.create({
+      name,
+      amount: parsedAmount,
+      duration: duration.toLowerCase(),
+      description,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Subscription plan created successfully",
+      data: plan,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const getSubscriptionPlans = async (req, res, next) => {
+  try {
+    const plans = await Plan.find();
+    return res.status(200).json({
+      success: true,
+      message: "Subscription plans retrieved successfully",
+      data: plans,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getSubscriptionPlan = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const plan = await Plan.findById(id);
+    if (!plan) {
+      return res.status(404).json({ message: "Subscription plan not found" });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Subscription plan retrieved successfully",
+      data: plan,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 
 
-   
+export const updateSubscriptionPlan = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, amount, duration, description } = req.body;
+
+    // 1️⃣ Validate ID format
+    if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ success: false, message: "Invalid plan ID" });
+    }
+
+    // 2️⃣ Build update object only with provided fields
+    const updateFields= {};
+    if (name) updateFields.name = name.trim();
+    if (amount !== undefined) updateFields.amount = Number(amount);
+    if (duration !== undefined) updateFields.duration = Number(duration);
+    if (description) updateFields.description = description.trim();
+
+    if (Object.keys(updateFields).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid fields provided for update",
+      });
+    }
+
+    const plan = await Plan.findByIdAndUpdate(id, updateFields, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!plan) {
+      return res.status(404).json({
+        success: false,
+        message: "Subscription plan not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Subscription plan updated successfully",
+      data: plan,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+
+export const deleteSubscriptionPlan = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const plan = await Plan.findByIdAndDelete(id);
+    if (!plan) {
+      return res.status(404).json({ message: "Subscription plan not found" });
+    }
+  }catch (error) {
+    next(error);
+  }
+};
