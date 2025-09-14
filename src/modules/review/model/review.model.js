@@ -31,10 +31,12 @@ const reviewSchema = new mongoose.Schema({
         default: 0,
     },
     amountPaid: {
-        type: Number
+        type: Number,
+        default: 0,
     },
     amountToPay: {
-        type: Number
+        type: Number,
+        default: 0,
     },
     deliveryDate: {
         type: Date,
