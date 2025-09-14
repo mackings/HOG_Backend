@@ -386,14 +386,14 @@ export const createPaymentOnline = async (req, res, next) => {
           sampleImage: material.sampleImage,
         },
       ],
-      totalAmount: totalCost,
+      totalAmount: review.totalCost,
       paymentMethod: "Paystack",
       paymentReference,
       deliveryAddress,
       vendorId: vendor._id,
       materialId: material._id,
       reviewId,
-      amountPaid: amount,
+      amountPaid: totalCost,
       paymentStatus: "full payment",
     });
 
@@ -482,7 +482,7 @@ export const createPartPaymentOnline = async (req, res, next) => {
         measurement: material.measurement,   
         sampleImage: material.sampleImage, 
       }],
-      totalAmount: amount,
+      totalAmount: review.totalCost,
       paymentMethod,
       paymentReference,
       vendorId: vendor._id,
@@ -567,7 +567,7 @@ export const orderWebhook = async (req, res, next) => {
       billTerm: order.billTerm,
       paymentCurrency: "NGN",
       orderStatus: order.paymentStatus,
-      amountPaid: order.totalAmount,
+      amountPaid: order.amountPaid,
       vendorId: order.vendorId || null,
       materialId: order.materialId || null,
     });
@@ -611,22 +611,49 @@ export const orderWebhook = async (req, res, next) => {
       ]);
 
       if (vendor?.userId) {
-        await User.findByIdAndUpdate(
-          vendor.userId,
-          { $inc: { wallet: transaction.totalAmount } },
-          { new: true }
-        );
-        await Review.findByIdAndUpdate(
-          review._id,
-          { $set: { status: order.paymentStatus } },
-          { new: true }
-        );
+        if (order.paymentStatus === "part payment") {
+          const deltaPaid = order.amountPaid;
+          const remaining = order.totalAmount - order.amountPaid;
 
-      }
+          await User.findByIdAndUpdate(
+            vendor.userId,
+            { $inc: { wallet: deltaPaid } },
+            { new: true }
+          );
 
-      if (user && vendor && material) {
-        await sendTransactionEmail(user, vendor.businessEmail, transaction, material);
-      }
+          await Review.findByIdAndUpdate(
+            review._id,
+            { 
+              $set: { status: order.paymentStatus },
+              $inc: { amountPaid: deltaPaid, amountToPay: remaining }
+            },
+            { new: true }
+          );
+        }
+
+        if (order.paymentStatus === "full payment") {
+          const remaining = order.totalAmount - order.amountPaid;
+
+          await User.findByIdAndUpdate(
+            vendor.userId,
+            { $inc: { wallet: remaining } },
+            { new: true }
+          );
+
+          await Review.findByIdAndUpdate(
+            review._id,
+            { 
+              $set: { status: order.paymentStatus, amountPaid: order.totalAmount, amountToPay: 0 }
+            },
+            { new: true }
+          );
+        }
+  }
+
+if (user && vendor && material && (order.paymentStatus === "part payment" || order.paymentStatus === "full payment")) {
+  await sendTransactionEmail(user, vendor.businessEmail, transaction, material);
+}
+
     }
 
     await InitializedOrder.findByIdAndDelete(order._id);
