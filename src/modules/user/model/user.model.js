@@ -71,7 +71,12 @@ const userSchema = new mongoose.Schema({
         type: String,
         enum: ['user', 'admin', 'tailor'],
         default: 'user'
-    }
+    },
+    isVendorEnabled: {
+        type: Boolean,
+        default: false
+    },
+
 
 },
     {

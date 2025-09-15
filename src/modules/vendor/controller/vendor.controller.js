@@ -60,6 +60,8 @@ export const createTailor = async (req, res, next) => {
       description
     });
 
+    await User.findByIdAndUpdate(id, { isVendorEnabled: true });
+
     return res.status(201).json({
       success: true,
       message: 'Tailor created successfully',

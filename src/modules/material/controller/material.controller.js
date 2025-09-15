@@ -386,7 +386,7 @@ export const createPaymentOnline = async (req, res, next) => {
           sampleImage: material.sampleImage,
         },
       ],
-      totalAmount: totalCost,
+      totalAmount: review.totalCost,
       paymentMethod: "Paystack",
       paymentReference,
       deliveryAddress,
@@ -632,11 +632,11 @@ export const orderWebhook = async (req, res, next) => {
         }
 
         if (order.paymentStatus === "full payment") {
-          const remaining = order.totalAmount;
+          const balance = order.amountPaid;
 
           await User.findByIdAndUpdate(
             vendor.userId,
-            { $inc: { wallet: remaining } },
+            { $inc: { wallet: balance } },
             { new: true }
           );
 
@@ -644,7 +644,7 @@ export const orderWebhook = async (req, res, next) => {
             review._id,
             { 
               $set: { status: order.paymentStatus}, 
-              $inc: { amountPaid: order.totalAmount, amountToPay: 0 }
+              $inc: { amountPaid: balance, amountToPay: 0 }
             },
             { new: true }
           );
