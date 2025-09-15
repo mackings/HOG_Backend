@@ -497,7 +497,7 @@ export const createPartPaymentOnline = async (req, res, next) => {
         paystackUrl,
         {
             email: user.email,
-            amount: order.totalAmount * 100,
+            amount: order.amountPaid * 100,
             currency: "NGN",
             reference: order.paymentReference,
             callback_url: `${process.env.FRONTEND_URL}/payment-success`,
