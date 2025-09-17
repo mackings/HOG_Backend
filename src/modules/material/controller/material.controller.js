@@ -643,8 +643,8 @@ export const orderWebhook = async (req, res, next) => {
           await Review.findByIdAndUpdate(
             review._id,
             { 
-              $set: { status: order.paymentStatus}, 
-              $inc: { amountPaid: balance, amountToPay: 0 }
+              $set: { status: order.paymentStatus, amountToPay: 0 }, 
+              $inc: { amountPaid: balance }
             },
             { new: true }
           );
