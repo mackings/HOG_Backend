@@ -31,6 +31,14 @@ export const createTracking = async (req, res, next) => {
       });
     }
 
+    const existingTracking = await Tracking.findOne({materialId: material._id});
+    if(existingTracking){
+      return res.status(401).json({
+        success: false,
+        message: "Tracking has been created for this cloth material for dispatch or delivery"
+    });
+   }
+
     let trackingNumber;
     let exists = true;
     while (exists) {
