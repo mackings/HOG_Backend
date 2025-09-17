@@ -155,18 +155,16 @@ export const getAllTracking = async (req, res, next) => {
 
     const tracks = await Tracking.find({
       $or: [{ vendorId: id }, { userId: id }],
-    }).sort({ createdAt: -1 });
-
-    if (!tracks || tracks.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No tracking records found",
-      });
-    }
+    })
+      .sort({ createdAt: -1 })
+      .populate("materialId", "attireType clothMaterial color measurement sampleImage brand")
+      .lean();
 
     return res.status(200).json({
       success: true,
-      message: "Tracking records fetched successfully",
+      message: tracks.length > 0
+        ? "Tracking records fetched successfully"
+        : "No tracking records found",
       data: tracks,
     });
   } catch (error) {

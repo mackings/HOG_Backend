@@ -28,10 +28,10 @@ export const expressCalculateCost = (
   numberOfPackages,
   
 ) => {
-  const baseCost = 15; // Base cost per package
+  const baseCost = 16; // Base cost per package
   const weightMultiplier = 5; // Cost multiplier per kg
   const volumeMultiplier = 5; // Cost multiplier per cubic unit of volume
-  const distanceMultiplier = 8; // Cost multiplier per km for express shipping
+  const distanceMultiplier = 10; // Cost multiplier per km for express shipping
 
     const distance = haversineDistance(senderLocation, deliveryLocation ); // Calculate distance between locations
 
@@ -49,10 +49,10 @@ export const cargoCalculateCost = (
   senderLocation,
   numberOfPackages,
 ) => {
-  const baseCost = 18; // Lower base cost for cargo shipping
+  const baseCost = 14; // Lower base cost for cargo shipping
   const weightMultiplier = 5; // Lower weight multiplier for cargo
   const volumeMultiplier = 5; // Lower volume multiplier for cargo shipments
-  const distanceMultiplier = 8; // Lower distance multiplier for cargo
+  const distanceMultiplier = 10; // Lower distance multiplier for cargo
 
   const distance = haversineDistance(senderLocation,  deliveryLocation); // Calculate distance between locations
 
@@ -73,7 +73,7 @@ export const regularCalculateCost = (
   const baseCost = 12; // Lower base cost for cargo shipping
   const weightMultiplier = 5; // Lower weight multiplier for cargo
   const volumeMultiplier = 5; // Lower volume multiplier for cargo shipments
-  const distanceMultiplier = 8; // Lower distance multiplier for cargo
+  const distanceMultiplier = 10; // Lower distance multiplier for cargo
 
   const distance = haversineDistance(senderLocation,  deliveryLocation); // Calculate distance between locations
 
