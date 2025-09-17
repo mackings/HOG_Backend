@@ -75,9 +75,15 @@ export const getAllPublished = async (req, res, next) => {
     let published = [];
 
     if (user.role === "tailor") {
-      published = await Published.find({ userId: id });
+      published = await Published.find({ userId: id })
+      .sort({ createdAt: -1 })
+      .populate("userId", "fullName image address")
+      .lean();
     } else if (user.role === "user") {
-      published = await Published.find({});
+      published = await Published.find({})
+      .sort({ createdAt: -1 })
+      .populate("userId", "fullName image address")
+      .lean();
     } else {
       return res.status(403).json({
         success: false,
@@ -102,7 +108,9 @@ export const getPublishedById = async (req, res, next) => {
     try {
         const { id } = req.user;
         const { publishedId } = req.params;
-        const published = await Published.findById(publishedId);
+        const published = await Published.findById(publishedId)
+        .populate("userId", "fullName image address")
+        .lean();
         if(!published){
             return res.status(404).json({ message: "Published not found" });
         }
