@@ -77,7 +77,7 @@ export const getAllPublished = async (req, res, next) => {
     if (user.role === "tailor") {
       published = await Published.find({ userId: id })
       .sort({ createdAt: -1 })
-      .populate("userId", "fullName image address subscriptionPlan")
+        .populate("userId", "fullName image address subscriptionPlan")
       .lean();
     } else if (user.role === "user") {
       published = await Published.find({})
