@@ -14,7 +14,7 @@ export const createReview = async (req, res, next) => {
     const { id } = req.user;
     const user = await User.findById(id);
     if (user.role !== "tailor") {
-        return res.status(403).json({
+      return res.status(403).json({
         success: false,
         message: "You are not authorized to create a review and quote of the material for the vendor",
       });
@@ -22,7 +22,7 @@ export const createReview = async (req, res, next) => {
 
     const { materialId } = req.params;
     if (!mongoose.Types.ObjectId.isValid(materialId)) {
-        return res.status(400).json({ success: false, message: "Invalid material ID" });
+      return res.status(400).json({ success: false, message: "Invalid material ID" });
     }
 
     const material = await Material.findById(materialId);
@@ -41,18 +41,44 @@ export const createReview = async (req, res, next) => {
     const workmanshipCost = Number(workmanshipTotalCost) || 0;
     const totalCost = materialCost + workmanshipCost;
 
-    const review = await Review.create({
+    // check if review exists
+    let review = await Review.findOne({
       userId: user._id,
       vendorId: vendor._id,
       materialId: material._id,
-      materialTotalCost: materialCost,
-      workmanshipTotalCost: workmanshipCost,
-      totalCost,
-      deliveryDate,
-      reminderDate,
-      comment,
-      status: "quote",
+      status: "requesting",
     });
+
+    if (review) {
+      review = await Review.findByIdAndUpdate(
+        review._id,
+        {
+          $set: {
+            materialTotalCost: materialCost,
+            workmanshipTotalCost: workmanshipCost,
+            totalCost,
+            deliveryDate,
+            reminderDate,
+            comment,
+            status: "quote",
+          },
+        },
+        { new: true }
+      );
+    } else {
+      review = await Review.create({
+        userId: user._id,
+        vendorId: vendor._id,
+        materialId: material._id,
+        materialTotalCost: materialCost,
+        workmanshipTotalCost: workmanshipCost,
+        totalCost,
+        deliveryDate,
+        reminderDate,
+        comment,
+        status: "quote",
+      });
+    }
 
     if (!review) {
       return res.status(500).json({
@@ -70,6 +96,7 @@ export const createReview = async (req, res, next) => {
     next(error);
   }
 };
+
 
 
 export const getAllMaterialOrders = async (req, res, next) => {
