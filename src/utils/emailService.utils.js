@@ -2,7 +2,8 @@
 import nodemailer from "nodemailer";
 // const { SendMailClient } = require("zeptomail");
 const { sendVerifyTokenEmailTemplate, sendResetPasswordEmailTemplate, sendBankTransferEmailTemplate, 
-  sendTransactionEmailTemplate, sendSubscriptionEmailTemplate, sendReviewUpdateEmailTemplate 
+  sendTransactionEmailTemplate, sendSubscriptionEmailTemplate, sendReviewUpdateEmailTemplate, 
+  sendTransactionListingEmailTemplate, sendApprovalEmailTemplate,
   
  } = require("../utils/emailTemplate");
 // const url = "api.zeptomail.com/";
@@ -130,5 +131,23 @@ export const sendReviewUpdateEmail = async (review) => {
     to: [ review.userId.email, review.vendorId.businessEmail ],
     subject: "Review Update",
     htmlContent: sendReviewUpdateEmailTemplate(review),
+  });
+};
+
+
+export const sendTransactionListingEmail = async (vendor, email, transaction) => {  
+  return sendEmail({
+    to: [ vendor.email, email ],
+    subject: `Payment for ${transaction.cartItems.title}`,
+    htmlContent: sendTransactionListingEmailTemplate(vendor, transaction),
+  });
+};
+
+
+export const sendApprovalEmail = async (email, name, title) => {
+  return sendEmail({
+    to: email,
+    subject: "Your listing has been approved",
+    htmlContent: sendApprovalEmailTemplate(name, title),
   });
 };

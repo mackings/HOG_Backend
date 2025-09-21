@@ -416,3 +416,214 @@ export const sendReviewUpdateEmailTemplate = (review) => {
   </html>
   `;
 };
+
+
+
+export const sendTransactionListingEmailTemplate = (user, email, transaction) => {
+  return `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Transaction Successful</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f7f7f7;
+        margin: 0;
+        padding: 0;
+      }
+      .container {
+        max-width: 600px;
+        margin: 20px auto;
+        background: #ffffff;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      }
+      h2 {
+        color: #4CAF50;
+        text-align: center;
+      }
+      .details {
+        margin: 20px 0;
+      }
+      .details table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .details th, .details td {
+        text-align: left;
+        padding: 8px;
+        border-bottom: 1px solid #ddd;
+      }
+      .details th {
+        background-color: #f2f2f2;
+      }
+      .footer {
+        margin-top: 30px;
+        text-align: center;
+        font-size: 14px;
+        color: #666;
+      }
+      .highlight {
+        color: #333;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>✅ Payment Successful</h2>
+      <p>Dear Customer,</p>
+      <p>We’re happy to let you know that your payment was successful. Here are your order details:</p>
+
+      <div class="details">
+        <table>
+          <tr>
+            <th>Transaction Reference</th>
+            <td class="highlight">${transaction.paymentReference}</td>
+          </tr>
+          <tr>
+            <th>Amount Paid</th>
+            <td class="highlight">₦${transaction.amountPaid.toLocaleString()}</td>
+          </tr>
+          <tr>
+            <th>Payment Method</th>
+            <td>${transaction.paymentMethod}</td>
+          </tr>
+          <tr>
+            <th>Delivery Address</th>
+            <td>${user.address}</td>
+          </tr>
+          <tr>
+            <th>Order Status</th>
+            <td>${transaction.orderStatus}</td>
+          </tr>
+        </table>
+      </div>
+
+      <h3>🛒 Material Ordered</h3>
+      <div class="details">
+        <table>  
+          <tr>
+            <th>Name (Attire Type)</th>
+            <td>${transaction?.cartItems?.title || "N/A"}</td>
+          </tr>
+          <tr>
+            <th>cloth Size</th>
+            <td>${transaction?.cartItems?.size || "N/A"}</td>
+          </tr>
+          <tr>
+            <th>Condition</th>
+            <td>${transaction?.cartItems?.condition || "N/A"}</td>
+          </tr>
+          <tr>
+            <th>Description</th>
+            <td>${transaction?.cartItems?.description || "N/A"}</td>
+          </tr>
+          // <tr>
+          //   <th>Measurement</th>
+          //   <td>${material?.measurement?.join(", ") || "N/A"}</td>
+          // </tr>
+          <tr>
+            <th>Price</th>
+            <td>₦${transaction?.cartItems?.amount?.toLocaleString() || "N/A"}</td>
+          </tr>
+          <tr>
+            <th>Sample Image</th>
+            <td><img src="${transaction?.cartItems?.images[0]}" alt="Sample Image" style="max-width: 100%; height: auto;"></td>
+          </tr> 
+          <tr>
+            <th>Total Amount Paid</th>
+            <td>₦${transaction.totalAmount.toLocaleString()}</td>
+          </tr>
+          <tr>
+            <th>Payment Status</th>
+            <td>${transaction.paymentStatus}</td>
+          </tr>
+          <tr>
+            <th>Date</th>
+            <td>${new Date().toLocaleString()}</td>
+          </tr>
+        </table>
+      </div>
+
+      <p class="footer">Thank you for shopping with us! <br/> If you have any questions, please contact our support team.</p>
+    </div>
+  </body>
+  </html>
+  `;
+};
+
+
+export const sendApprovalEmailTemplate = (name, title) => {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8" />
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          line-height: 1.6;
+          background-color: #f4f4f4;
+          padding: 20px;
+          color: #333;
+        }
+        .container {
+          max-width: 600px;
+          margin: 0 auto;
+          background: #fff;
+          padding: 20px;
+          border-radius: 8px;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+        .header {
+          background: #4CAF50;
+          color: white;
+          text-align: center;
+          padding: 12px;
+          border-radius: 8px 8px 0 0;
+        }
+        .content {
+          padding: 20px;
+          font-size: 16px;
+        }
+        .button {
+          display: inline-block;
+          background: #4CAF50;
+          color: white;
+          padding: 10px 18px;
+          text-decoration: none;
+          border-radius: 6px;
+          margin-top: 15px;
+        }
+        .footer {
+          text-align: center;
+          font-size: 13px;
+          color: #777;
+          margin-top: 25px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h2>Approval Notification</h2>
+        </div>
+        <div class="content">
+          <p>Hi <b>${name}</b>,</p>
+          <p>We’re excited to inform you that your <b>${title}</b> has been approved 🎉</p>
+          <p>You can now log in to your account to access more details.</p>
+          <a href="${process.env.FRONTEND_URL}/login" class="button">Go to Dashboard</a>
+        </div>
+        <div class="footer">
+          <p>If you did not request this, please ignore this email.</p>
+          <p>&copy; ${new Date().getFullYear()} House of Glame. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};

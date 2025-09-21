@@ -1,28 +1,42 @@
 import mongoose from "mongoose";
+import { title } from "process";
 
 const cartItemSchema = new mongoose.Schema({
   attireType: {
     type: String,
-    required: true,
   },
   clothMaterial: {
     type: String,
-    required: true,
+  },
+  title: {
+    type: String,
+  },
+  size: {
+    type: String,
+  },
+  description: {
+    type: String,
+  },
+  condition: {
+    type: String,
+  },
+  amount: {
+    type: Number,
+  },
+  images: {
+    type: Array,
   },
   color: {
     type: String,
-    required: true,
   },
   brand: {
     type: String,
   },
   measurement: {
     type: Array,
-    required: true,
   },
   sampleImage: {
     type: Array,
-    required: true,
   },
 }, { _id: false });
 

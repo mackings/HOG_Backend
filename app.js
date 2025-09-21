@@ -15,6 +15,8 @@ import trackingRouter from './src/modules/tracking/routes/tracking.routes.js';
 import categoryRouter from './src/modules/category/routes/category.routes.js';
 import reviewRouter from './src/modules/review/routes/review.routes.js';
 import publishedRouter from './src/modules/vendor/routes/published.routes.js';
+import sellerRouter from './src/modules/seller/routes/seller.routes.js';
+import buyerRouter from './src/modules/seller/routes/buyer.routes.js';
 
 
  
@@ -46,6 +48,8 @@ app.use('/api/v1/tracking', trackingRouter );
 app.use('/api/v1/category', categoryRouter);
 app.use('/api/v1/review', reviewRouter);
 app.use('/api/v1/published', publishedRouter);
+app.use('/api/v1/seller', sellerRouter);
+app.use('/api/v1/buyer', buyerRouter);
 
 app.use((req, res)=>{
   res.status(404).json({message: "Endpoint not found. please, check the url and try again."})

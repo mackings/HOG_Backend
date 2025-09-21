@@ -4,7 +4,7 @@ import Vendor from '../../vendor/model/vendor.model.js';
 import Category from '../../category/model/category.model.js';
 import InitializedOrder from '../../material/model/InitializedOrder.model.js';
 import Transactions from '../../transaction/model/transaction.model.js';
-import { sendTransactionEmail, sendSubscriptionEmail } from '../../../utils/emailService.utils.js';
+import { sendTransactionEmail, sendSubscriptionEmail, sendTransactionListingEmail } from '../../../utils/emailService.utils.js';
 import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance";
 import axios from "axios";
 import crypto from "crypto"
@@ -603,7 +603,7 @@ export const orderWebhook = async (req, res, next) => {
     if (order.vendorId && order.materialId) {
       const [user, vendor, material, review] = await Promise.all([
         User.findById(order.userId),
-        Vendor.findById(order.vendorId),
+        Vendor.findById(order.vendorId) || User.findById(order.vendorId),
         Material.findById(order.materialId),
         Review.findById(order.reviewId),
       ]);
@@ -651,6 +651,7 @@ export const orderWebhook = async (req, res, next) => {
 
 if (user && vendor && material && (order.paymentStatus === "part payment" || order.paymentStatus === "full payment")) {
   await sendTransactionEmail(user, vendor.businessEmail, transaction, material);
+  await sendTransactionListingEmail(vendor, user.email, transaction); 
 }
 
     }
