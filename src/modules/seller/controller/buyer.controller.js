@@ -436,6 +436,7 @@ export const purchaseMultipleListings = async (req, res, next) => {
         trackingNumber,
         amount: totalCost,
         status: "pending",
+        reference: paymentReference,
       });
 
       return res.status(201).json({

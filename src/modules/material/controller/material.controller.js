@@ -10,6 +10,7 @@ import axios from "axios";
 import crypto from "crypto"
 import mongoose from "mongoose";
 import Review from '../../review/model/review.model.js';
+import Tracking from '../../tracking/model/tracking.model.js';
 
 
 
@@ -601,67 +602,51 @@ export const orderWebhook = async (req, res, next) => {
 
     // ✅ If it's a vendor/material purchase
     if (order.vendorId && order.materialId) {
-      const [user, vendor, material, review] = await Promise.all([
-        User.findById(order.userId),
-        Vendor.findById(order.vendorId) || User.findById(order.vendorId),
-        Material.findById(order.materialId),
-        Review.findById(order.reviewId),
-      ]);
+      const user = await User.findById(order.userId);
+      let vendor = await Vendor.findById(order.vendorId);
+      if (!vendor) vendor = await User.findById(order.vendorId);
+      const material = await Material.findById(order.materialId);
+      const review = order.reviewId ? await Review.findById(order.reviewId) : null;
 
       if (vendor?.userId) {
         if (order.paymentStatus === "part payment") {
           const deltaPaid = order.amountPaid;
           const remaining = order.totalAmount - order.amountPaid;
 
-          await User.findByIdAndUpdate(
-            vendor.userId,
-            { $inc: { wallet: deltaPaid } },
-            { new: true }
-          );
-
-          await Review.findByIdAndUpdate(
-            review._id,
-            { 
+          await User.findByIdAndUpdate(vendor.userId, { $inc: { wallet: deltaPaid } });
+          if (review) {
+            await Review.findByIdAndUpdate(review._id, {
               $set: { status: order.paymentStatus },
               $inc: { amountPaid: deltaPaid, amountToPay: remaining }
-            },
-            { new: true }
-          );
+            });
+          }
         }
 
         if (order.paymentStatus === "full payment") {
           const balance = order.amountPaid;
 
-          await User.findByIdAndUpdate(
-            vendor.userId,
-            { $inc: { wallet: balance } },
-            { new: true }
-          );
-
-          await Review.findByIdAndUpdate(
-            review._id,
-            { 
-              $set: { status: order.paymentStatus, amountToPay: 0 }, 
+          await User.findByIdAndUpdate(vendor.userId, { $inc: { wallet: balance } });
+          if (review) {
+            await Review.findByIdAndUpdate(review._id, {
+              $set: { status: order.paymentStatus, amountToPay: 0 },
               $inc: { amountPaid: balance }
-            },
-            { new: true }
-          );
+            });
+          }
 
           await Tracking.findOneAndUpdate(
-            { userId: order.userId, status: "pending", amount: order.totalAmount }, 
-            { $set: { status: "success" } }, 
+            { reference: order.paymentReference },
+            { $set: { status: "success" } },
             { new: true }
           );
-
         }
-  }
+      }
 
-if (user && vendor && material && (order.paymentStatus === "part payment" || order.paymentStatus === "full payment")) {
-  await sendTransactionEmail(user, vendor.businessEmail, transaction, material);
-  await sendTransactionListingEmail(vendor, user.email, transaction); 
-}
-
+      if (user && vendor && material && (order.paymentStatus === "part payment" || order.paymentStatus === "full payment")) {
+        await sendTransactionEmail(user, vendor.businessEmail, transaction, material);
+        await sendTransactionListingEmail(vendor, user.email, transaction);
+      }
     }
+
 
     await InitializedOrder.findByIdAndDelete(order._id);
 

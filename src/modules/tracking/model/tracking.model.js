@@ -29,6 +29,9 @@ const trackingSchema = new mongoose.Schema({
     },
     status: {
         type: String
+    },
+    reference: {
+        type: String
     }
 
 },{
