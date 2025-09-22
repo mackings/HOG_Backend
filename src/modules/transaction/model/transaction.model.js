@@ -15,6 +15,7 @@ const transactionSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "Material",
     },
+    listingId: [{ type: mongoose.Schema.Types.ObjectId, ref: "Listing" }],
     cartItems: {
         type: Array,
     },

@@ -32,7 +32,8 @@ const trackingSchema = new mongoose.Schema({
     },
     reference: {
         type: String
-    }
+    },
+    listingId: [{ type: mongoose.Schema.Types.ObjectId, ref: "Listing" }],
 
 },{
     timestamps: true

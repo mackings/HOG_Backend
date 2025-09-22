@@ -218,7 +218,7 @@ export const sendTransactionEmailTemplate = (user, transaction, material) => {
           </tr>
           <tr>
             <th>Measurement</th>
-            <td>${material?.measurement?.join(", ") || "N/A"}</td>
+            <td>${material?.measurement || "N/A"}</td>
           </tr>
           <tr>
             <th>Price</th>
@@ -419,7 +419,7 @@ export const sendReviewUpdateEmailTemplate = (review) => {
 
 
 
-export const sendTransactionListingEmailTemplate = (user, email, transaction) => {
+export const sendTransactionListingEmailTemplate = (vendor, transaction) => {
   return `
   <!DOCTYPE html>
   <html>
@@ -492,10 +492,7 @@ export const sendTransactionListingEmailTemplate = (user, email, transaction) =>
             <th>Payment Method</th>
             <td>${transaction.paymentMethod}</td>
           </tr>
-          <tr>
-            <th>Delivery Address</th>
-            <td>${user.address}</td>
-          </tr>
+         
           <tr>
             <th>Order Status</th>
             <td>${transaction.orderStatus}</td>
@@ -508,32 +505,32 @@ export const sendTransactionListingEmailTemplate = (user, email, transaction) =>
         <table>  
           <tr>
             <th>Name (Attire Type)</th>
-            <td>${transaction?.cartItems?.title || "N/A"}</td>
+            <td>${transaction?.cartItems?.[0]?.title || "N/A"}</td>
           </tr>
           <tr>
             <th>cloth Size</th>
-            <td>${transaction?.cartItems?.size || "N/A"}</td>
+            <td>${transaction?.cartItems?.[0]?.size || "N/A"}</td>
           </tr>
           <tr>
             <th>Condition</th>
-            <td>${transaction?.cartItems?.condition || "N/A"}</td>
+            <td>${transaction?.cartItems?.[0]?.condition || "N/A"}</td>
           </tr>
           <tr>
             <th>Description</th>
-            <td>${transaction?.cartItems?.description || "N/A"}</td>
+            <td>${transaction?.cartItems?.[0]?.description || "N/A"}</td>
           </tr>
-          // <tr>
-          //   <th>Measurement</th>
-          //   <td>${material?.measurement?.join(", ") || "N/A"}</td>
-          // </tr>
+        
           <tr>
             <th>Price</th>
-            <td>₦${transaction?.cartItems?.amount?.toLocaleString() || "N/A"}</td>
+            <td>₦${transaction?.cartItems?.[0]?.amount?.toLocaleString() || "N/A"}</td>
           </tr>
-          <tr>
-            <th>Sample Image</th>
-            <td><img src="${transaction?.cartItems?.images[0]}" alt="Sample Image" style="max-width: 100%; height: auto;"></td>
-          </tr> 
+         <tr>
+          <th>Sample Image</th>
+          <td>
+            <img src="${transaction?.cartItems?.[0]?.images?.[0]}" alt="Sample Image" style="max-width: 100%; height: auto;">
+          </td>
+        </tr>
+
           <tr>
             <th>Total Amount Paid</th>
             <td>₦${transaction.totalAmount.toLocaleString()}</td>

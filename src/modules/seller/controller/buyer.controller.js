@@ -398,9 +398,8 @@ export const purchaseMultipleListings = async (req, res, next) => {
       paymentMethod: "Paystack",
       paymentReference,
       deliveryAddress,
-      vendorId: listingOwner._id,
       amountPaid: totalCost,
-      paymentStatus: "full payment",
+      listingId: listings.map((l) => l._id),
     });
 
     // Paystack payment initialization
@@ -437,6 +436,7 @@ export const purchaseMultipleListings = async (req, res, next) => {
         amount: totalCost,
         status: "pending",
         reference: paymentReference,
+        listingId: listings.map((l) => l._id),
       });
 
       return res.status(201).json({
