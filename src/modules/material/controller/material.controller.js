@@ -648,7 +648,7 @@ export const orderWebhook = async (req, res, next) => {
           );
 
           await Tracking.findOneAndUpdate(
-            { userId: order.userId, status: "pending"}, 
+            { userId: order.userId, status: "pending", amount: order.totalAmount }, 
             { $set: { status: "success" } }, 
             { new: true }
           );
