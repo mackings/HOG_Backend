@@ -3,9 +3,12 @@ import Category from '../../category/model/category.model.js';
 import Listing from '../model/seller.model.js';
 import Transaction from '../../transaction/model/transaction.model.js';
 import InitializedOrder from '../../material/model/InitializedOrder.model.js';
+import { sendDeliveryEmail } from "../../../utils/emailService.utils";
 import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance";
 import axios from "axios";
 import crypto from "crypto"
+import Tracking from "../../tracking/model/tracking.model";
+import Fee from "../model/fee.model";
 
 
 export const getAlSellerListings = async (req, res, next) => {
@@ -419,6 +422,22 @@ export const purchaseMultipleListings = async (req, res, next) => {
     );
 
     if (paystackResponse.status === 200 && paystackResponse.data?.data) {
+      let trackingNumber;
+      let exists = true;
+      while (exists) {
+        trackingNumber = crypto.randomInt(100000, 999999).toString();
+        exists = await Tracking.findOne({ trackingNumber });
+      }
+
+      await Tracking.create({
+        userId: user._id,
+        materialId: listings[0]._id,
+        vendorId: listingOwner._id,
+        trackingNumber,
+        amount: totalCost,
+        status: "pending",
+      });
+
       return res.status(201).json({
         success: true,
         message: "Payment initialized successfully",
@@ -437,3 +456,131 @@ export const purchaseMultipleListings = async (req, res, next) => {
     next(error);
   }
 };
+
+
+
+export const getAllTracking = async (req, res, next)=>{
+  try {
+    const { id } = req.user;
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const tracks = await Tracking.find({ userId: user._id, status: "success" })
+    .sort({ createdAt: -1 })
+    .populate("userId", "fullName image address")
+    .populate("vendorId", "fullName image address")
+    .lean();
+
+    if (tracks.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No tracking records found",
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Tracking records fetched successfully",
+      data: tracks,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+
+export const acceptOrder = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const { trackingNumber } = req.query;
+    if (!trackingNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Tracking number is required",
+      });
+    }
+
+    const track = await Tracking.findOne({ trackingNumber });
+    if (!track) {
+      return res.status(404).json({
+        success: false,
+        message: "Tracking record not found",
+      });
+    }
+
+    // Fetch fee percentage
+    const feeDoc = await Fee.findOne();
+    const feePercentage = feeDoc ? Number(feeDoc.amount) : 0;
+
+    const grossAmount = Number(track.amount);
+    const fee = (feePercentage / 100) * grossAmount;
+    const netAmount = grossAmount - fee;
+
+    if (netAmount <= 0) {
+      return res
+        .status(400)
+        .json({ message: "Invalid net amount after fee deduction" });
+    }
+
+    // Credit admin wallet with fee
+    const admin = await User.findOne({ role: "admin" });
+    if (admin) {
+      await User.findByIdAndUpdate(
+        admin._id,
+        { $inc: { wallet: fee } },
+        { new: true }
+      );
+    }
+
+    // Credit vendor wallet with netAmount
+    const listingOwner = await User.findById(track.vendorId);
+    if (listingOwner) {
+      await User.findByIdAndUpdate(
+        listingOwner._id,
+        { $inc: { wallet: netAmount } },
+        { new: true }
+      );
+
+      await sendDeliveryEmail(
+        listingOwner,
+        fee,
+        netAmount,
+        track.trackingNumber
+      );
+    }
+
+    // Mark order delivered
+    await Tracking.findByIdAndUpdate(
+      track._id,
+      { isDelivered: true },
+      { new: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Order accepted and processed successfully",
+      data: {
+        trackingNumber: track.trackingNumber,
+        grossAmount,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+

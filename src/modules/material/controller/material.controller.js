@@ -646,6 +646,13 @@ export const orderWebhook = async (req, res, next) => {
             },
             { new: true }
           );
+
+          await Tracking.findOneAndUpdate(
+            { userId: order.userId, status: "pending"}, 
+            { $set: { status: "success" } }, 
+            { new: true }
+          );
+
         }
   }
 

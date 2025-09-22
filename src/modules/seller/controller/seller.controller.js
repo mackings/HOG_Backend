@@ -192,7 +192,6 @@ export const updateSellerListing = async (req, res, next) => {
 };
 
 
-
 export const deleteSellerListing = async (req, res, next) => {
   try {
     const { id } = req.user;
@@ -235,6 +234,41 @@ export const deleteSellerListing = async (req, res, next) => {
     next(error);
   }
 };
+
+
+export const getAllTracking = async (req, res, next)=>{
+  try {
+    const { id } = req.user;
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const tracks = await Tracking.find({ vendorId: user._id, status: "success" })
+    .sort({ createdAt: -1 })
+    .populate("userId", "fullName image address")
+    .populate("vendorId", "fullName image address")
+    .lean();
+
+    if (tracks.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No tracking records found",
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Tracking records fetched successfully",
+      data: tracks,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
 
 
 

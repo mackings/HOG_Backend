@@ -10,8 +10,7 @@ const trackingSchema = new mongoose.Schema({
     },
     vendorId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true,
+        ref: 'User'
     },
     materialId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -24,6 +23,12 @@ const trackingSchema = new mongoose.Schema({
     isDelivered: {
         type: Boolean,
         default: false
+    },
+    amount: {
+        type: Number
+    },
+    status: {
+        type: String
     }
 
 },{

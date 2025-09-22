@@ -627,3 +627,112 @@ export const sendApprovalEmailTemplate = (name, title) => {
     </html>
   `;
 };
+
+
+export const sendRejectionEmailTemplate = (name, title, reasons) => {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8" />
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          line-height: 1.6;
+          background-color: #f4f4f4;
+          padding: 20px;
+          color: #333;
+        }
+        .container {
+          max-width: 600px;
+          margin: 0 auto;
+          background: #fff;
+          padding: 20px;
+          border-radius: 8px;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+        .header {
+          background: #4CAF50;
+          color: white;
+          text-align: center;
+          padding: 12px;
+          border-radius: 8px 8px 0 0;
+        }
+        .content {
+          padding: 20px;
+          font-size: 16px;
+        }
+        .button {
+          display: inline-block;
+          background: #4CAF50;
+          color: white;
+          padding: 10px 18px;
+          text-decoration: none;
+          border-radius: 6px;
+          margin-top: 15px;
+        }
+        .footer {
+          text-align: center;
+          font-size: 13px;
+          color: #777;
+          margin-top: 25px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h2>Listing Rejection Notification</h2>
+        </div>
+        <div class="content">
+          <p>Hi <b>${name}</b>,</p>
+          <p>We’re very sorry to inform you that your <b>${title}</b> has been rejected 🎉</p>
+          <p>Reason: ${reasons}</p>
+          <p>You can now log in to your account to access more details.</p>
+          <a href="${process.env.FRONTEND_URL}/login" class="button">Go to Dashboard</a>
+        </div>
+        <div class="footer">
+          <p>If you did not request this, please ignore this email.</p>
+          <p>&copy; ${new Date().getFullYear()} House of Glame. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
+
+
+
+export const sendDeliveryEmailTemplate = (vendorName, fee, netAmount, trackingNumber) => {
+  return `
+    <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+      <h2 style="color: #4CAF50;">Delivery Confirmation</h2>
+      <p>Dear <strong>${vendorName.fullName}</strong>,</p>
+      <p>We are pleased to inform you that your order has been successfully delivered.</p>
+
+      <h3>Transaction Summary</h3>
+      <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+        <tr>
+          <td style="padding: 8px; border: 1px solid #ddd;">Tracking Number:</td>
+          <td style="padding: 8px; border: 1px solid #ddd;"><strong>${trackingNumber}</strong></td>
+        </tr>
+        <tr>
+          <td style="padding: 8px; border: 1px solid #ddd;">Platform Fee:</td>
+          <td style="padding: 8px; border: 1px solid #ddd;">$${fee.toFixed(2)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px; border: 1px solid #ddd;">Amount Credited to Wallet:</td>
+          <td style="padding: 8px; border: 1px solid #ddd;"><strong>$${netAmount.toFixed(2)}</strong></td>
+        </tr>
+      </table>
+
+      <p>The credited amount has been successfully added to your wallet.</p>
+
+      <p>If you have any questions, feel free to contact our support team.</p>
+
+      <p style="margin-top: 20px;">Best regards,<br/>
+      <strong>HOG Team</strong></p>
+    </div>
+  `;
+};
+

@@ -3,7 +3,7 @@ import nodemailer from "nodemailer";
 // const { SendMailClient } = require("zeptomail");
 const { sendVerifyTokenEmailTemplate, sendResetPasswordEmailTemplate, sendBankTransferEmailTemplate, 
   sendTransactionEmailTemplate, sendSubscriptionEmailTemplate, sendReviewUpdateEmailTemplate, 
-  sendTransactionListingEmailTemplate, sendApprovalEmailTemplate,
+  sendTransactionListingEmailTemplate, sendApprovalEmailTemplate, sendRejectionEmailTemplate, sendDeliveryEmailTemplate
   
  } = require("../utils/emailTemplate");
 // const url = "api.zeptomail.com/";
@@ -149,5 +149,23 @@ export const sendApprovalEmail = async (email, name, title) => {
     to: email,
     subject: "Your listing has been approved",
     htmlContent: sendApprovalEmailTemplate(name, title),
+  });
+};
+
+
+export const sendRejectionEmail = async (email, name, title, reasons) => {
+  return sendEmail({
+    to: email,
+    subject: "Your listing has been rejected",
+    htmlContent: sendRejectionEmailTemplate(name, title, reasons),
+  });
+};
+
+
+export const sendDeliveryEmail = async (listingOwner, fee, netAmount, trackingNumber) => {
+  return sendEmail({
+    to: listingOwner.email,
+    subject: "Your order has been delivered-Wallet Credited",
+    htmlContent: sendDeliveryEmailTemplate(listingOwner, fee, netAmount, trackingNumber),
   });
 };
