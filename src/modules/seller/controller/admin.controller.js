@@ -182,6 +182,7 @@ export const rejectSellerListing = async (req, res, next) => {
       });
     }
 
+    await Listing.findByIdAndDelete(listingId);
     // Send approval email
     await sendRejectionEmail(
       listingOwner.email,
@@ -192,7 +193,7 @@ export const rejectSellerListing = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      message: "Seller listing approved successfully",
+      message: "Seller listing rejected successfully",
       data: {
         listingId: listing._id,
         rejectedBy: user.fullName,
