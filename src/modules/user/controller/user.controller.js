@@ -11,7 +11,10 @@ import axios from "axios";
 
 export const register = async (req, res, next) => {
     try {
-        const { fullName, email, password, phoneNumber, role, address } = req.body;
+        const { fullName, email, password, phoneNumber, role, address, country } = req.body;
+        if (!fullName || !email || !password || !phoneNumber || !role || !address || !country) {
+            return res.status(400).json({ message: "Your full name, email, password, phone number, role, address and country are required" });
+        }
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(409).json({ message: "User already exists, please login or use forgot password" });
@@ -25,6 +28,7 @@ export const register = async (req, res, next) => {
            phoneNumber, 
            token: otp,
            role,
+           country,
            address,
            expiresAt: new Date(Date.now() + 15 * 60 * 1000)
           });
@@ -50,7 +54,7 @@ export const verifyToken = async (req, res, next) => {
       return res.status(400).json({ message: "Invalid or expired token" });
     }
 
-    const { fullName, email, password, phoneNumber, role, address } = existingToken;
+    const { fullName, email, password, phoneNumber, role, address, country } = existingToken;
 
     const alreadyExists = await User.findOne({ email });
     if (alreadyExists) {
@@ -64,7 +68,8 @@ export const verifyToken = async (req, res, next) => {
       isVerified: true,
       phoneNumber,
       role,
-      address
+      address,
+      country,
     });
 
     await Token.deleteOne({ token });
@@ -162,7 +167,7 @@ export const resetPassword = async (req, res, next) => {
 
 export const updateProfile = async (req, res, next) => {
   try {
-    const { fullName, password, phoneNumber, address } = req.body;
+    const { fullName, password, phoneNumber, address, country } = req.body;
     const { id } = req.user;
 
     if (!fullName) {
@@ -181,6 +186,7 @@ export const updateProfile = async (req, res, next) => {
     user.fullName = fullName;
     user.phoneNumber = phoneNumber;
     user.address = address;
+    user.country = country;
 
     const nameParts = fullName.trim().split(" ");
     const first_name = nameParts[0];
@@ -296,5 +302,48 @@ export const getAllTailor = async (req, res, next) => {
   }
 };
 
+
+export const getUserCurrency = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+    
+    const countryCurrencyMapping = {
+      Nigeria: "NGN",
+      Ghana: "GHS",
+      Kenya: "KES",
+      "South Africa": "ZAR",
+      "United States": "USD",
+      Rwanda: "RWF",
+      Uganda: "UGX",
+      Tanzania: "TZS",
+      Egypt: "EGP",
+      "United Kingdom": "GBP",
+      "United Arab Emirates": "AED",
+      "Saudi Arabia": "SAR",
+      "Côte d'Ivoire": "XAF",
+      Malawi: "MWK",
+      Namibia: "NAD",
+      Botswana: "BWP",
+      Zambia: "ZMW",
+      };
+    
+    const userCurrency = countryCurrencyMapping[user.country] || "NGN";
+    
+    return res.status(200).json({
+      success: true,
+      message: "User currency fetched successfully",
+      data: userCurrency,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
     

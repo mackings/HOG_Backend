@@ -56,6 +56,28 @@ export const subscriptionPayments = async (req, res, next) => {
       plan,
     });
 
+    const countryCurrencyMapping = {
+      Nigeria: "NGN",
+      Ghana: "GHS",
+      Kenya: "KES",
+      "South Africa": "ZAR",
+      "United States": "USD",
+      Rwanda: "RWF",
+      Uganda: "UGX",
+      Tanzania: "TZS",
+      Egypt: "EGP",
+      "United Kingdom": "GBP",
+      "United Arab Emirates": "AED",
+      "Saudi Arabia": "SAR",
+      "Côte d'Ivoire": "XAF",
+      Malawi: "MWK",
+      Namibia: "NAD",
+      Botswana: "BWP",
+      Zambia: "ZMW",
+    };
+
+    const userCurrency = countryCurrencyMapping[user.country] || "NGN";
+
     // Paystack payment initialization
     const paystackUrl = "https://api.paystack.co/transaction/initialize";
     const paystackResponse = await axios.post(
@@ -63,7 +85,7 @@ export const subscriptionPayments = async (req, res, next) => {
       {
         email: user.email,
         amount: amount * 100, // Paystack requires kobo
-        currency: "NGN",
+        currency: userCurrency,
         reference: reference,
         callback_url: `${process.env.FRONTEND_URL}/payment-success`,
       },

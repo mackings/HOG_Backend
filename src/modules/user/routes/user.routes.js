@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { register, verifyToken, login, forgotPassword, resetPassword, updateProfile, uploadImage, getProfile,
-  uploadBillImage, getAllusers, getAllTailor
+  uploadBillImage, getAllusers, getAllTailor, getUserCurrency
   } from '../controller/user.controller';
 import { isAuth } from '../../../middlewares/auth.middleware';
 import { imageUpload, imageKitUpload } from '../../../utils/imagekit';
@@ -19,6 +19,7 @@ router.get('/getProfile', isAuth, getProfile );
 router.put('/uploadBillImage', isAuth, imageUpload, imageKitUpload, uploadBillImage );
 router.get('/getAllusers', getAllusers );
 router.get('/getAllTailor', getAllTailor );
+router.get('/getUserCurrency', isAuth, getUserCurrency );
 
 
 

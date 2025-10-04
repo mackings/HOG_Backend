@@ -52,6 +52,10 @@ const tokenSchema = new mongoose.Schema({
     expiresAt: {
         type: Date,
         required: true
+    },
+    country: {
+        type: String,
+        default: 'Nigeria'
     }
 },
     {
