@@ -249,3 +249,109 @@ export const getListingFee = async( req, res, next )=>{
     next(error);
   }
 }
+
+
+
+export const totalUsers = async (req, res, next) => {
+  try {
+    const totalUsers = await User.countDocuments();
+
+    if (totalUsers === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No registered users found",
+        data: []
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Total users fetched successfully",
+      data: totalUsers
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
+
+export const totalNumberOfFreeAndPaidListings = async(req, res, next)=>{
+  try {
+    const freeListingsCount = await Listing.countDocuments({ price: { $eq: 0 } });
+    const paidListingsCount = await Listing.countDocuments({ price: { $gt: 0 } });
+    return res.status(200).json({
+      success: true,
+      message: "Total free and paid listings fetched successfully",
+      data: {
+        freeListings: freeListingsCount,
+        paidListings: paidListingsCount
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
+export const totalTransactions = async(req, res, next)=>{
+  try {
+    const totalTransaction = await Transaction.countDocuments();
+    return res.status(200).json({
+      success: true,
+      message: "Total transactions fetched successfully",
+      data: {
+        totalTransactions: totalTransaction
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
+export const totalListings = async(req, res, next)=>{
+  try {
+    const totalListing = await Listing.countDocuments();
+    return res.status(200).json({
+      success: true,
+      message: "Total listings fetched successfully",
+      data: {
+        totalListings: totalListing
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export const adminTotalEarnings = async (req, res, next) => {
+  try {
+    // Find the admin
+    const admin = await User.findOne({ role: 'admin' });
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: "Admin not found",
+      });
+    }
+
+    // If admin exists, use wallet value or 0
+    const totalEarnings = admin.wallet || 0;
+
+    return res.status(200).json({
+      success: true,
+      message: "Total earnings fetched successfully",
+      data: {
+        totalEarnings
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
