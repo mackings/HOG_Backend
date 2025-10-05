@@ -545,6 +545,13 @@ export const acceptOrder = async (req, res, next) => {
       });
     }
 
+    if(track.isDelivered == true){
+      return res.status(404).json({
+        success: false,
+        message: `This order has been accepted and collected already by you, ${user.fullName}.`,
+      });
+    }
+
     // Fetch fee percentage
     const feeDoc = await Fee.findOne();
     const feePercentage = feeDoc ? Number(feeDoc.amount) : 0;
