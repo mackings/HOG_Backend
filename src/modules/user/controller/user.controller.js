@@ -316,10 +316,24 @@ export const getUserCurrency = async (req, res, next) => {
     
     const countryCurrencyMapping = {
       Nigeria: "NGN",
+      Ghana: "GHS",
+      Kenya: "KES",
+      "South Africa": "ZAR",
+      "United States": "USD",
+      Rwanda: "RWF",
+      Uganda: "UGX",
+      Tanzania: "TZS",
+      Egypt: "EGP",
       "United Kingdom": "GBP",
-      "Other": "USD",
-    };
-
+      "United Arab Emirates": "AED",
+      "Saudi Arabia": "SAR",
+      "Côte d'Ivoire": "XAF",
+      Malawi: "MWK",
+      Namibia: "NAD",
+      Botswana: "BWP",
+      Zambia: "ZMW",
+      };
+    
     const userCurrency = countryCurrencyMapping[user.country] || "NGN";
     
     return res.status(200).json({

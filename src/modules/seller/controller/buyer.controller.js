@@ -228,20 +228,13 @@ export const purchaseListing = async (req, res, next) => {
             paymentStatus: "full payment",
         });
     
-        const countryCurrencyMapping = {
-          Nigeria: "NGN",
-          "United Kingdom": "GBP",
-          "Other": "USD",
-        };
-
-        const userCurrency = countryCurrencyMapping[user.country] || "NGN";
         // Paystack payment initialization
         const paystackResponse = await axios.post(
             "https://api.paystack.co/transaction/initialize",
             {
             email: user.email,
             amount: totalCost * 100, // Paystack accepts kobo
-            currency: userCurrency,
+            currency: "NGN",
             reference: paymentReference,
             callback_url: `${process.env.FRONTEND_URL}/payment-success`,
             },
@@ -411,8 +404,22 @@ export const purchaseMultipleListings = async (req, res, next) => {
 
     const countryCurrencyMapping = {
       Nigeria: "NGN",
+      Ghana: "GHS",
+      Kenya: "KES",
+      "South Africa": "ZAR",
+      "United States": "USD",
+      Rwanda: "RWF",
+      Uganda: "UGX",
+      Tanzania: "TZS",
+      Egypt: "EGP",
       "United Kingdom": "GBP",
-      "Other": "USD",
+      "United Arab Emirates": "AED",
+      "Saudi Arabia": "SAR",
+      "Côte d'Ivoire": "XAF",
+      Malawi: "MWK",
+      Namibia: "NAD",
+      Botswana: "BWP",
+      Zambia: "ZMW",
     };
 
     const userCurrency = countryCurrencyMapping[user.country] || "NGN";
