@@ -53,12 +53,14 @@ export const sellerCreateListing = async (req, res, next) => {
     }
 
     const countryCurrencyMapping = {
-      Nigeria: "NGN",
-      "United Kingdom": "GBP",
-      "Other": "USD",
+      nigeria: "NGN",
+      "united kingdom": "GBP",
+      "united states": "USD",
     };
 
-    const userCurrency = countryCurrencyMapping[user.country] || "NGN";
+    const userCountry = user.country?.toLowerCase().trim();
+
+    const userCurrency = countryCurrencyMapping[userCountry] || "USD";
 
     // Create the listing
     const listing = await Listing.create({
