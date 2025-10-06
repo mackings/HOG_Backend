@@ -41,6 +41,11 @@ const listingSchema = new mongoose.Schema({
     price: {
         type: Number,
     },
+    currency: {
+        type: String,
+        required: true,
+        default: "NGN",
+    },
     images: {
         type: Array,
         required: true,
