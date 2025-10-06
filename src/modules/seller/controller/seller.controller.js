@@ -52,6 +52,14 @@ export const sellerCreateListing = async (req, res, next) => {
       });
     }
 
+    const countryCurrencyMapping = {
+      Nigeria: "NGN",
+      "United Kingdom": "GBP",
+      "Other": "USD",
+    };
+
+    const userCurrency = countryCurrencyMapping[user.country] || "NGN";
+
     // Create the listing
     const listing = await Listing.create({
       userId: user._id,
@@ -63,6 +71,7 @@ export const sellerCreateListing = async (req, res, next) => {
       status,
       price,
       images,
+      currency: userCurrency,
     });
 
     return res.status(201).json({

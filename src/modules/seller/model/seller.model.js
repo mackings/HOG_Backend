@@ -43,6 +43,11 @@ const listingSchema = new mongoose.Schema({
         required: true,
         default: 0,
     },
+    currency: {
+        type: String,
+        required: true,
+        default: "NGN",
+    },
     images: {
         type: Array,
         required: true,
