@@ -230,7 +230,7 @@ export const uploadImage = async (req, res, next) => {
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
-         const images = req.imageUrls || [];
+         const images = req.imageUrls[0];
 
          const uploadImage = await User.findByIdAndUpdate(
            id,
@@ -251,7 +251,7 @@ export const uploadBillImage = async (req, res, next) => {
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
-         const images = req.imageUrls || [];
+         const images = req.imageUrls[0];
 
          const uploadImage = await User.findByIdAndUpdate(
            id,
