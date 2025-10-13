@@ -333,5 +333,3 @@ export const getUserCurrency = async (req, res, next) => {
     next(error);
   }
 };
-
-    

@@ -14,7 +14,7 @@ export const subscriptionPayments = async (req, res, next) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Available subscription plans
+    // Available subscription plans 
     const subscriptionPlans = {
       Standard: ["monthly", "yearly", "quarterly"],
       Premium: ["monthly", "yearly", "quarterly"],
@@ -57,26 +57,14 @@ export const subscriptionPayments = async (req, res, next) => {
     });
 
     const countryCurrencyMapping = {
-      Nigeria: "NGN",
-      Ghana: "GHS",
-      Kenya: "KES",
-      "South Africa": "ZAR",
-      "United States": "USD",
-      Rwanda: "RWF",
-      Uganda: "UGX",
-      Tanzania: "TZS",
-      Egypt: "EGP",
-      "United Kingdom": "GBP",
-      "United Arab Emirates": "AED",
-      "Saudi Arabia": "SAR",
-      "Côte d'Ivoire": "XAF",
-      Malawi: "MWK",
-      Namibia: "NAD",
-      Botswana: "BWP",
-      Zambia: "ZMW",
+      nigeria: "NGN",
+      "united kingdom": "GBP",
+      "united states": "USD",
     };
 
-    const userCurrency = countryCurrencyMapping[user.country] || "NGN";
+    const userCountry = user.country?.toLowerCase().trim();
+
+    const userCurrency = countryCurrencyMapping[userCountry] || "USD";
 
     // Paystack payment initialization
     const paystackUrl = "https://api.paystack.co/transaction/initialize";
