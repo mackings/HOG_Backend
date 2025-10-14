@@ -4,6 +4,7 @@ import Review from "../../review/model/review.model"
 import Vendor from "../../vendor/model/vendor.model"
 import mongoose from "mongoose";
 import Notification from "../model/notification.model"
+import Material from "../../material/model/material.model"
 
 
 
@@ -169,6 +170,18 @@ export const vendorReplyOffer = async (req, res, next) => {
       { $set: updatedData },
       { new: true }
     );
+
+    if(action == "accepted"){
+      await Review.findByIdAndUpdate(offer.reviewId, 
+        { 
+          $set: { 
+          materialTotalCost: updatedOffer.materialTotalCost,
+          workmanshipTotalCost: updatedOffer.workmanshipTotalCost,
+          totalCost: updatedOffer.totalCost,
+          status: "approved"
+        } 
+        });
+    }
 
     await Notification.create({
       userId: offer.userId._id,
