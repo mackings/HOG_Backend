@@ -29,7 +29,9 @@ const materialSchema = new mongoose.Schema({
     },
     measurement: {
         type: Array,
-        required: true,
+    },
+    yards: {
+        type: Number,
     },
     sampleImage: {
         type: Array,
