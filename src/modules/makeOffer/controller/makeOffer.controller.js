@@ -120,6 +120,10 @@ export const vendorReplyOffer = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Offer not found" });
     }
 
+    if(offer.status == "accepted"){
+      return res.status(400).json({ success: false, message: "Offer already accepted" });
+    }
+
     const materialOwner = await Vendor.findOne({ userId: vendor._id });
 
     // Ensure this vendor owns the offer
@@ -226,6 +230,10 @@ export const buyerReplyToOffer = async (req, res, next) => {
     const offer = await MakeOffer.findById(offerId).populate("vendorId userId materialId");
     if (!offer) {
       return res.status(404).json({ success: false, message: "Offer not found" });
+    }
+
+    if(offer.status == "accepted"){
+      return res.status(400).json({ success: false, message: "Offer already accepted" });
     }
 
     // Ensure this buyer owns the offer
