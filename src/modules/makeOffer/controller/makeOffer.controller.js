@@ -286,7 +286,7 @@ export const buyerReplyToOffer = async (req, res, next) => {
     }
 
     // Ensure this buyer owns the offer
-    if (String(offer.userId?._id) !== String(buyer._id)) {
+    if (String(offer.userId) !== String(buyer._id)) {
       return res.status(403).json({
         success: false,
         message: "You are not authorized to reply to this offer.",
