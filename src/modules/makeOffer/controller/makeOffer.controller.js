@@ -187,15 +187,6 @@ export const vendorReplyOffer = async (req, res, next) => {
         });
     }
 
-    await Notification.create({
-      userId: offer.userId._id,
-      materialId: offer.materialId._id,
-      title: "Offer Update",
-      message: notificationMessage,
-      relatedOffer: offer._id,
-      isRead: false,
-    });
-
     return res.status(200).json({
       success: true,
       message:
@@ -287,15 +278,6 @@ export const buyerReplyToOffer = async (req, res, next) => {
       { new: true }
     );
 
-    await Notification.create({
-      vendorId: offer.vendorId.userId,
-      materialId: offer.materialId._id,
-      title: "Offer Response",
-      message: notificationMessage,
-      relatedOffer: offer._id,
-      isRead: false,
-    });
-
     return res.status(200).json({
       success: true,
       message:
@@ -312,25 +294,48 @@ export const buyerReplyToOffer = async (req, res, next) => {
 };
 
 
-
 export const getAllMakeOffers = async (req, res, next) => {
   try {
     const { id } = req.user;
 
+    // Find the user
     const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
+    // Find vendor (if logged-in user is a vendor)
     const vendor = await Vendor.findOne({ userId: id });
 
-    const makeOffers = await MakeOffer.find({
-      $or: [
-        { userId: user._id },
-        vendor ? { vendorId: vendor._id } : {},
-      ],
-    })
-      .populate("userId vendorId materialId reviewId")
+    // Build filter dynamically
+    const filter = [];
+    if (user?._id) filter.push({ userId: user._id });
+    if (vendor?._id) filter.push({ vendorId: vendor._id });
+
+    // If neither user nor vendor found, return empty
+    if (filter.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No make offers found",
+        data: [],
+      });
+    }
+
+    // Fetch all offers involving this user or vendor
+    const makeOffers = await MakeOffer.find({ $or: filter })
+      .populate({
+        path: "userId",
+        select: "fullName email profileImage role",
+      })
+      .populate({
+        path: "vendorId",
+        select: "businessName userId",
+        populate: {
+          path: "userId",
+          select: "fullName email",
+        },
+      })
+      .populate("materialId reviewId")
       .sort({ createdAt: -1 });
 
     if (!makeOffers || makeOffers.length === 0) {
@@ -400,80 +405,6 @@ export const getMakeOfferById = async (req, res, next) => {
       data: offer,
     });
 
-  } catch (error) {
-    next(error);
-  }
-};
-
-
-
-
-
-export const getAllNotifications = async (req, res, next) => {
-  try {
-    const { id } = req.user;
-
-    const notifications = await Notification.find({
-      $or: [{ userId: id }, { vendorId: id }],
-    })
-      .populate("vendorId userId materialId")
-      .sort({ createdAt: -1 });
-
-    if (!notifications || notifications.length === 0) {
-      return res.status(200).json({
-        success: true,
-        message: "No notifications found",
-        data: [],
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Notifications retrieved successfully",
-      count: notifications.length,
-      data: notifications,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-
-
-export const getNotificationById = async (req, res, next) => {
-  try {
-    const { id } = req.user;
-    const { notificationId } = req.params;
-
-    if (!notificationId) {
-      return res.status(400).json({ success: false, message: "Notification ID is required" });
-    }
-
-    const notification = await Notification.findById(notificationId)
-      .populate("vendorId userId materialId");
-
-    if (!notification) {
-      return res.status(404).json({ success: false, message: "Notification not found" });
-    }
-
-    // Authorization check — user or vendor must own it
-    if (
-      String(notification.userId?._id) !== String(id) &&
-      String(notification.vendorId?._id) !== String(id)
-    ) {
-      return res.status(403).json({ success: false, message: "You are not authorized to view this notification" });
-    }
-
-    if (!notification.isRead) {
-      notification.isRead = true;
-      await notification.save();
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Notification retrieved successfully",
-      data: notification,
-    });
   } catch (error) {
     next(error);
   }

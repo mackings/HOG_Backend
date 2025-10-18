@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createMakeOffer, vendorReplyOffer, buyerReplyToOffer, getAllNotifications, getNotificationById,
+import { createMakeOffer, vendorReplyOffer, buyerReplyToOffer,
     getAllMakeOffers, getMakeOfferById
   } from '../controller/makeOffer.controller';
 import { isAuth } from '../../../middlewares/auth.middleware';
@@ -16,7 +16,5 @@ router.patch('/vendorReplyOffer/:offerId', vendorReplyOffer);
 router.patch('/buyerReplyToOffer/:offerId', buyerReplyToOffer);
 router.get('/getAllMakeOffers', getAllMakeOffers);
 router.get('/getMakeOfferById/:offerId', getMakeOfferById);
-router.get('/getAllNotifications', getAllNotifications);
-router.get('/getNotificationById/:notificationId', getNotificationById);
 
 export default router;
