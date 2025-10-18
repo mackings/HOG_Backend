@@ -115,13 +115,17 @@ export const vendorReplyOffer = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid offer ID" });
     }
 
-    const offer = await MakeOffer.findById(offerId).populate("userId vendorId materialId");
+    const offer = await MakeOffer.findById(offerId);
     if (!offer) {
       return res.status(404).json({ success: false, message: "Offer not found" });
     }
 
     if(offer.status == "accepted"){
       return res.status(400).json({ success: false, message: "Offer already accepted" });
+    }
+
+    if(offer.status == "rejected"){
+      return res.status(400).json({ success: false, message: "Offer already rejected" });
     }
 
     const materialOwner = await Vendor.findOne({ userId: vendor._id });
@@ -218,13 +222,17 @@ export const buyerReplyToOffer = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid offer ID" });
     }
 
-    const offer = await MakeOffer.findById(offerId).populate("vendorId userId materialId");
+    const offer = await MakeOffer.findById(offerId);
     if (!offer) {
       return res.status(404).json({ success: false, message: "Offer not found" });
     }
 
     if(offer.status == "accepted"){
       return res.status(400).json({ success: false, message: "Offer already accepted" });
+    }
+
+    if(offer.status == "rejected"){
+      return res.status(400).json({ success: false, message: "Offer already rejected" });
     }
 
     // Ensure this buyer owns the offer
