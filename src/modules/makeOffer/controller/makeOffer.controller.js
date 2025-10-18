@@ -3,7 +3,6 @@ import MakeOffer from "../model/makeOffer.model"
 import Review from "../../review/model/review.model"
 import Vendor from "../../vendor/model/vendor.model"
 import mongoose from "mongoose";
-import Notification from "../model/notification.model"
 import Material from "../../material/model/material.model"
 
 
@@ -14,36 +13,56 @@ export const createMakeOffer = async (req, res, next) => {
     const user = await User.findById(id);
 
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
 
     const { reviewId } = req.params;
+
     if (!mongoose.Types.ObjectId.isValid(reviewId)) {
-      return res.status(400).json({ success: false, message: "Invalid review ID" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid review ID",
+      });
     }
 
+    // ✅ Check review existence
     const review = await Review.findById(reviewId);
     if (!review) {
-      return res.status(404).json({ success: false, message: "Review not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Review not found",
+      });
     }
 
+    // ✅ Extract and validate inputs
     const { comment, materialTotalCost, workmanshipTotalCost } = req.body;
+    const materialCost = Number(materialTotalCost);
+    const workmanshipCost = Number(workmanshipTotalCost);
 
-    // Validate costs
-    const materialCost = Number(materialTotalCost) || 0;
-    const workmanshipCost = Number(workmanshipTotalCost) || 0;
+    if (isNaN(materialCost) || isNaN(workmanshipCost)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid cost values. Must be numeric.",
+      });
+    }
+
     const totalCost = materialCost + workmanshipCost;
 
-    // Ensure vendorId and materialId are available
-    const vendorId = review.vendorId;
-    const materialId = review.materialId;
-
+    // ✅ Ensure vendor & material linkage
+    const { vendorId, materialId } = review;
     if (!vendorId || !materialId) {
-      return res.status(400).json({ success: false, message: "Missing vendor or material information in review" });
+      return res.status(400).json({
+        success: false,
+        message:
+          "Missing vendor or material information in the associated review.",
+      });
     }
 
-    // Check if offer already exists for this review
-    let existingOffer = await MakeOffer.findOne({
+    // ✅ Check if offer already exists
+    let offer = await MakeOffer.findOne({
       userId: user._id,
       vendorId,
       materialId,
@@ -51,25 +70,31 @@ export const createMakeOffer = async (req, res, next) => {
       status: "makeOffered",
     });
 
-    let offer;
-
-    if (existingOffer) {
-      // Update existing offer
+    if (offer) {
+      // 🔄 Update existing offer
       offer = await MakeOffer.findByIdAndUpdate(
-        existingOffer._id,
+        offer._id,
         {
           $set: {
             materialTotalCost: materialCost,
             workmanshipTotalCost: workmanshipCost,
             totalCost,
-            comment,
+            comment: comment || offer.comment,
             status: "makeOffered",
+          },
+          $push: {
+            chats: {
+              senderType: "customer",
+              action: "updatedOffer",
+              comment: comment || "Updated the offer terms",
+              timestamp: new Date(),
+            },
           },
         },
         { new: true }
       );
     } else {
-      // Create new offer
+      // 🆕 Create new offer
       offer = await MakeOffer.create({
         userId: user._id,
         vendorId,
@@ -80,25 +105,40 @@ export const createMakeOffer = async (req, res, next) => {
         totalCost,
         comment,
         status: "makeOffered",
+        chats: [
+          {
+            senderType: "customer",
+            action: "makeOffered",
+            counterMaterialCost: materialCost,
+            counterWorkmanshipCost: workmanshipCost,
+            counterTotalCost: totalCost,
+            comment: comment || "Sent a new offer",
+            timestamp: new Date(),
+          },
+        ],
       });
     }
 
     if (!offer) {
       return res.status(500).json({
         success: false,
-        message: "Error making offer",
+        message: "Error creating or updating offer",
       });
     }
 
+    // ✅ Format response
     return res.status(201).json({
       success: true,
-      message: existingOffer ? "Offer updated successfully" : "Offer created successfully",
+      message: offer.isNew
+        ? "Offer created successfully"
+        : "Offer updated successfully",
       data: offer,
     });
   } catch (error) {
     next(error);
   }
 };
+
 
 
 export const vendorReplyOffer = async (req, res, next) => {
@@ -115,81 +155,79 @@ export const vendorReplyOffer = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid offer ID" });
     }
 
-    const offer = await MakeOffer.findById(offerId);
+    const offer = await MakeOffer.findById(offerId)
+    // .populate({
+    //     path: "userId",
+    //     select: "fullName email profileImage role",
+    //   })
+      .populate({
+        path: "vendorId",
+        select: "businessName userId",
+        populate: {
+          path: "userId",
+          select: "fullName email",
+        },
+      })
+
     if (!offer) {
       return res.status(404).json({ success: false, message: "Offer not found" });
     }
 
-    if(offer.status == "accepted"){
-      return res.status(400).json({ success: false, message: "Offer already accepted" });
-    }
-
-    if(offer.status == "rejected"){
-      return res.status(400).json({ success: false, message: "Offer already rejected" });
+    if (["accepted", "rejected"].includes(offer.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Offer has already been ${offer.status}.`,
+      });
     }
 
     const materialOwner = await Vendor.findOne({ userId: vendor._id });
-
-    // Ensure this vendor owns the offer
-    if (String(offer.vendorId._id) !== String(materialOwner._id)) {
+    if (!materialOwner || String(offer.vendorId?._id) !== String(materialOwner._id)) {
       return res.status(403).json({
         success: false,
-        message: "You are not authorized to reply to this offer, it's not your material",
+        message: "You are not authorized to reply to this offer.",
       });
     }
 
     const { action, counterMaterialCost, counterWorkmanshipCost, comment } = req.body;
-
-    // Ensure valid action type
     const validActions = ["accepted", "rejected", "countered"];
     if (!validActions.includes(action)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid action. Must be accepted, rejected, or countered",
+      return res.status(400).json({ success: false, message: "Invalid action type" });
+    }
+
+    // Build the new chat message
+    const materialCost = Number(counterMaterialCost) || 0;
+    const workmanshipCost = Number(counterWorkmanshipCost) || 0;
+    const totalCost = materialCost + workmanshipCost;
+
+    const newChat = {
+      senderType: "vendor",
+      action,
+      counterMaterialCost: materialCost,
+      counterWorkmanshipCost: workmanshipCost,
+      counterTotalCost: totalCost,
+      comment: comment || "",
+      timestamp: new Date(),
+    };
+
+    // Push the new chat entry (instead of updating the offer directly)
+    offer.chats.push(newChat);
+
+    // Update the latest status for quick access (optional)
+    offer.status = action;
+
+    // If vendor accepted, auto-approve the linked review
+    if (action === "accepted" && offer.reviewId) {
+      await Review.findByIdAndUpdate(offer.reviewId, {
+        $set: {
+          materialTotalCost: offer.materialTotalCost,
+          workmanshipTotalCost: offer.workmanshipTotalCost,
+          totalCost: offer.totalCost,
+          status: "approved",
+        },
       });
     }
 
-    let updatedData = { status: action };
-    let notificationMessage = "";
-
-    // Handle counter offer
-    if (action === "countered") {
-      const materialCost = Number(counterMaterialCost) || 0;
-      const workmanshipCost = Number(counterWorkmanshipCost) || 0;
-      const totalCost = materialCost + workmanshipCost;
-
-      updatedData = {
-        ...updatedData,
-        counterMaterialCost: materialCost,
-        counterWorkmanshipCost: workmanshipCost,
-        counterTotalCost: totalCost,
-        vendorComment: comment || "Vendor provided a counter offer.",
-      };
-
-      notificationMessage = `${vendor.fullName} has sent you a counter offer.`;
-    } else if (action === "accepted") {
-      notificationMessage = `${vendor.fullName} has accepted your offer.`;
-    } else if (action === "rejected") {
-      notificationMessage = `${vendor.fullName} has rejected your offer.`;
-    }
-
-    const updatedOffer = await MakeOffer.findByIdAndUpdate(
-      offer._id,
-      { $set: updatedData },
-      { new: true }
-    );
-
-    if(action == "accepted"){
-      await Review.findByIdAndUpdate(offer.reviewId, 
-        { 
-          $set: { 
-          materialTotalCost: updatedOffer.materialTotalCost,
-          workmanshipTotalCost: updatedOffer.workmanshipTotalCost,
-          totalCost: updatedOffer.totalCost,
-          status: "approved"
-        } 
-        });
-    }
+    await offer.save();
 
     return res.status(200).json({
       success: true,
@@ -198,13 +236,14 @@ export const vendorReplyOffer = async (req, res, next) => {
           ? "Offer accepted successfully"
           : action === "rejected"
           ? "Offer rejected successfully"
-          : "Counter offer submitted successfully",
-      data: updatedOffer,
+          : "Counter offer sent successfully",
+      data: offer,
     });
   } catch (error) {
     next(error);
   }
 };
+
 
 
 
@@ -222,69 +261,74 @@ export const buyerReplyToOffer = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid offer ID" });
     }
 
-    const offer = await MakeOffer.findById(offerId);
+    const offer = await MakeOffer.findById(offerId)
+    .populate({
+        path: "userId",
+        select: "fullName email profileImage role",
+      })
+      // .populate({
+      //   path: "vendorId",
+      //   select: "businessName userId",
+      //   populate: {
+      //     path: "userId",
+      //     select: "fullName email",
+      //   },
+      // })
     if (!offer) {
       return res.status(404).json({ success: false, message: "Offer not found" });
     }
 
-    if(offer.status == "accepted"){
-      return res.status(400).json({ success: false, message: "Offer already accepted" });
-    }
-
-    if(offer.status == "rejected"){
-      return res.status(400).json({ success: false, message: "Offer already rejected" });
+    if (["accepted", "rejected"].includes(offer.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Offer has already been ${offer.status}.`,
+      });
     }
 
     // Ensure this buyer owns the offer
-    if (String(offer.userId._id) !== String(buyer._id)) {
+    if (String(offer.userId?._id) !== String(buyer._id)) {
       return res.status(403).json({
         success: false,
-        message: "You are not authorized to reply to this offer, it's not your offer",
+        message: "You are not authorized to reply to this offer.",
       });
     }
 
     const { action, counterMaterialCost, counterWorkmanshipCost, comment } = req.body;
 
-    // Valid action types for buyer
     const validActions = ["accepted", "rejected", "countered"];
     if (!validActions.includes(action)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid action. Must be accepted, rejected, or countered",
+        message: "Invalid action. Must be accepted, rejected, or countered.",
       });
     }
 
-    let updatedData = { buyerResponse: action };
-    let notificationMessage = "";
+    const materialCost = Number(counterMaterialCost) || 0;
+    const workmanshipCost = Number(counterWorkmanshipCost) || 0;
+    const totalCost = materialCost + workmanshipCost;
 
-    if (action === "countered") {
-      const materialCost = Number(counterMaterialCost) || 0;
-      const workmanshipCost = Number(counterWorkmanshipCost) || 0;
-      const totalCost = materialCost + workmanshipCost;
+    // Create new chat message instead of updating
+    const newChat = {
+      senderType: "customer",
+      action,
+      counterMaterialCost: materialCost,
+      counterWorkmanshipCost: workmanshipCost,
+      counterTotalCost: totalCost,
+      comment: comment || "",
+      timestamp: new Date(),
+    };
 
-      updatedData = {
-        ...updatedData,
-        buyerCounterMaterialCost: materialCost,
-        buyerCounterWorkmanshipCost: workmanshipCost,
-        buyerCounterTotalCost: totalCost,
-        buyerComment: comment || "Buyer sent a new counter offer.",
-        status: "buyerCountered",
-      };
+    // Push chat message
+    offer.chats.push(newChat);
 
-      notificationMessage = `${buyer.fullName} has sent a counter offer in response to your proposal.`;
-    } else if (action === "accepted") {
-      updatedData.status = "buyerAccepted";
-      notificationMessage = `${buyer.fullName} has accepted your offer.`;
-    } else if (action === "rejected") {
-      updatedData.status = "buyerRejected";
-      notificationMessage = `${buyer.fullName} has rejected your offer.`;
-    }
+    // Update latest status (for filtering)
+    offer.status = action === "countered"
+      ? "buyerCountered"
+      : action === "accepted"
+      ? "buyerAccepted"
+      : "buyerRejected";
 
-    const updatedOffer = await MakeOffer.findByIdAndUpdate(
-      offer._id,
-      { $set: updatedData },
-      { new: true }
-    );
+    await offer.save();
 
     return res.status(200).json({
       success: true,
@@ -293,8 +337,8 @@ export const buyerReplyToOffer = async (req, res, next) => {
           ? "You accepted the vendor's offer successfully"
           : action === "rejected"
           ? "You rejected the vendor's offer successfully"
-          : "Counter offer submitted successfully",
-      data: updatedOffer,
+          : "Counter offer sent successfully",
+      data: offer,
     });
   } catch (error) {
     next(error);
@@ -302,25 +346,25 @@ export const buyerReplyToOffer = async (req, res, next) => {
 };
 
 
+
 export const getAllMakeOffers = async (req, res, next) => {
   try {
     const { id } = req.user;
 
-    // Find the user
+    // 🧩 Find logged-in user
     const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    // Find vendor (if logged-in user is a vendor)
+    // 🧩 Check if the user is a vendor
     const vendor = await Vendor.findOne({ userId: id });
 
-    // Build filter dynamically
+    // 🧩 Build dynamic query filter
     const filter = [];
     if (user?._id) filter.push({ userId: user._id });
     if (vendor?._id) filter.push({ vendorId: vendor._id });
 
-    // If neither user nor vendor found, return empty
     if (filter.length === 0) {
       return res.status(200).json({
         success: true,
@@ -329,7 +373,7 @@ export const getAllMakeOffers = async (req, res, next) => {
       });
     }
 
-    // Fetch all offers involving this user or vendor
+    // 🧩 Fetch all offers involving the user or vendor
     const makeOffers = await MakeOffer.find({ $or: filter })
       .populate({
         path: "userId",
@@ -344,7 +388,8 @@ export const getAllMakeOffers = async (req, res, next) => {
         },
       })
       .populate("materialId reviewId")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean(); // Use lean for better performance if you don’t need Mongoose documents
 
     if (!makeOffers || makeOffers.length === 0) {
       return res.status(200).json({
@@ -354,11 +399,25 @@ export const getAllMakeOffers = async (req, res, next) => {
       });
     }
 
+    // 🧩 Include chat summary (optional)
+    const offersWithChatSummary = makeOffers.map((offer) => {
+      const chats = offer.chats || [];
+      const latestChat = chats.length > 0 ? chats[chats.length - 1] : null;
+
+      return {
+        ...offer,
+        chatSummary: {
+          totalMessages: chats.length,
+          latestMessage: latestChat,
+        },
+      };
+    });
+
     return res.status(200).json({
       success: true,
       message: "Make offers retrieved successfully",
-      count: makeOffers.length,
-      data: makeOffers,
+      count: offersWithChatSummary.length,
+      data: offersWithChatSummary,
     });
   } catch (error) {
     next(error);
@@ -366,53 +425,105 @@ export const getAllMakeOffers = async (req, res, next) => {
 };
 
 
+export const deleteAllMakeOffer = async (req, res, next) => {
+  try {
+    const deleteAllMakeOffer = await MakeOffer.deleteMany();
+    if (!deleteAllMakeOffer) {
+      return res.status(400).json({ success: false, message: "No make offer found" });
+    }
+    return res.status(200).json({ success: true, message: "All make offers deleted successfully" });
+    }catch (error) {
+    next(error);
+    }
+
+}
+
+
 export const getMakeOfferById = async (req, res, next) => {
   try {
     const { id } = req.user;
     const { offerId } = req.params;
 
+    // 🧩 Validate offer ID
     if (!mongoose.Types.ObjectId.isValid(offerId)) {
-      return res.status(400).json({ success: false, message: "Invalid offer ID" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid offer ID format",
+      });
     }
 
-    // Find user and vendor
+    // 🧩 Check if user exists
     const user = await User.findById(id);
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
 
+    // 🧩 Check if user is a vendor
     const vendor = await Vendor.findOne({ userId: id });
 
-    // Find the offer
+    // 🧩 Fetch offer and populate references
     const offer = await MakeOffer.findById(offerId)
-      .populate("userId vendorId materialId reviewId");
+      .populate({
+        path: "userId",
+        select: "fullName email profileImage role",
+      })
+      .populate({
+        path: "vendorId",
+        select: "businessName userId",
+        populate: {
+          path: "userId",
+          select: "fullName email",
+        },
+      })
+      .populate("materialId reviewId")
+      .lean(); // Convert to plain JS object for efficiency
 
     if (!offer) {
-      return res.status(404).json({ success: false, message: "Offer not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Offer not found",
+      });
     }
 
-    // Ensure the requesting user is authorized to view it
+    // 🧩 Authorization: only user or vendor involved can access
     const isAuthorized =
       String(offer.userId?._id) === String(user._id) ||
       (vendor && String(offer.vendorId?._id) === String(vendor._id));
 
     if (!isAuthorized) {
-      return res.status(403).json({ success: false, message: "You are not authorized to view this offer" });
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to view this offer",
+      });
     }
 
-    if (req.query.markAsRead === "true") {
-      await Notification.updateMany(
-        { offerId: offer._id, isRead: false },
-        { $set: { isRead: true } }
+    // 🧩 Sort chats by timestamp (for consistent order)
+    if (offer.chats && Array.isArray(offer.chats)) {
+      offer.chats = offer.chats.sort(
+        (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
       );
     }
+
+    // 🧩 Optional chat summary
+    const latestChat =
+      offer.chats && offer.chats.length > 0
+        ? offer.chats[offer.chats.length - 1]
+        : null;
 
     return res.status(200).json({
       success: true,
       message: "Offer retrieved successfully",
-      data: offer,
+      data: {
+        ...offer,
+        chatSummary: {
+          totalMessages: offer.chats?.length || 0,
+          latestMessage: latestChat,
+        },
+      },
     });
-
   } catch (error) {
     next(error);
   }
