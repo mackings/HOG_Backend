@@ -145,7 +145,6 @@ export const vendorReplyOffer = async (req, res, next) => {
   try {
     const { id } = req.user; // vendor ID
     const vendor = await User.findById(id);
-
     if (!vendor) {
       return res.status(404).json({ success: false, message: "Vendor not found" });
     }
@@ -156,18 +155,11 @@ export const vendorReplyOffer = async (req, res, next) => {
     }
 
     const offer = await MakeOffer.findById(offerId)
-    // .populate({
-    //     path: "userId",
-    //     select: "fullName email profileImage role",
-    //   })
       .populate({
         path: "vendorId",
         select: "businessName userId",
-        populate: {
-          path: "userId",
-          select: "fullName email",
-        },
-      })
+        populate: { path: "userId", select: "fullName email" },
+      });
 
     if (!offer) {
       return res.status(404).json({ success: false, message: "Offer not found" });
@@ -189,16 +181,17 @@ export const vendorReplyOffer = async (req, res, next) => {
     }
 
     const { action, counterMaterialCost, counterWorkmanshipCost, comment } = req.body;
+
     const validActions = ["accepted", "rejected", "countered"];
     if (!validActions.includes(action)) {
       return res.status(400).json({ success: false, message: "Invalid action type" });
     }
 
-    // Build the new chat message
     const materialCost = Number(counterMaterialCost) || 0;
     const workmanshipCost = Number(counterWorkmanshipCost) || 0;
     const totalCost = materialCost + workmanshipCost;
 
+    // Create chat entry
     const newChat = {
       senderType: "vendor",
       action,
@@ -209,24 +202,27 @@ export const vendorReplyOffer = async (req, res, next) => {
       timestamp: new Date(),
     };
 
-    // Push the new chat entry (instead of updating the offer directly)
+    // Keep chat history
     offer.chats.push(newChat);
 
-    // Update the latest status for quick access (optional)
+    // Update the current status for quick reference
     offer.status = action;
-
-    // If vendor accepted, auto-approve the linked review
-    if (action === "accepted" && offer.reviewId) {
-      await Review.findByIdAndUpdate(offer.reviewId, {
-        $set: {
-          materialTotalCost: offer.materialTotalCost,
-          workmanshipTotalCost: offer.workmanshipTotalCost,
-          totalCost: offer.totalCost
-        },
-      });
-    }
-
     await offer.save();
+
+    // ✅ Sync with review if accepted
+    if (action === "accepted" && offer.reviewId) {
+      await Review.findByIdAndUpdate(
+        offer.reviewId,
+        {
+          $set: {
+            materialTotalCost: materialCost,
+            workmanshipTotalCost: workmanshipCost,
+            totalCost
+          },
+        },
+        { new: true }
+      );
+    }
 
     return res.status(200).json({
       success: true,
@@ -242,6 +238,7 @@ export const vendorReplyOffer = async (req, res, next) => {
     next(error);
   }
 };
+
 
 
 
