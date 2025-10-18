@@ -221,8 +221,7 @@ export const vendorReplyOffer = async (req, res, next) => {
         $set: {
           materialTotalCost: offer.materialTotalCost,
           workmanshipTotalCost: offer.workmanshipTotalCost,
-          totalCost: offer.totalCost,
-          status: "approved",
+          totalCost: offer.totalCost
         },
       });
     }
