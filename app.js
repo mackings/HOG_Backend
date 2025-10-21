@@ -19,6 +19,7 @@ import sellerRouter from './src/modules/seller/routes/seller.routes.js';
 import buyerRouter from './src/modules/seller/routes/buyer.routes.js';
 import adminRouter from './src/modules/seller/routes/admin.routes.js';
 import makeOfferRouter from './src/modules/makeOffer/routes/makeOffer.routes.js';
+import deliveryRateRouter from './src/modules/deliveryRate/routes/deliveryRate.routes.js';
 
 
  
@@ -54,6 +55,7 @@ app.use('/api/v1/seller', sellerRouter);
 app.use('/api/v1/buyer', buyerRouter);
 app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/makeOffer', makeOfferRouter);
+app.use('/api/v1/deliveryRate', deliveryRateRouter);
 
 app.use((req, res)=>{
   res.status(404).json({message: "Endpoint not found. please, check the url and try again."})

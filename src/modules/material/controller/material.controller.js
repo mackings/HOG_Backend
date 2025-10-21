@@ -353,24 +353,33 @@ export const createPaymentOnline = async (req, res, next) => {
 
     // Shipment costs
     const numberOfPackages = 1;
-    const shipmentCosts = {
-      Express: expressCalculateCost(deliveryLocation, senderLocation, numberOfPackages),
-      Cargo: cargoCalculateCost(deliveryLocation, senderLocation, numberOfPackages),
-      Regular: regularCalculateCost(deliveryLocation, senderLocation, numberOfPackages),
-    };
-
-    const shipmentCost = shipmentCosts[shipmentMethod];
-    if (!shipmentCost) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid shipment method. Choose Express, Cargo, or Regular",
-      });
+    const method = (shipmentMethod || "").trim().toLowerCase();
+    if (!method) {
+    return res.status(400).json({ success: false, message: "shipmentMethod is required" });
     }
 
-    // Payment setup
+    let shipmentCost;
+
+    switch (method) {
+    case "express":
+        shipmentCost = await expressCalculateCost(deliveryLocation, senderLocation, numberOfPackages);
+        break;
+    case "cargo":
+        shipmentCost = await cargoCalculateCost(deliveryLocation, senderLocation, numberOfPackages);
+        break;
+    case "regular":
+        shipmentCost = await regularCalculateCost(deliveryLocation, senderLocation, numberOfPackages);
+        break;
+    default:
+        return res.status(400).json({
+        success: false,
+        message: "Invalid shipment method. Choose Express, Cargo, or Regular.",
+        });
+    }
     const shipping = Math.round(shipmentCost);
     const cost = Number(amount)
     const totalCost = Math.round(shipping + cost);
+
     const paymentReference = crypto.randomBytes(5).toString("hex");
 
     const order = await InitializedOrder.create({
