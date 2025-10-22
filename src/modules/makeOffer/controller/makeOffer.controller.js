@@ -206,11 +206,12 @@ export const vendorReplyOffer = async (req, res, next) => {
     offer.chats.push(newChat);
 
     // Update the current status for quick reference
-    if (action === "countered") {
-      offer.status = "pending";
-    } else {
-      offer.status = action;
-    }
+    // if (action === "countered") {
+    //   offer.status = "pending";
+    // } else {
+    //   offer.status = action;
+    // }
+    offer.status = action;
     await offer.save();
 
     // ✅ Sync with review if accepted
@@ -321,14 +322,14 @@ export const buyerReplyToOffer = async (req, res, next) => {
     // Push chat message
     offer.chats.push(newChat);
 
-    // // Update latest status (for filtering)
-    // offer.status = action === "countered"
-    //   ? "buyerCountered"
-    //   : action === "accepted"
-    //   ? "buyerAccepted"
-    //   : "buyerRejected";
+    // Update latest status (for filtering)
+    offer.status = action === "countered"
+      ? "buyerCountered"
+      : action === "accepted"
+      ? "buyerAccepted"
+      : "buyerRejected";
 
-    // await offer.save();
+    await offer.save();
 
     return res.status(200).json({
       success: true,

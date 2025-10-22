@@ -18,7 +18,7 @@ export const createMaterial = async (req, res, next) => {
   try {
     const { id } = req.user;
     const { categoryId } = req.params;
-    let { clothMaterial, color, brand, measurement, yards, specialInstructions } = req.body;
+    let { clothMaterial, color, brand, measurement, specialInstructions } = req.body;
 
     if (typeof measurement === "string") {
       try {
@@ -55,7 +55,6 @@ export const createMaterial = async (req, res, next) => {
       color,
       brand,
       measurement,
-      yards,
       sampleImage: images,
       specialInstructions
     });
@@ -93,9 +92,6 @@ export const getMaterialCategory = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
 
 
 export const getAllMaterials = async (req, res, next )=> {
@@ -162,7 +158,7 @@ export const updateMaterial = async (req, res, next) => {
   try {
     const { id } = req.user;
     const { materialId } = req.params;
-    let { attireType, clothMaterial, color, brand, yards, measurement, price, deliveryDate, reminderDate, specialInstructions } = req.body;
+    let { attireType, clothMaterial, color, brand, measurement, price, deliveryDate, reminderDate, specialInstructions } = req.body;
 
     if (typeof measurement === "string") {
       try {
@@ -196,7 +192,6 @@ export const updateMaterial = async (req, res, next) => {
         brand,
         measurement,
         price,
-        yards,
         deliveryDate,
         reminderDate,
         specialInstructions,

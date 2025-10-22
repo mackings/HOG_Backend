@@ -10,46 +10,38 @@ export const sellerCreateListing = async (req, res, next) => {
   try {
     const { id } = req.user;
 
-    // Check if user exists
     const user = await User.findById(id);
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    // Validate category
     const { categoryId } = req.params;
     const category = await Category.findById(categoryId);
     if (!category) {
-      return res.status(404).json({
-        success: false,
-        message: "Category not found",
-      });
+      return res.status(404).json({ success: false, message: "Category not found" });
     }
 
-    const { title, size, description, condition, status, price } = req.body;
+    let { title, size, description, condition, status, price, yards } = req.body;
 
-    // Ensure all required fields are provided
-    if (
-      [title, size, description, condition, status, price].some(
-        (field) => field == null || field === ""
-      )
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "All fields are required",
-      });
+    if (typeof yards === "string") {
+      try {
+        yards = JSON.parse(yards);
+      } catch (err) {
+        return res.status(400).json({ success: false, message: "Invalid yards format" });
+      }
     }
 
-    // Handle images (ensure middleware sets req.imageUrls)
-    const images = req.imageUrls && Array.isArray(req.imageUrls) ? req.imageUrls : [];
+    if ([title, size, description, condition, status, price].some(f => !f)) {
+      return res.status(400).json({ success: false, message: "All fields are required" });
+    }
+
+    if (isNaN(price)) {
+      return res.status(400).json({ success: false, message: "Price must be a number" });
+    }
+
+    const images = Array.isArray(req.imageUrls) ? req.imageUrls : [];
     if (images.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "At least one image is required",
-      });
+      return res.status(400).json({ success: false, message: "At least one image is required" });
     }
 
     const countryCurrencyMapping = {
@@ -59,10 +51,8 @@ export const sellerCreateListing = async (req, res, next) => {
     };
 
     const userCountry = user.country?.toLowerCase().trim();
-
     const userCurrency = countryCurrencyMapping[userCountry] || "USD";
 
-    // Create the listing
     const listing = await Listing.create({
       userId: user._id,
       categoryId,
@@ -71,8 +61,9 @@ export const sellerCreateListing = async (req, res, next) => {
       description,
       condition,
       status,
-      price,
+      price: Number(price),
       images,
+      yards: Array.isArray(yards) ? yards : [],
       currency: userCurrency,
     });
 
@@ -82,6 +73,7 @@ export const sellerCreateListing = async (req, res, next) => {
       data: listing,
     });
   } catch (error) {
+    console.error(error);
     next(error);
   }
 };

@@ -48,7 +48,9 @@ const listingSchema = new mongoose.Schema({
         type: Array,
         required: true,
     },
-
+    yards: {
+        type: Array,
+    },
 
     },
 {
