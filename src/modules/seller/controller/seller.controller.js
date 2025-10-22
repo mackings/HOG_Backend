@@ -139,8 +139,9 @@ export const getSellerListingById = async (req, res, next) => {
 export const updateSellerListing = async (req, res, next) => {
   try {
     const { id } = req.user;
-    const user = await User.findById(id);
 
+    // ✅ Ensure user exists
+    const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -149,21 +150,55 @@ export const updateSellerListing = async (req, res, next) => {
     }
 
     const { listingId } = req.params;
-    const { title, size, description, condition, status, deliveryMethod, price } = req.body;
+    let { title, size, description, condition, status, deliveryMethod, price, yards } = req.body;
 
-    // Collect only the fields that are provided
+    if (typeof yards === "string") {
+      try {
+        yards = JSON.parse(yards);
+      } catch (err) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid yards format",
+        });
+      }
+    }
+
     const updateData = {};
+
     if (title !== undefined) updateData.title = title;
     if (size !== undefined) updateData.size = size;
     if (description !== undefined) updateData.description = description;
     if (condition !== undefined) updateData.condition = condition;
     if (status !== undefined) updateData.status = status;
     if (deliveryMethod !== undefined) updateData.deliveryMethod = deliveryMethod;
-    if (price !== undefined) updateData.price = price;
+    if (price !== undefined) {
+      if (isNaN(price)) {
+        return res.status(400).json({
+          success: false,
+          message: "Price must be a number",
+        });
+      }
+      updateData.price = Number(price);
+    }
+    if (yards !== undefined) {
+      updateData.yards = Array.isArray(yards) ? yards : [];
+    }
 
-    // Handle images (append instead of overwrite if needed)
+    // ✅ Handle images
     if (req.imageUrls && Array.isArray(req.imageUrls) && req.imageUrls.length > 0) {
-      updateData.images = req.imageUrls;
+      const listing = await Listing.findById(listingId);
+
+      if (!listing) {
+        return res.status(404).json({
+          success: false,
+          message: "Listing not found",
+        });
+      }
+
+      const appendImages = req.query.append === "true"; 
+      updateData.images = appendImages
+        ? [...listing.images, ...req.imageUrls]
+        : req.imageUrls;
     }
 
     if (Object.keys(updateData).length === 0) {
@@ -173,13 +208,13 @@ export const updateSellerListing = async (req, res, next) => {
       });
     }
 
-    const listing = await Listing.findOneAndUpdate(
+    const updatedListing = await Listing.findOneAndUpdate(
       { _id: listingId, userId: user._id },
       { $set: updateData },
       { new: true }
     );
 
-    if (!listing) {
+    if (!updatedListing) {
       return res.status(404).json({
         success: false,
         message: "Listing not found or you are not authorized to update it",
@@ -189,9 +224,10 @@ export const updateSellerListing = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: "Seller listing updated successfully",
-      data: listing,
+      data: updatedListing,
     });
   } catch (error) {
+    console.error(error);
     next(error);
   }
 };
