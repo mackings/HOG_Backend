@@ -379,7 +379,7 @@ export const createPaymentOnline = async (req, res, next) => {
     const shipping = Math.round(shipmentCost);
     const cost = Number(amount)
     const totalCost = Math.round(shipping + cost);
-
+    
     const paymentReference = crypto.randomBytes(5).toString("hex");
 
     const order = await InitializedOrder.create({

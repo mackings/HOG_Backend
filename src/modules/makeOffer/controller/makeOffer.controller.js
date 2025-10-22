@@ -67,7 +67,7 @@ export const createMakeOffer = async (req, res, next) => {
       vendorId,
       materialId,
       reviewId: review._id,
-      status: "makeOffered",
+      status: "pending",
     });
 
     if (offer) {
@@ -80,7 +80,7 @@ export const createMakeOffer = async (req, res, next) => {
             workmanshipTotalCost: workmanshipCost,
             totalCost,
             comment: comment || offer.comment,
-            status: "makeOffered",
+            status: "pending",
           },
           $push: {
             chats: {
@@ -104,11 +104,11 @@ export const createMakeOffer = async (req, res, next) => {
         workmanshipTotalCost: workmanshipCost,
         totalCost,
         comment,
-        status: "makeOffered",
+        status: "pending",
         chats: [
           {
             senderType: "customer",
-            action: "makeOffered",
+            action: "pending",
             counterMaterialCost: materialCost,
             counterWorkmanshipCost: workmanshipCost,
             counterTotalCost: totalCost,
@@ -206,7 +206,11 @@ export const vendorReplyOffer = async (req, res, next) => {
     offer.chats.push(newChat);
 
     // Update the current status for quick reference
-    offer.status = action;
+    if (action === "countered") {
+      offer.status = "pending";
+    } else {
+      offer.status = action;
+    }
     await offer.save();
 
     // ✅ Sync with review if accepted
@@ -317,14 +321,14 @@ export const buyerReplyToOffer = async (req, res, next) => {
     // Push chat message
     offer.chats.push(newChat);
 
-    // Update latest status (for filtering)
-    offer.status = action === "countered"
-      ? "buyerCountered"
-      : action === "accepted"
-      ? "buyerAccepted"
-      : "buyerRejected";
+    // // Update latest status (for filtering)
+    // offer.status = action === "countered"
+    //   ? "buyerCountered"
+    //   : action === "accepted"
+    //   ? "buyerAccepted"
+    //   : "buyerRejected";
 
-    await offer.save();
+    // await offer.save();
 
     return res.status(200).json({
       success: true,
