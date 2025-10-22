@@ -9,12 +9,12 @@ const makeOfferSchema = new mongoose.Schema({
     vendorId: { type: mongoose.Schema.Types.ObjectId, ref: "Vendor" },
     materialId: { type: mongoose.Schema.Types.ObjectId, ref: "Material" },
     reviewId: { type: mongoose.Schema.Types.ObjectId, ref: "Review" },
-    status: { type: String, enum: ["pending", "accepted", "rejected", "countered", "buyerCountered", "buyerRejected"], default: "pending" },
+    status: { type: String, enum: ["pending", "accepted", "rejected", "countered", "incoming"], default: "pending" },
     total: Number,
     chats: [
         {
         senderType: { type: String, enum: ["customer", "vendor"], required: true },
-        action: { type: String, enum: ["accepted", "rejected", "countered", "pending", "buyerCountered", "buyerRejected"], required: true },
+        action: { type: String, enum: ["accepted", "rejected", "countered", "pending", "incoming"], required: true },
         counterMaterialCost: Number,
         counterWorkmanshipCost: Number,
         counterTotalCost: Number,

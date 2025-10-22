@@ -85,7 +85,7 @@ export const createMakeOffer = async (req, res, next) => {
           $push: {
             chats: {
               senderType: "customer",
-              action: "updatedOffer",
+              action: "pending",
               comment: comment || "Updated the offer terms",
               timestamp: new Date(),
             },
@@ -104,11 +104,11 @@ export const createMakeOffer = async (req, res, next) => {
         workmanshipTotalCost: workmanshipCost,
         totalCost,
         comment,
-        status: "pending",
+        status: "incoming",
         chats: [
           {
             senderType: "customer",
-            action: "pending",
+            action: "incoming",
             counterMaterialCost: materialCost,
             counterWorkmanshipCost: workmanshipCost,
             counterTotalCost: totalCost,
@@ -206,12 +206,12 @@ export const vendorReplyOffer = async (req, res, next) => {
     offer.chats.push(newChat);
 
     // Update the current status for quick reference
-    // if (action === "countered") {
-    //   offer.status = "pending";
-    // } else {
-    //   offer.status = action;
-    // }
-    offer.status = action;
+    if (action === "countered") {
+      offer.status = "pending";
+    } else {
+      offer.status = action;
+    }
+    // offer.status = action;
     await offer.save();
 
     // ✅ Sync with review if accepted
@@ -324,10 +324,10 @@ export const buyerReplyToOffer = async (req, res, next) => {
 
     // Update latest status (for filtering)
     offer.status = action === "countered"
-      ? "buyerCountered"
+      ? "pending"
       : action === "accepted"
-      ? "buyerAccepted"
-      : "buyerRejected";
+      ? "accepted"
+      : "rejected";
 
     await offer.save();
 
