@@ -9,7 +9,7 @@ import { userCheckRole } from '../../../middlewares/checkRole.middleware';
 const router = Router();
 
 router.use(isAuth);
-router.use(userCheckRole(["user", "admin", "tailor"]));
+router.use(userCheckRole(["superAdmin", "admin",]));
 router.post("/createDeliveryRate", createDeliveryRate);
 router.get("/getDeliveryRates", getDeliveryRates);
 router.put("/updateDeliveryRate/:id", updateDeliveryRate);
