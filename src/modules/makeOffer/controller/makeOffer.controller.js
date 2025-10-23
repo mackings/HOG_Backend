@@ -37,6 +37,13 @@ export const createMakeOffer = async (req, res, next) => {
       });
     }
 
+    if (["approved", "part payment", "full payment"].includes(review.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `This Quotation has already been ${review.status}.`,
+      });
+    }
+
     // ✅ Extract and validate inputs
     const { comment, materialTotalCost, workmanshipTotalCost } = req.body;
     const materialCost = Number(materialTotalCost);
