@@ -11,6 +11,12 @@ const vendorSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
+    businessRegistrationNumber: {
+        type: String,
+    },
+    registeredIn: {
+        type: String,
+    },
     businessEmail: {
         type: String,
         required: true,

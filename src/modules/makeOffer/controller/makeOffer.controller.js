@@ -37,7 +37,7 @@ export const createMakeOffer = async (req, res, next) => {
       });
     }
 
-    if (["approved", "part payment", "full payment"].includes(review.status)) {
+    if (["approved", "rejected", "part payment", "full payment"].includes(review.status)) {
       return res.status(400).json({
         success: false,
         message: `This Quotation has already been ${review.status}.`,

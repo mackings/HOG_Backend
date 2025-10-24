@@ -10,6 +10,8 @@ export const createTailor = async (req, res, next) => {
     const {
       businessName,
       businessEmail,
+      businessRegistrationNumber,
+      registeredIn,
       businessPhone,
       address,
       city,
@@ -52,6 +54,8 @@ export const createTailor = async (req, res, next) => {
       businessName,
       businessEmail,
       businessPhone,
+      businessRegistrationNumber,
+      registeredIn,
       address,
       nepaBill: images,
       city,
@@ -104,6 +108,8 @@ export const updateTailor = async (req, res, next) => {
           address: updates.address,
           city: updates.city,
           state: updates.state,
+          businessRegistrationNumber: updates.businessRegistrationNumber,
+          registeredIn: updates.registeredIn,
           yearOfExperience: updates.yearOfExperience,
           description: updates.description
         }
