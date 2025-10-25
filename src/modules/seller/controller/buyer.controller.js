@@ -278,127 +278,82 @@ export const purchaseListing = async (req, res, next) => {
         }
 };
 
-
 export const purchaseMultipleListings = async (req, res, next) => {
   try {
     const { id } = req.user;
     const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
+    if (!user)
+      return res.status(404).json({ success: false, message: "User not found" });
 
-    const { listingIds } = req.body; // array of listing IDs
-    const { address, shipmentMethod } = req.body;
-
-    if (!Array.isArray(listingIds) || listingIds.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Provide at least one listingId",
-      });
-    }
+    const { listingIds, address, shipmentMethod } = req.body;
+    if (!Array.isArray(listingIds) || listingIds.length === 0)
+      return res.status(400).json({ success: false, message: "Provide at least one listingId" });
 
     // Fetch listings
     const listings = await Listing.find({ _id: { $in: listingIds } });
-    if (listings.length !== listingIds.length) {
-      return res.status(404).json({
-        success: false,
-        message: "Some listings not found",
-      });
-    }
+    if (listings.length !== listingIds.length)
+      return res.status(404).json({ success: false, message: "Some listings not found" });
 
-    // Prevent buying own listings
-    const ownsListing = listings.some(
-      (listing) => listing.userId.toString() === user._id.toString()
-    );
-    if (ownsListing) {
-      return res.status(400).json({
-        success: false,
-        message: "You cannot purchase your own listing",
-      });
-    }
+    // Prevent self-purchase
+    if (listings.some(l => l.userId.toString() === user._id.toString()))
+      return res.status(400).json({ success: false, message: "You cannot purchase your own listing" });
 
-    // Assume first listing owner = vendor (could extend to multi-vendor later)
     const listingOwner = await User.findById(listings[0].userId);
     const pickupAddress = listingOwner.address;
     const deliveryAddress = address || user.address;
 
-    // Geocode receiver address
-    const geocodeReceiverResponse = await axios.get(
-      `https://api.geoapify.com/v1/geocode/search`,
-      {
-        params: { text: deliveryAddress, apiKey: process.env.GEOAPIFY_API_KEY },
-      }
-    );
-
-    const Location = geocodeReceiverResponse.data.features;
-    if (!Location.length) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid deliveryAddress provided",
+    // 🧭 Geocode
+    const geocode = async (addr) => {
+      const response = await axios.get(`https://api.geoapify.com/v1/geocode/search`, {
+        params: { text: addr, apiKey: process.env.GEOAPIFY_API_KEY },
       });
-    }
-
-    const deliveryLocation = {
-      latitude: Location[0].geometry.coordinates[1],
-      longitude: Location[0].geometry.coordinates[0],
+      const features = response.data.features;
+      if (!features.length) throw new Error(`Invalid address: ${addr}`);
+      return {
+        latitude: features[0].geometry.coordinates[1],
+        longitude: features[0].geometry.coordinates[0],
+      };
     };
 
-    // Geocode sender address
-    const geocodeSenderResponse = await axios.get(
-      `https://api.geoapify.com/v1/geocode/search`,
-      {
-        params: { text: pickupAddress, apiKey: process.env.GEOAPIFY_API_KEY },
-      }
-    );
+    const [deliveryLocation, senderLocation] = await Promise.all([
+      geocode(deliveryAddress),
+      geocode(pickupAddress),
+    ]);
 
-    const senderAddress = geocodeSenderResponse.data.features;
-    if (!senderAddress.length) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid pickupAddress provided",
-      });
+    // 🚚 Shipment cost
+    const numPackages = listings.length;
+    const method = shipmentMethod?.trim().toLowerCase();
+    if (!method)
+      return res.status(400).json({ success: false, message: "shipmentMethod is required" });
+
+    let shipmentCost;
+    switch (method) {
+      case "express":
+        shipmentCost = await expressCalculateCost(deliveryLocation, senderLocation, numPackages);
+        break;
+      case "cargo":
+        shipmentCost = await cargoCalculateCost(deliveryLocation, senderLocation, numPackages);
+        break;
+      case "regular":
+        shipmentCost = await regularCalculateCost(deliveryLocation, senderLocation, numPackages);
+        break;
+      default:
+        return res.status(400).json({ success: false, message: "Invalid shipment method" });
     }
 
-    const senderLocation = {
-      latitude: senderAddress[0].geometry.coordinates[1],
-      longitude: senderAddress[0].geometry.coordinates[0],
-    };
-
-    // Shipment costs
-    const numberOfPackages = listings.length;
-    const shipmentCosts = {
-      Express: expressCalculateCost(deliveryLocation, senderLocation, numberOfPackages),
-      Cargo: cargoCalculateCost(deliveryLocation, senderLocation, numberOfPackages),
-      Regular: regularCalculateCost(deliveryLocation, senderLocation, numberOfPackages),
-    };
-
-    const shipmentCost = shipmentCosts[shipmentMethod];
-    if (!shipmentCost) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid shipment method. Choose Express, Cargo, or Regular",
-      });
-    }
-
-    // Calculate total cost
     const shipping = Math.round(shipmentCost);
     const itemsTotal = listings.reduce((sum, l) => sum + Number(l.price), 0);
     const totalCost = Math.round(shipping + itemsTotal);
-
-    // Payment setup
     const paymentReference = crypto.randomBytes(5).toString("hex");
 
-    const cartItems = listings.map((listing) => ({
-      userId: listing.userId,
-      title: listing.title,
-      size: listing.size,
-      description: listing.description,
-      condition: listing.condition,
-      amount: listing.price,
-      images: listing.images,
+    const cartItems = listings.map(l => ({
+      userId: l.userId,
+      title: l.title,
+      size: l.size,
+      description: l.description,
+      condition: l.condition,
+      amount: l.price,
+      images: l.images,
     }));
 
     const order = await InitializedOrder.create({
@@ -409,45 +364,35 @@ export const purchaseMultipleListings = async (req, res, next) => {
       paymentReference,
       deliveryAddress,
       amountPaid: totalCost,
-      listingId: listings.map((l) => l._id),
+      listingId: listings.map(l => l._id),
     });
 
-    const countryCurrencyMapping = {
+    const countryCurrency = {
       nigeria: "NGN",
       "united kingdom": "GBP",
       "united states": "USD",
     };
+    const userCurrency = countryCurrency[user.country?.toLowerCase()?.trim()] || "USD";
 
-    const userCountry = user.country?.toLowerCase().trim();
-
-    const userCurrency = countryCurrencyMapping[userCountry] || "USD";
-
-
-    // Paystack payment initialization
+    // 💳 Initialize Paystack
     const paystackResponse = await axios.post(
       "https://api.paystack.co/transaction/initialize",
       {
         email: user.email,
-        amount: totalCost * 100, // Paystack accepts kobo
+        amount: totalCost * 100,
         currency: userCurrency,
         reference: paymentReference,
         callback_url: `${process.env.FRONTEND_URL}/payment-success`,
       },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_MAIN_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
+      { headers: { Authorization: `Bearer ${process.env.PAYSTACK_MAIN_KEY}` } }
     );
 
     if (paystackResponse.status === 200 && paystackResponse.data?.data) {
+      // 🔢 Generate tracking
       let trackingNumber;
-      let exists = true;
-      while (exists) {
+      do {
         trackingNumber = crypto.randomInt(100000, 999999).toString();
-        exists = await Tracking.findOne({ trackingNumber });
-      }
+      } while (await Tracking.findOne({ trackingNumber }));
 
       await Tracking.create({
         userId: user._id,
@@ -457,7 +402,7 @@ export const purchaseMultipleListings = async (req, res, next) => {
         amount: totalCost,
         status: "pending",
         reference: paymentReference,
-        listingId: listings.map((l) => l._id),
+        listingId: listings.map(l => l._id),
       });
 
       return res.status(201).json({
@@ -468,14 +413,11 @@ export const purchaseMultipleListings = async (req, res, next) => {
       });
     }
 
-    // Rollback if Paystack fails
     await InitializedOrder.findByIdAndDelete(order._id);
-    return res.status(400).json({
-      success: false,
-      message: "Payment initialization failed",
-    });
+    return res.status(400).json({ success: false, message: "Payment initialization failed" });
   } catch (error) {
-    next(error);
+    if (error.response?.data) console.error("Response:", error.response.data);
+    next(error.message);
   }
 };
 
