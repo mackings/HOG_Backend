@@ -29,7 +29,7 @@ import { rapydWebhook } from './src/modules/rapyd/controller/rapyd.controller.js
 
 const app = express();
 
-app.post("/api/v1/rapyd/webhook", express.json({ type: "*/*" }), rapydWebhook); // express.raw({ type: 'application/json' }),
+app.post("/api/v1/rapyd/webhook", express.json({ type: 'application/json' }), rapydWebhook); // express.raw({ type: 'application/json' }),
 
 connectDB();
 

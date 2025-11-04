@@ -19,7 +19,7 @@ function generateRapydSignature(method, path, body = "") {
 
 export const createRapydUserWalletAndAccount = async (req, res, next) => {
   try {
-    const { first_name, last_name, email, phone_number, gender, country = "US" } = req.body;
+    const { first_name, last_name, email, phone_number, country = "US" } = req.body;
 
     // 1️⃣ Create Wallet
     const walletPath = "/v1/ewallets";
@@ -27,11 +27,8 @@ export const createRapydUserWalletAndAccount = async (req, res, next) => {
       first_name,
       last_name,
       email,
-      gender,
       phone_number,
-      date_of_birth,
       country,
-      address,
       contact: {
         phone: {
           country_code: "1",
