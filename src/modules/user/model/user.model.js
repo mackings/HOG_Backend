@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { type } from "os";
 
 const userSchema = new mongoose.Schema({
     fullName: {
@@ -65,6 +66,27 @@ const userSchema = new mongoose.Schema({
         type: String,
     },
     phoneNumber: {
+        type: String,
+    },
+    rapydWalletId: {
+        type: String,
+    },
+    rapydVirtualAccountId: {
+        type: String,
+    },
+    issueBankAccountId: { 
+        type: String,
+    },
+    accountName: {
+        type: String,
+    },
+    routingNumber: {
+        type: String,
+    },
+    accountNumber: {
+        type: String,
+    },
+    bankName: {
         type: String,
     },
     role: {
