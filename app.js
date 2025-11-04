@@ -20,11 +20,16 @@ import buyerRouter from './src/modules/seller/routes/buyer.routes.js';
 import adminRouter from './src/modules/seller/routes/admin.routes.js';
 import makeOfferRouter from './src/modules/makeOffer/routes/makeOffer.routes.js';
 import deliveryRateRouter from './src/modules/deliveryRate/routes/deliveryRate.routes.js';
+import stripeRouter from './src/modules/stripe/routes/stripe.routes.js';
+import rapydRouter from './src/modules/rapyd/routes/rapyd.routes.js';
+import { rapydWebhook } from './src/modules/rapyd/controller/rapyd.controller.js';
 
 
- 
+
 
 const app = express();
+
+app.post("/api/v1/rapyd/webhook", express.json({ type: "*/*" }), rapydWebhook); // express.raw({ type: 'application/json' }),
 
 connectDB();
 
@@ -56,9 +61,11 @@ app.use('/api/v1/buyer', buyerRouter);
 app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/makeOffer', makeOfferRouter);
 app.use('/api/v1/deliveryRate', deliveryRateRouter);
+app.use('/api/v1/stripe', stripeRouter);
+app.use('/api/v1/rapyd', rapydRouter);
 
-app.use((req, res)=>{
-  res.status(404).json({message: "Endpoint not found. please, check the url and try again."})
+app.use((req, res) => {
+  res.status(404).json({ message: "Endpoint not found. please, check the url and try again." });
 });
 
 app.use(errorMiddleware);

@@ -310,9 +310,3 @@ export const getAllTracking = async (req, res, next)=>{
     next(error);
   }
 }
-
-
-
-
-
-        
