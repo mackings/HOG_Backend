@@ -44,7 +44,7 @@ export const createRapydUserWalletAndAccount = async (req, res, next) => {
       userCountry = "US";
     }
     // 1️⃣ Create Wallet
-    const walletPath = "/v1/user";    //ewallets;
+    const walletPath = "/v1/user";
     const walletBody = {
       first_name: user.fullName.split(" ")[0],
       last_name: user.fullName.split(" ")[1],
@@ -136,68 +136,29 @@ export const createRapydUserWalletAndAccount = async (req, res, next) => {
 };
 
 
-// export const createRapydPayment = async (req, res, next) => {
-//   try {
-//     const { amount, currency, issued_bank_account, remitter_information, requested_currency, phone_number, country = "US" } = req.body;
-//      const accountPath = "/v1/issuing/bankaccounts/credit";
-//     const accountBody = {
-//       // currency: "USD",
-//       // country,
-//       // description: `${first_name} ${last_name}'s Virtual Account`,
-//       // ewallet: wallet.id,
-//       issued_bank_account: "issuing_baed27116ff56ba18725ded5e3a4dc64",
-//       amount,
-//       requested_currency: "USD",
-//       currency: "US"
-//     };
-
-//     const accountSignature = generateRapydSignature("post", accountPath, accountBody);
-
-//     const accountResponse = await axios.post(`${RAPYD_BASE_URL}${accountPath}`, accountBody, {
-//       headers: {
-//         "Content-Type": "application/json",
-//         access_key: RAPYD_ACCESS_KEY,
-//         salt: accountSignature.salt,
-//         idempotency: crypto.randomBytes(6).toString("hex"),
-//         timestamp: accountSignature.timestamp,
-//         signature: accountSignature.signature,
-//       },
-//     });
-
-//     const virtualAccount = accountResponse.data.data;
-//     return res.status(200).json({
-//       success: true,
-//       message: "Payment created successfully",
-//       payment: virtualAccount,
-//     })
-//   }catch (error) {
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed to create payment",
-//       error: error.response?.data || error.message,
-//     })
-//     // return next(error)
-//   }
-// }
-
-
-
-
-export const createRapydPayment = async (req, res) => {
+export const walletBankTransfer = async (req, res) => {
   try {
-    const { amount, issued_bank_account, currency = "USD" } = req.body;
-
-    if (!issued_bank_account) {
-      return res.status(400).json({ success: false, message: "issued_bank_account is required" });
+    const { id }= req.params;
+    // const { id }= req.user;
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      })
     }
 
-    const path = "/v1/issuing/bankaccounts/credit";
+    const { amount, currency } = req.body;
+
+    
+
+    const path = "/v1/issuing/bankaccounts/bankaccounttransfertobankaccount";
 
     const body = {
-      issued_bank_account, // Must be like "issuing_02ce52bddab15ed9e62acaa59caa2773"
+      issued_bank_account: user.rapydVirtualAccountId,
       amount,
       currency,
-      requested_currency: "USD",
+      requested_currency: currency,
     };
 
     const { salt, timestamp, signature } = generateRapydSignature("post", path, body);
@@ -214,11 +175,10 @@ export const createRapydPayment = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Deposit simulated successfully",
+      message: "Deposited successfully",
       data: response.data.data,
     });
   } catch (error) {
-    console.error("Rapyd payment error:", error.response?.data || error.message);
     return res.status(500).json({
       success: false,
       message: "Failed to simulate deposit",
@@ -226,6 +186,129 @@ export const createRapydPayment = async (req, res) => {
     });
   }
 };
+
+
+
+// Helper: Get supported payout method type dynamically
+async function getPayoutMethodType(country) {
+  try {
+    const path = `/v1/payout_methods/country?country=${country}`;
+    const { salt, timestamp, signature } = generateRapydSignature("get", path);
+
+    const response = await axios.get(`${RAPYD_BASE_URL}${path}`, {
+      headers: {
+        "Content-Type": "application/json",
+        access_key: RAPYD_ACCESS_KEY,
+        salt,
+        timestamp,
+        signature,
+      },
+    });
+
+    // Return the first available payout method for that country
+    if (response.data?.data?.length > 0) {
+      return response.data.data[0].payout_method_type;
+    }
+    return null;
+  } catch (error) {
+    console.error(`⚠️ Failed to get payout methods for ${country}:`, error.response?.data || error.message);
+    return null;
+  }
+}
+
+export const externalBankTransfer = async (req, res) => {
+  try {
+    const { id } = req.user;
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const { amount, currency, bankAccount, swiftCode, bankName, country } = req.body;
+
+    const merchantReferenceId = `TXN-${Date.now()}`;
+    const path = "/v1/payouts";
+
+    const body = {
+      beneficiary: {
+        first_name: user.firstName || user.fullName?.split(" ")[0] || "John",
+        last_name: user.lastName || user.fullName?.split(" ")[1] || "Doe",
+        name: user.fullName || "John Doe",
+        address: user.address || "123 Main Street",
+        email: user.email,
+        country: country,
+        city: user.city || "Anytown",
+        postcode: user.postalCode || "12345",
+        account_number: bankAccount,
+        bank_name: bankName || "test_bank",
+        state: user.state || "NY",
+        identification_type: "SSC",
+        identification_value: "123456789",
+        bic_swift: swiftCode,
+        // ach_code: "123456789"
+      },
+      beneficiary_country: "SG", //  beneficiaryCountry,
+      beneficiary_entity_type: "individual",
+      description: "Bank transfer from user wallet",
+      merchant_reference_id: merchantReferenceId,
+      ewallet: user.rapydWalletId, // must be a valid Rapyd wallet ID (starts with 'ewallet_')
+      payout_amount: amount,
+      payout_currency: "SGD", // payoutCurrency,
+      payout_method_type: "sg_ocbc_bank",  // payoutMethodType,
+      sender: {
+        name: user.fullName || "John Doe",
+        address: user.address || "123 Main Street",
+        city: user.city || "Anytown",
+        state: user.state || "NY",
+        date_of_birth: user.dob || "01/01/1990",
+        postcode: user.postalCode || "12345",
+        remitter_account_type: "Individual",
+        source_of_income: "salary",
+        identification_type: "Passport",
+        identification_value: "A1234567",
+        purpose_code: "personal_payment",
+        account_number: "123456789",
+        beneficiary_relationship: "self",
+      },
+      sender_country: "SG", // beneficiaryCountry,
+      sender_currency: "SGD", // payoutCurrency,
+      sender_entity_type: "individual",
+      statement_descriptor: "Darimaids Transfer",
+      metadata: {
+        merchant_defined: true,
+        userId: user._id,
+      },
+    };
+
+    const { salt, timestamp, signature } = generateRapydSignature("post", path, body);
+
+    const response = await axios.post(`${RAPYD_BASE_URL}${path}`, body, {
+      headers: {
+        "Content-Type": "application/json",
+        access_key: RAPYD_ACCESS_KEY,
+        salt,
+        timestamp,
+        signature,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "✅ Payout to external bank account initiated successfully",
+      data: response.data.data,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send payout to bank account",
+      error: error.response?.data || error.message,
+    });
+  }
+};
+
+
+
 
 
 export const enableRapydWallet = async (req, res, next) => {
@@ -268,37 +351,65 @@ export const enableRapydWallet = async (req, res, next) => {
 
 
 
-export const getAllRapydWallet = async (req, res) => {
+export const getRapydWalletWithVirtualAccounts = async (req, res) => {
   try {
-    const path = "/v1/ewallets";
+    const { id }= req.user;
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      })
+    }
 
-    // ⚡ Signature for GET request (no body)
-    const { salt, timestamp, signature } = generateRapydSignature("get", path);
+    const walletPath = `/v1/user/${user.rapydWalletId}`;
+    const walletSig = generateRapydSignature("get", walletPath);
 
-    const response = await axios.get(`${RAPYD_BASE_URL}${path}`, {
+    const walletResponse = await axios.get(`${RAPYD_BASE_URL}${walletPath}`, {
       headers: {
         "Content-Type": "application/json",
         access_key: RAPYD_ACCESS_KEY,
-        salt,
-        timestamp,
-        signature,
+        salt: walletSig.salt,
+        timestamp: walletSig.timestamp,
+        signature: walletSig.signature,
       },
     });
 
+    const walletData = walletResponse.data.data;
+
+    // 2️⃣ Get Virtual Accounts Linked to Wallet
+    const vaPath = `/v1/ewallets/${user.rapydWalletId}/virtual_accounts`;
+    const vaSig = generateRapydSignature("get", vaPath);
+
+    const virtualAccountResponse = await axios.get(`${RAPYD_BASE_URL}${vaPath}`, {
+      headers: {
+        "Content-Type": "application/json",
+        access_key: RAPYD_ACCESS_KEY,
+        salt: vaSig.salt,
+        timestamp: vaSig.timestamp,
+        signature: vaSig.signature,
+      },
+    });
+
+    const virtualAccounts = virtualAccountResponse.data.data;
+
+    // ✅ Response
     return res.status(200).json({
       success: true,
-      message: "All Rapyd wallets retrieved successfully",
-      wallets: response.data.data,
+      message: "Wallet and virtual accounts retrieved successfully",
+      wallet: walletData,
+      virtualAccounts,
     });
   } catch (error) {
-    console.error("Get Rapyd Wallets Error:", error.response?.data || error.message);
     return res.status(500).json({
       success: false,
-      message: "Failed to retrieve wallets",
+      message: "Failed to retrieve wallet or virtual accounts",
       error: error.response?.data || error.message,
     });
   }
 };
+
+
 
 
 
