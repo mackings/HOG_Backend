@@ -189,33 +189,6 @@ export const walletBankTransfer = async (req, res) => {
 
 
 
-// Helper: Get supported payout method type dynamically
-async function getPayoutMethodType(country) {
-  try {
-    const path = `/v1/payout_methods/country?country=${country}`;
-    const { salt, timestamp, signature } = generateRapydSignature("get", path);
-
-    const response = await axios.get(`${RAPYD_BASE_URL}${path}`, {
-      headers: {
-        "Content-Type": "application/json",
-        access_key: RAPYD_ACCESS_KEY,
-        salt,
-        timestamp,
-        signature,
-      },
-    });
-
-    // Return the first available payout method for that country
-    if (response.data?.data?.length > 0) {
-      return response.data.data[0].payout_method_type;
-    }
-    return null;
-  } catch (error) {
-    console.error(`⚠️ Failed to get payout methods for ${country}:`, error.response?.data || error.message);
-    return null;
-  }
-}
-
 export const externalBankTransfer = async (req, res) => {
   try {
     const { id } = req.user;
@@ -225,37 +198,112 @@ export const externalBankTransfer = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    const { amount, currency, bankAccount, swiftCode, bankName, country } = req.body;
+    const {
+      amount,
+      currency,
+      identification_type,
+      identification_value,
+      bankAccount,
+      swiftCode,
+      bankName,
+      country,
+    } = req.body;
 
     const merchantReferenceId = `TXN-${Date.now()}`;
     const path = "/v1/payouts";
 
+    // ✅ Corrected country-to-code mappings
+    const countryCodeMap = {
+      USA: "US",
+      NIGERIA: "NG",
+      CANADA: "CA",
+      "UNITED KINGDOM": "GB",
+      FRANCE: "FR",
+      GERMANY: "DE",
+      INDIA: "IN",
+      SINGAPORE: "SG",
+      AUSTRALIA: "AU",
+      "HONG KONG": "HK",
+      JAPAN: "JP",
+      EUROPE: "EU",
+    };
+
+    const beneficiary_country = countryCodeMap[country?.toUpperCase()];
+    if (!beneficiary_country) {
+      return res.status(400).json({
+        success: false,
+        message: `Unsupported beneficiary country: ${country}`,
+      });
+    }
+
+    // ✅ Currency map
+    const currencyMap = {
+      US: "USD",
+      NG: "NGN",
+      CA: "CAD",
+      GB: "GBP",
+      FR: "EUR",
+      DE: "EUR",
+      IN: "INR",
+      SG: "SGD",
+      AU: "AUD",
+      HK: "HKD",
+      JP: "JPY",
+      EU: "EUR",
+    };
+
+    const payout_currency = currencyMap[beneficiary_country] || currency?.toUpperCase();
+
+    // ✅ Payout method mapping
+    const payout_method_type_map = {
+      US: "us_ach_bank",
+      NG: "ng_bank",
+      CA: "ca_bank",
+      GB: "gb_bacs_bank",
+      FR: "fr_bank",
+      DE: "de_bank",
+      IN: "in_bank",
+      SG: "sg_ocbc_bank",
+      AU: "au_bank",
+      HK: "hk_bank",
+      JP: "jp_bank",
+      EU: "eu_sepa_bank",
+    };
+
+    const payout_method_type = payout_method_type_map[beneficiary_country];
+    if (!payout_method_type) {
+      return res.status(400).json({
+        success: false,
+        message: `Unsupported payout method for country: ${country}`,
+      });
+    }
+
+    // ✅ Construct payout body
     const body = {
       beneficiary: {
-        first_name: user.firstName || user.fullName?.split(" ")[0] || "John",
-        last_name: user.lastName || user.fullName?.split(" ")[1] || "Doe",
+        first_name: user.firstName || "John",
+        last_name: user.lastName || "Doe",
         name: user.fullName || "John Doe",
         address: user.address || "123 Main Street",
         email: user.email,
-        country: country,
+        country: beneficiary_country,
         city: user.city || "Anytown",
-        postcode: user.postalCode || "12345",
+        postcode: user.postalCode || "10001",
         account_number: bankAccount,
-        bank_name: bankName || "test_bank",
+        bank_name: bankName,
         state: user.state || "NY",
-        identification_type: "SSC",
-        identification_value: "123456789",
-        bic_swift: swiftCode,
-        // ach_code: "123456789"
+        identification_type: identification_type || "Passport",
+        identification_value: identification_value || "A1234567",
+        bic_swift: swiftCode
       },
-      beneficiary_country: "SG", //  beneficiaryCountry,
+      beneficiary_country,
       beneficiary_entity_type: "individual",
-      description: "Bank transfer from user wallet",
+      description: "Wallet-to-bank transfer",
       merchant_reference_id: merchantReferenceId,
-      ewallet: user.rapydWalletId, // must be a valid Rapyd wallet ID (starts with 'ewallet_')
+      ewallet: user.rapydWalletId,
       payout_amount: amount,
-      payout_currency: "SGD", // payoutCurrency,
-      payout_method_type: "sg_ocbc_bank",  // payoutMethodType,
+      payout_currency,
+      payout_method_type,
       sender: {
         name: user.fullName || "John Doe",
         address: user.address || "123 Main Street",
@@ -265,24 +313,26 @@ export const externalBankTransfer = async (req, res) => {
         postcode: user.postalCode || "12345",
         remitter_account_type: "Individual",
         source_of_income: "salary",
-        identification_type: "Passport",
-        identification_value: "A1234567",
+        identification_type: identification_type || "Passport",
+        identification_value: identification_value || "A1234567",
         purpose_code: "personal_payment",
-        account_number: "123456789",
+        account_number: user.accountNumber || "9876543210",
         beneficiary_relationship: "self",
       },
-      sender_country: "SG", // beneficiaryCountry,
-      sender_currency: "SGD", // payoutCurrency,
+      sender_country: "US",
+      sender_currency: "USD",
       sender_entity_type: "individual",
-      statement_descriptor: "Darimaids Transfer",
+      statement_descriptor: "HOG Transfer",
       metadata: {
         merchant_defined: true,
         userId: user._id,
       },
     };
 
+    // ✅ Generate signature
     const { salt, timestamp, signature } = generateRapydSignature("post", path, body);
 
+    // ✅ Execute payout
     const response = await axios.post(`${RAPYD_BASE_URL}${path}`, body, {
       headers: {
         "Content-Type": "application/json",
@@ -306,6 +356,7 @@ export const externalBankTransfer = async (req, res) => {
     });
   }
 };
+
 
 
 
