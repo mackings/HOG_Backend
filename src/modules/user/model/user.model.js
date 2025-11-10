@@ -43,6 +43,12 @@ const userSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    commission: {
+        type: Number,
+    },
+    tax: {
+        type: Number,
+    },
     billImage: {
         type: String,
         default: null

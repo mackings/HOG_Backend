@@ -5,6 +5,7 @@ import Category from '../../category/model/category.model.js';
 import Transactions from '../../transaction/model/transaction.model.js';
 import Review from '../../review/model/review.model.js';
 import mongoose from "mongoose";
+import Commission from '../../commission/model/commission.model.js';
 import { sendReviewUpdateEmail } from "../../../utils/emailService.utils.js";
 
 
@@ -39,7 +40,17 @@ export const createReview = async (req, res, next) => {
 
     const materialCost = Number(materialTotalCost) || 0;
     const workmanshipCost = Number(workmanshipTotalCost) || 0;
-    const totalCost = materialCost + workmanshipCost;
+    const subTotalCost = materialCost + workmanshipCost;
+
+    const tax = 20 / 100 * subTotalCost;
+
+    const feeDoc = await Commission.findOne();
+    const feePercentage = feeDoc ? Number(feeDoc.amount) : 0;
+
+    const grossAmount = Number(subTotalCost).toFixed(0);
+    const fee = ((feePercentage / 100) * grossAmount).toFixed(0);
+    // const netAmount = (Number(grossAmount) - Number(fee)).toFixed(0)
+    const totalCost = Number(grossAmount) + Number(tax) + Number(fee);
 
     // check if review exists
     let review = await Review.findOne({
@@ -57,6 +68,8 @@ export const createReview = async (req, res, next) => {
             materialTotalCost: materialCost,
             workmanshipTotalCost: workmanshipCost,
             totalCost,
+            tax,
+            commission: fee,
             deliveryDate,
             reminderDate,
             comment,
@@ -76,6 +89,8 @@ export const createReview = async (req, res, next) => {
         deliveryDate,
         reminderDate,
         comment,
+        tax,
+        commission: fee,
         status: "quote",
       });
     }
@@ -308,6 +323,17 @@ export const updateReview = async (req, res, next) => {
       reminderDate,
     } = req.body;
 
+    const subTotalCost = Number(materialTotalCost) + Number(workmanshipTotalCost);
+    const tax = 20 / 100 * subTotalCost;
+
+    const feeDoc = await Commission.findOne();
+    const feePercentage = feeDoc ? Number(feeDoc.amount) : 0;
+
+    const grossAmount = Number(subTotalCost).toFixed(0);
+    const fee = ((feePercentage / 100) * grossAmount).toFixed(0);
+    // const netAmount = (Number(grossAmount) - Number(fee)).toFixed(0)
+    const totalCost = Number(grossAmount) + Number(tax) + Number(fee);
+
     // Update numeric fields safely
     if (materialTotalCost !== undefined) {
       review.materialTotalCost = Number(materialTotalCost) || 0;
@@ -315,10 +341,20 @@ export const updateReview = async (req, res, next) => {
     if (workmanshipTotalCost !== undefined) {
       review.workmanshipTotalCost = Number(workmanshipTotalCost) || 0;
     }
+    if(tax !== undefined) {
+      review.tax = Number(tax) || 0;
+    }
+
+    if(fee !== undefined) {
+      review.fee = Number(fee) || 0;
+    }
+    if(totalCost !== undefined) {
+      review.totalCost = Number(totalCost) || 0;
+    }
 
     // Always recompute total
-    review.totalCost =
-      (review.materialTotalCost || 0) + (review.workmanshipTotalCost || 0);
+    // review.totalCost =
+    //   (review.materialTotalCost || 0) + (review.workmanshipTotalCost || 0);
 
     if (comment !== undefined) review.comment = comment;
     if (deliveryDate !== undefined) review.deliveryDate = deliveryDate;

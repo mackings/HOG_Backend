@@ -41,6 +41,13 @@ const reviewSchema = new mongoose.Schema({
     deliveryDate: {
         type: Date,
     },
+    tax: {
+        type: Number,
+        default: 0,
+    },
+    commission: {
+        type: Number,
+    },
     reminderDate: {
         type: Date,
     },
