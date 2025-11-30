@@ -69,6 +69,7 @@ export const createReview = async (req, res, next) => {
             workmanshipTotalCost: workmanshipCost,
             totalCost,
             tax,
+            subTotalCost,
             commission: fee,
             deliveryDate,
             reminderDate,
@@ -85,6 +86,7 @@ export const createReview = async (req, res, next) => {
         materialId: material._id,
         materialTotalCost: materialCost,
         workmanshipTotalCost: workmanshipCost,
+        subTotalCost,
         totalCost,
         deliveryDate,
         reminderDate,
@@ -343,6 +345,9 @@ export const updateReview = async (req, res, next) => {
     }
     if(tax !== undefined) {
       review.tax = Number(tax) || 0;
+    }
+    if(subTotalCost !== undefined) {
+      review.subTotalCost = Number(subTotalCost) || 0;
     }
 
     if(fee !== undefined) {

@@ -673,6 +673,17 @@ export const orderWebhook = async (req, res, next) => {
             },
             { new: true }
           );
+          
+          await User.updateMany(
+            { role: { $in: ["admin", "superAdmin"] } },
+            {
+              $inc: {
+                commission: review.commission,
+                tax: review.tax
+              }
+            }
+          );
+
         }
       }
 
