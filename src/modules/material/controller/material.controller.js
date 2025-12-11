@@ -404,13 +404,13 @@ export const createPaymentOnline = async (req, res, next) => {
 
     const countryCurrencyMapping = {
       nigeria: "NGN",
-      "united kingdom": "GBP",
-      "united states": "USD",
+      // "united kingdom": "GBP",
+      // "united states": "USD",
     };
 
     const userCountry = user.country?.toLowerCase().trim();
 
-    const userCurrency = countryCurrencyMapping[userCountry] || "USD";
+    const userCurrency = countryCurrencyMapping[userCountry] || "NGN";
     // Paystack payment initialization
     const paystackResponse = await axios.post(
       "https://api.paystack.co/transaction/initialize",
@@ -508,13 +508,13 @@ export const createPartPaymentOnline = async (req, res, next) => {
 
     const countryCurrencyMapping = {
       nigeria: "NGN",
-      "united kingdom": "GBP",
-      "united states": "USD",
+      // "united kingdom": "GBP",
+      // "united states": "USD",
     };
 
     const userCountry = user.country?.toLowerCase().trim();
 
-    const userCurrency = countryCurrencyMapping[userCountry] || "USD";
+    const userCurrency = countryCurrencyMapping[userCountry] || "NGN";
 
     const paystackUrl = "https://api.paystack.co/transaction/initialize";
     const paystackResponse = await axios.post(
@@ -561,6 +561,7 @@ export const orderWebhook = async (req, res, next) => {
     }
 
     const { reference } = data;
+    const receiverAccountNumber = data.metadata?.receiver_account_number;
 
     const order = await InitializedOrder.findOne({ paymentReference: reference });
     if (!order) {
@@ -716,7 +717,31 @@ export const orderWebhook = async (req, res, next) => {
 
       await sendTransactionListingEmail(owner, user.email, transaction);
     }
+    
+    if (receiverAccountNumber) {
+    const user = await User.findOne({ accountNumber: receiverAccountNumber });
+    if (!user) {
+        console.error('User not found for account number:', receiverAccountNumber);
+        return;
+    }
 
+    const amount = data.amount / 100;
+    await User.findByIdAndUpdate(user._id, { $inc: { wallet: amount } });
+
+    await Transactions.create({
+        userId: user._id,
+        totalAmount: amount,
+        status: 'completed',
+        transactionType: 'deposit',
+        paymentReference: reference,
+        receiverAccountNumber: data.authorization?.receiver_bank_account_number || '',
+        senderBank: data.authorization?.sender_bank || '',
+        senderBankAccountNumber: data.authorization?.sender_bank_account_number || '',
+        senderName: data.authorization?.sender_name || '',
+        reason: data.authorization?.narration || '',
+        sessionId: data.authorization?.session_id || '',
+    });
+  }
 
     await InitializedOrder.findByIdAndDelete(order._id);
 

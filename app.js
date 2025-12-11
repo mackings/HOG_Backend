@@ -24,6 +24,7 @@ import stripeRouter from './src/modules/stripe/routes/stripe.routes.js';
 import rapydRouter from './src/modules/rapyd/routes/rapyd.routes.js';
 import { rapydWebhook } from './src/modules/rapyd/controller/rapyd.controller.js';
 import feeRouter from './src/modules/commission/routes/commission.routes.js'
+import conversionRouter from './src/modules/conversion/routes/conversion.routes.js';
 
 
 
@@ -65,6 +66,7 @@ app.use('/api/v1/deliveryRate', deliveryRateRouter);
 app.use('/api/v1/stripe', stripeRouter);
 app.use('/api/v1/rapyd', rapydRouter);
 app.use('/api/v1/fee', feeRouter);
+app.use('/api/v1/conversion', conversionRouter);
 
 app.use((req, res) => {
   res.status(404).json({ message: "Endpoint not found. please, check the url and try again." });

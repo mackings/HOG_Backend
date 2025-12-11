@@ -77,13 +77,28 @@ const transactionSchema = new mongoose.Schema({
         type: String,
     },
     plan: {
-    type: String,
+        type: String,
     },
     subscriptionStartDate: {
         type: Date,
     },
     subscriptionEndDate: {
         type: Date,
+    },
+    receiverAccountNumber: {
+        type: String,
+    },
+    receiverBank: {
+        type: String,
+    },
+    senderBank: {
+        type: String,
+    },
+    senderBankAccountNumber: {
+        type: String,
+    },
+    senderName: {
+        type: String,
     },
 },
     {

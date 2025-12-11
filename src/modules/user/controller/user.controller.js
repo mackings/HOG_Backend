@@ -72,6 +72,45 @@ export const verifyToken = async (req, res, next) => {
       country,
     });
 
+    const paystackCustomerParams = {
+        email: email,
+        first_name: fullName.split(' ')[0],
+        last_name: fullName.split(' ')[1] || '',
+        phone: phoneNumber
+      };
+  
+    const customerResponse = await axios.post('https://api.paystack.co/customer', paystackCustomerParams, {
+      headers: {
+        Authorization: `Bearer ${process.env.PAYSTACK_MAIN_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const customer = customerResponse.data.data;
+
+    const paystackWalletParams = {
+      customer: customer.id,
+      preferred_bank: "wema-bank",
+    };
+    const walletResponse = await axios.post('https://api.paystack.co/dedicated_account', paystackWalletParams, {
+      headers: {
+        Authorization: `Bearer ${process.env.PAYSTACK_MAIN_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    const walletData = walletResponse.data.data;
+
+    await User.findByIdAndUpdate(newUser._id, 
+      { 
+        accountNumber: walletData.account_number, 
+        accountName: walletData.account_name,
+        bankName: "Wema Bank"
+      },
+      {
+        new: true
+      }
+    );
+
     await Token.deleteOne({ token });
 
     newUser.password = undefined;
@@ -322,7 +361,7 @@ export const getUserCurrency = async (req, res, next) => {
 
     const userCountry = user.country?.toLowerCase().trim();
 
-    const userCurrency = countryCurrencyMapping[userCountry] || "USD";
+    const userCurrency = countryCurrencyMapping[userCountry] || "NGN";
     
     return res.status(200).json({
       success: true,

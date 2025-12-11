@@ -73,7 +73,7 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 export const sendEmail = async ({
   to,
-  from = "ebisco4ui@yopmail.com",
+  from = "ebisco4ui@gmail.com", // ebisco4ui@yopmail.com
   subject,
   htmlContent,
   attachments = [],
