@@ -372,3 +372,37 @@ export const getUserCurrency = async (req, res, next) => {
     next(error);
   }
 };
+
+
+
+export const getUserWalletBalance = async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const user = await User.findById(userId).select("wallet");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "User wallet balance fetched successfully",
+      data: {
+        wallet: user.wallet,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
