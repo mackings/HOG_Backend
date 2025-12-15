@@ -9,7 +9,7 @@ import { userCheckRole } from '../../../middlewares/checkRole.middleware';
 const router = Router();
 
 router.use(isAuth);
-router.use(userCheckRole(["tailor"]));
+router.use(userCheckRole(["tailor", "user", "admin", "superAdmin"]));
 router.post('/create', createBankAccount);
 router.get('/account', getBankAccount);
 router.put('/account/:bankId', updateBankAccount);
