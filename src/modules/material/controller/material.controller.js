@@ -555,7 +555,6 @@ export const createPartPaymentOnline = async (req, res, next) => {
 export const orderWebhook = async (req, res, next) => {
   try {
     const { data, event } = req.body;
-    console.log("data:", data)
 
     if (event !== "charge.success") {
       return res.status(200).json({ message: "Unhandled event" });
@@ -564,6 +563,38 @@ export const orderWebhook = async (req, res, next) => {
     const { reference } = data;
     const receiverAccountNumber = data.metadata?.receiver_account_number;
 
+  if(receiverAccountNumber) {
+
+     const user = await User.findOne({ accountNumber: receiverAccountNumber });
+
+    if (!user) {
+      console.error("User not found for account number:", receiverAccountNumber);
+      return res.status(200).json({ success: true });
+    }
+
+    const amount = data.amount / 100;
+
+    await User.findByIdAndUpdate(user._id, {
+      $inc: { wallet: amount },
+    });
+
+    await Transactions.create({
+      userId: user._id,
+      totalAmount: amount,
+      status: "completed",
+      transactionType: "deposit",
+      paymentReference: reference || null,
+      receiverAccountNumber,
+      senderBank: data.authorization?.sender_bank || "",
+      senderBankAccountNumber:
+        data.authorization?.sender_bank_account_number || "",
+      senderName: data.authorization?.sender_name || "",
+      reason: data.authorization?.narration || "",
+      sessionId: data.authorization?.session_id || "",
+    });
+  }
+
+  if(reference){
     const order = await InitializedOrder.findOne({ paymentReference: reference });
     if (!order) {
       return res.status(200).json({
@@ -719,30 +750,6 @@ export const orderWebhook = async (req, res, next) => {
       await sendTransactionListingEmail(owner, user.email, transaction);
     }
     
-    if (receiverAccountNumber) {
-    const user = await User.findOne({ accountNumber: receiverAccountNumber });
-    if (!user) {
-        console.error('User not found for account number:', receiverAccountNumber);
-        return;
-    }
-
-    const amount = data.amount / 100;
-    await User.findByIdAndUpdate(user._id, { $inc: { wallet: amount } });
-
-    await Transactions.create({
-        userId: user._id,
-        totalAmount: amount,
-        status: 'completed',
-        transactionType: 'deposit',
-        paymentReference: reference,
-        receiverAccountNumber: data.authorization?.receiver_bank_account_number || '',
-        senderBank: data.authorization?.sender_bank || '',
-        senderBankAccountNumber: data.authorization?.sender_bank_account_number || '',
-        senderName: data.authorization?.sender_name || '',
-        reason: data.authorization?.narration || '',
-        sessionId: data.authorization?.session_id || '',
-    });
-  }
 
     await InitializedOrder.findByIdAndDelete(order._id);
 
@@ -751,6 +758,7 @@ export const orderWebhook = async (req, res, next) => {
       message: "Payment successful",
       order: transaction,
     });
+  }
   } catch (error) {
     next(error);
   }
