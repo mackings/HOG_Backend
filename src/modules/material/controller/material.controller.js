@@ -581,16 +581,17 @@ export const orderWebhook = async (req, res, next) => {
     await Transactions.create({
       userId: user._id,
       totalAmount: amount,
-      status: "completed",
-      transactionType: "deposit",
+      status: data.status,
+      transactionType: "credit",
       paymentReference: reference || null,
       receiverAccountNumber,
+      paymentCurrency: data.currency,
+      receiverBank: "HoG",
       senderBank: data.authorization?.sender_bank || "",
-      senderBankAccountNumber:
-        data.authorization?.sender_bank_account_number || "",
+      senderBankAccountNumber: data.authorization?.sender_bank_account_number || "",
       senderName: data.authorization?.sender_name || "",
       reason: data.authorization?.narration || "",
-      sessionId: data.authorization?.session_id || "",
+      sessionId: data.authorization?.session_id || reference,
     });
   }
 

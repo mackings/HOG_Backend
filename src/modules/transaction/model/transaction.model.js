@@ -100,6 +100,9 @@ const transactionSchema = new mongoose.Schema({
     senderName: {
         type: String,
     },
+    transactionType: {
+        type: String,
+    }
 },
     {
         timestamps: true,
