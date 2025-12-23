@@ -23,6 +23,7 @@ import deliveryRateRouter from './src/modules/deliveryRate/routes/deliveryRate.r
 import stripeRouter from './src/modules/stripe/routes/stripe.routes.js';
 import rapydRouter from './src/modules/rapyd/routes/rapyd.routes.js';
 import { rapydWebhook } from './src/modules/rapyd/controller/rapyd.controller.js';
+import { webhookPaymentSuccess } from './src/modules/stripe/controller/stripe.controller.js';
 import feeRouter from './src/modules/commission/routes/commission.routes.js'
 import conversionRouter from './src/modules/conversion/routes/conversion.routes.js';
 
@@ -31,6 +32,7 @@ import conversionRouter from './src/modules/conversion/routes/conversion.routes.
 
 const app = express();
 
+app.post('/api/v1/stripe/webhook', express.raw({ type: 'application/json' }), webhookPaymentSuccess);
 app.post("/api/v1/rapyd/webhook", express.json({ type: 'application/json' }), rapydWebhook); // express.raw({ type: 'application/json' }),
 
 connectDB();

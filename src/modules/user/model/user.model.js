@@ -92,6 +92,9 @@ const userSchema = new mongoose.Schema({
     accountNumber: {
         type: String,
     },
+    stripeId: {
+        type: String
+    },
     bankName: {
         type: String,
     },
