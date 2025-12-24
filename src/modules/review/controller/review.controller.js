@@ -94,6 +94,7 @@ export const createReview = async (req, res, next) => {
         tax,
         commission: fee,
         status: "quote",
+        country: user.country
       });
     }
 

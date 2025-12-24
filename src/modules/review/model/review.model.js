@@ -58,6 +58,9 @@ const reviewSchema = new mongoose.Schema({
     comment: {
         type: String,
     },
+    country: {
+        type: String,
+    },
     status: {
         type: String,
         enum: ["pending", "approved", "rejected", "requesting", "quote", "part payment", "full payment"],

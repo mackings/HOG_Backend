@@ -35,7 +35,7 @@ export const createUserAccount = async (req, res, next) => {
 
     if (!stripeAccountId) {
       const account = await stripe.accounts.create({
-        type: "express",
+        type: "custom",
         country: "US",
         email: user.email,
         business_type: "individual",
@@ -64,7 +64,7 @@ export const createUserAccount = async (req, res, next) => {
       account: stripeAccountId,
       refresh_url: "https://yourapp.com/stripe/reauth",
       return_url: "https://yourapp.com/stripe/success",
-      type: "account_onboarding",
+      type: "account_onboarding" //,
     });
 
     return res.status(200).json({
@@ -110,37 +110,10 @@ export const getStripeAccountStatus = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       data: {
-        account: {
-          id: account.id,
-          email: account.email,
-          country: account.country,
-          business_type: account.business_type,
-          payouts_enabled: account.payouts_enabled,
-          charges_enabled: account.charges_enabled,
-          capabilities: account.capabilities,
-          requirements: {
-            currently_due: account.requirements?.currently_due || [],
-            eventually_due: account.requirements?.eventually_due || [],
-            disabled_reason: account.requirements?.disabled_reason || null,
-          },
-          individual: account.individual
-            ? {
-                first_name: account.individual.first_name,
-                last_name: account.individual.last_name,
-                email: account.individual.email,
-                verification: account.individual.verification,
-              }
-            : null,
-        },
-        bankAccounts: bankAccounts.data.map((b) => ({
-          id: b.id,
-          bank_name: b.bank_name,
-          last4: b.last4,
-          currency: b.currency,
-          country: b.country,
-          status: b.status,
-        })),
-      },
+        stripeAccount: account,
+        bankAccounts: bankAccounts.data,
+      }
+        
     });
   } catch (error) {
     return next(error);
