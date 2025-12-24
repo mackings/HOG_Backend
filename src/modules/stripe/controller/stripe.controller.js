@@ -35,19 +35,16 @@ export const createUserAccount = async (req, res, next) => {
 
     if (!stripeAccountId) {
       const account = await stripe.accounts.create({
-        type: "custom",
-        country: "US",
-        email: user.email,
+        type: "express",
         business_type: "individual",
         capabilities: {
           transfers: { requested: true },
-          card_payments: { requested: true },
         },
-        individual: {
-          email: user.email,
-          first_name: user.fullName.split(" ")[0],
-          last_name: user.fullName.split(" ")[1] || "",
-        },
+        // individual: {
+        //   email: user.email,
+        //   first_name: user.fullName.split(" ")[0],
+        //   last_name: user.fullName.split(" ")[1] || "",
+        // },
       });
 
       stripeAccountId = account.id;
@@ -110,13 +107,30 @@ export const getStripeAccountStatus = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       data: {
-        stripeAccount: account,
-        bankAccounts: bankAccounts.data,
-      }
-        
+        account: {
+          id: account.id,
+          email: account.email,
+          country: account.country,
+          charges_enabled: account.charges_enabled,
+          payouts_enabled: account.payouts_enabled,
+          requirements: {
+            currently_due: account.requirements?.currently_due || [],
+            eventually_due: account.requirements?.eventually_due || [],
+            disabled_reason: account.requirements?.disabled_reason || null,
+          },
+        },
+        bankAccounts: bankAccounts.data.map((bank) => ({
+          id: bank.id,
+          bank_name: bank.bank_name,
+          last4: bank.last4,
+          currency: bank.currency,
+          country: bank.country,
+          status: bank.status,
+        })),
+      },
     });
   } catch (error) {
-    return next(error);
+    next(error);
   }
 };
 
@@ -459,9 +473,25 @@ export const webhookPaymentSuccess = async (req, res) => {
       const vendor = await Vendor.findById(order.vendorId);
 
       if (vendor?.userId && review) {
-        await User.findByIdAndUpdate(vendor.userId, {
+        const user = await User.findByIdAndUpdate(vendor.userId, {
           $inc: { wallet: order.amountPaid },
         });
+
+        if (user.stripeId) {
+          const transferGroup = crypto.randomBytes(6).toString("hex");
+      // 💸 Transfer funds
+          await stripe.transfers.create({
+            amount: Math.round(order.amountPaid * 100), // cents
+            currency: "usd",
+            destination: user.stripeId,
+            transfer_group: transferGroup,
+          });
+          await User.findByIdAndUpdate(
+            user._id,
+            { $inc: { wallet: -order.amountPaid } },
+            { new: true }
+          );
+        }
 
         await Review.findByIdAndUpdate(review._id, {
           $inc: { amountPaid: order.amountPaid },
