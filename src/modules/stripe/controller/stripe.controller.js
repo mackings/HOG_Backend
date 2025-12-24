@@ -295,12 +295,12 @@ export const createStripePayment = async (req, res, next) => {
     const amountInCents = totalCost * 100;
 
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
+      // payment_method_types: ["card"],
       mode: "payment",
       line_items: [{
         price_data: {
           currency: userCurrency,
-          product_data: { name: `Order ${paymentReference}` },
+          product_data: { name: `OrderId-${paymentReference}` },
           unit_amount: amountInCents,
         },
         quantity: 1,
