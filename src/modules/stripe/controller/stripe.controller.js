@@ -81,6 +81,73 @@ export const createUserAccount = async (req, res, next) => {
 };
 
 
+export const getStripeAccountStatus = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+
+    const user = await User.findById(id).select("stripeId email");
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (!user.stripeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Stripe account not created",
+      });
+    }
+
+    const account = await stripe.accounts.retrieve(user.stripeId);
+
+    const bankAccounts = await stripe.accounts.listExternalAccounts(
+      user.stripeId,
+      { object: "bank_account" }
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        account: {
+          id: account.id,
+          email: account.email,
+          country: account.country,
+          business_type: account.business_type,
+          payouts_enabled: account.payouts_enabled,
+          charges_enabled: account.charges_enabled,
+          capabilities: account.capabilities,
+          requirements: {
+            currently_due: account.requirements?.currently_due || [],
+            eventually_due: account.requirements?.eventually_due || [],
+            disabled_reason: account.requirements?.disabled_reason || null,
+          },
+          individual: account.individual
+            ? {
+                first_name: account.individual.first_name,
+                last_name: account.individual.last_name,
+                email: account.individual.email,
+                verification: account.individual.verification,
+              }
+            : null,
+        },
+        bankAccounts: bankAccounts.data.map((b) => ({
+          id: b.id,
+          bank_name: b.bank_name,
+          last4: b.last4,
+          currency: b.currency,
+          country: b.country,
+          status: b.status,
+        })),
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+
 
 export const makeStripeTransfer = async (req, res, next) => {
   try {
