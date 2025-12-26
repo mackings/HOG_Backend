@@ -521,7 +521,7 @@ export const getReviewsForMaterialById = async (req, res, next) => {
     }
 
     const reviews = await Review.find({ materialId: material._id })
-      .populate("userId", "fullName email image")
+      .populate("userId", "fullName email image country phoneNumber address")
       .lean();
 
     return res.status(200).json({
