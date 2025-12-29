@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { createBankAccount, getBankAccount, updateBankAccount, verifyingBankAccount,
     transferToBankAccount
- } from '../controller/bank.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-import { userCheckRole } from '../../../middlewares/checkRole.middleware';
+ } from '../controller/bank.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
 
 
 const router = Router();

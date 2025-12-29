@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { register, verifyToken, login, forgotPassword, resetPassword, updateProfile, uploadImage, getProfile,
   uploadBillImage, getAllusers, getAllTailor, getUserCurrency, getUserWalletBalance
-  } from '../controller/user.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-import { imageUpload, imageKitUpload } from '../../../utils/imagekit';
+  } from '../controller/user.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { imageUpload, imageKitUpload } from '../../../utils/imagekit.js';
 
 
 const router = Router();

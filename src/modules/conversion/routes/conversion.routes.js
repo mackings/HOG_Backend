@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { nairaExchangeRate, convertCurrency } from '../controller/conversion.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-import { userCheckRole } from '../../../middlewares/checkRole.middleware';
+import { nairaExchangeRate, convertCurrency } from '../controller/conversion.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
 
 
 const router = Router();

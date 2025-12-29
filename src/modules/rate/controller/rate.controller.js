@@ -1,6 +1,6 @@
-import Vendor from "../../vendor/model/vendor.model";
-import User from "../../user/model/user.model";
-import Material from "../../material/model/material.model"
+import Vendor from "../../vendor/model/vendor.model.js";
+import User from "../../user/model/user.model.js";
+import Material from "../../material/model/material.model.js"
 
 
 

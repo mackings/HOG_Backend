@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { createDeliveryRate, getDeliveryRates, updateDeliveryRate, deleteDeliveryRate,
     deliveryCost
- } from '../controller/deliveryRate.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-import { userCheckRole } from '../../../middlewares/checkRole.middleware';
+ } from '../controller/deliveryRate.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
 
 
 const router = Router();

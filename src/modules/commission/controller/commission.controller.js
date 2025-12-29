@@ -1,4 +1,4 @@
-import Commission from "../model/commission.model"
+import Commission from "../model/commission.model.js"
 
 export const createFee = async (req, res, next) => {
   try {

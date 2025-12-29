@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { createMaterial, getAllMaterials, getMaterialById, updateMaterial, deleteMaterial, createPaymentOnline,
   createPartPaymentOnline, orderWebhook, searchMaterials, getMaterialCategory, getVendorDetails, deleteAllMaterial
-  } from '../controller/material.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-const { imageUpload, imageKitUpload} = require('../../../utils/imagekit');
-import { userCheckRole } from '../../../middlewares/checkRole.middleware';
+  } from '../controller/material.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { imageUpload, imageKitUpload } from '../../../utils/imagekit.js';
+import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
 
 
 const router = Router();

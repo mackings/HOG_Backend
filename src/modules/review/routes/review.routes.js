@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { createReview, getReviews, getReviewById, updateReview, deleteReview, updateReviewStatus, 
-  getAllMaterialsForReview, getReviewsForMaterialById, getAllMaterialOrders   
-  } from '../controller/review.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-import { userCheckRole } from '../../../middlewares/checkRole.middleware'
-import { imageUpload, imageKitUpload } from '../../../utils/imagekit';
+import { createReview, getReviews, getReviewById, updateReview, deleteReview, updateReviewStatus,
+  getAllMaterialsForReview, getReviewsForMaterialById, getAllMaterialOrders
+  } from '../controller/review.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { userCheckRole } from '../../../middlewares/checkRole.middleware.js'
+import { imageUpload, imageKitUpload } from '../../../utils/imagekit.js';
 
 
 const router = Router();

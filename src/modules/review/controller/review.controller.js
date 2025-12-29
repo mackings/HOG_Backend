@@ -1,5 +1,5 @@
 import User from '../../user/model/user.model.js';
-import Material from '../../material/model/material.model';
+import Material from '../../material/model/material.model.js';
 import Vendor from '../../vendor/model/vendor.model.js';
 import Category from '../../category/model/category.model.js';
 import Transactions from '../../transaction/model/transaction.model.js';

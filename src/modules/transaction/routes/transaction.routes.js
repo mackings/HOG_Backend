@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { getAllTransactions, getSingleTransaction, deleteTransaction } from '../controller/transaction.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-import { userCheckRole } from '../../../middlewares/checkRole.middleware';
+import { getAllTransactions, getSingleTransaction, deleteTransaction } from '../controller/transaction.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
 
 
 const router = Router();

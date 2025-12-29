@@ -1,14 +1,14 @@
-import Bank from '../model/bank.model';
+import Bank from '../model/bank.model.js';
 import User from '../../user/model/user.model.js';
 import Transaction from '../../transaction/model/transaction.model.js';
 import axios from "axios";
-import { sendBankTransferEmail } from "../../../utils/emailService.utils";
+import { sendBankTransferEmail } from "../../../utils/emailService.utils.js";
 import crypto from "crypto";
 
 import Stripe from 'stripe';
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2024-06-20",
-});
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" })
+  : null;
 
 
 

@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { createFee, getFee } from '../controller/commission.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-import { userCheckRole } from '../../../middlewares/checkRole.middleware';
+import { createFee, getFee } from '../controller/commission.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
 
 
 const router = Router();

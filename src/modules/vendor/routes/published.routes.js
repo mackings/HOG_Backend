@@ -5,10 +5,10 @@ import { createPublished,
     updatePublished,
     deletePublished,
     userPatronizedPublished
-  } from '../controller/published.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-import { userCheckRole } from '../../../middlewares/checkRole.middleware'
-import { imageUpload, imageKitUpload } from '../../../utils/imagekit';
+  } from '../controller/published.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { userCheckRole } from '../../../middlewares/checkRole.middleware.js'
+import { imageUpload, imageKitUpload } from '../../../utils/imagekit.js';
 
 
 const router = Router();

@@ -1,11 +1,11 @@
 import User from '../../user/model/user.model.js';
-import Material from '../../material/model/material.model';
+import Material from '../../material/model/material.model.js';
 import Vendor from '../../vendor/model/vendor.model.js';
 import Category from '../../category/model/category.model.js';
 import InitializedOrder from '../../material/model/InitializedOrder.model.js';
 import Transactions from '../../transaction/model/transaction.model.js';
 import { sendTransactionEmail, sendSubscriptionEmail, sendTransactionListingEmail } from '../../../utils/emailService.utils.js';
-import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance";
+import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance.js";
 import axios from "axios";
 import crypto from "crypto"
 import mongoose from "mongoose";

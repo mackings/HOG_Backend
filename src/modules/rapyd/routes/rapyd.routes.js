@@ -2,9 +2,9 @@ import { Router } from 'express';
 import { createRapydUserWalletAndAccount, rapydWebhook , walletBankTransfer,
     enableRapydWallet, getRapydWalletWithVirtualAccounts, externalBankTransfer
 
-} from '../controller/rapyd.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-import { imageUpload, imageKitUpload } from '../../../utils/imagekit';
+} from '../controller/rapyd.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { imageUpload, imageKitUpload } from '../../../utils/imagekit.js';
 
 
 const router = Router();

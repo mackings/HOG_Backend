@@ -1,5 +1,5 @@
-import Tracking from "../model/tracking.model";
-import Material from "../../material/model/material.model";
+import Tracking from "../model/tracking.model.js";
+import Material from "../../material/model/material.model.js";
 import crypto from "crypto";
 
 

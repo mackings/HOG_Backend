@@ -3,16 +3,19 @@ import nodemailer from "nodemailer";
 import Mailgun from "mailgun.js";
 import formData from "form-data";
 // const { SendMailClient } = require("zeptomail");
-const { sendVerifyTokenEmailTemplate, sendResetPasswordEmailTemplate, sendBankTransferEmailTemplate, 
-  sendTransactionEmailTemplate, sendSubscriptionEmailTemplate, sendReviewUpdateEmailTemplate, 
+import { sendVerifyTokenEmailTemplate, sendResetPasswordEmailTemplate, sendBankTransferEmailTemplate,
+  sendTransactionEmailTemplate, sendSubscriptionEmailTemplate, sendReviewUpdateEmailTemplate,
   sendTransactionListingEmailTemplate, sendApprovalEmailTemplate, sendRejectionEmailTemplate, sendDeliveryEmailTemplate
-  
- } = require("../utils/emailTemplate");
+
+ } from "../utils/emailTemplate.js";
 // const url = "api.zeptomail.com/";
 // const token = process.env.ZEPTO_TOKEN;
 // const client = new SendMailClient({ url, token });
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+// Only set API key if provided
+if (process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY.startsWith('SG.')) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+}
 
 
 

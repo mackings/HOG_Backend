@@ -1,10 +1,10 @@
-import DeliveryRate from '../model/deliveryRate.model';
-import User from '../../user/model/user.model';
+import DeliveryRate from '../model/deliveryRate.model.js';
+import User from '../../user/model/user.model.js';
 import axios from 'axios';
 import mongoose from 'mongoose';
-import Review from '../../review/model/review.model';
-import Material from '../../material/model/material.model';
-import { expressCalculateCost, cargoCalculateCost, regularCalculateCost } from '../../../utils/shipmentCalcu.distance';
+import Review from '../../review/model/review.model.js';
+import Material from '../../material/model/material.model.js';
+import { expressCalculateCost, cargoCalculateCost, regularCalculateCost } from '../../../utils/shipmentCalcu.distance.js';
 
 
 

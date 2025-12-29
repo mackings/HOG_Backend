@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { createCategory, getAllCategories, getCategoryById, updateCategory, deleteCategory
-  } from '../controller/category.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-const { imageUpload, imageKitUpload} = require('../../../utils/imagekit');
-import { userCheckRole } from '../../../middlewares/checkRole.middleware';
+  } from '../controller/category.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { imageUpload, imageKitUpload } from '../../../utils/imagekit.js';
+import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
 
 
 const router = Router();

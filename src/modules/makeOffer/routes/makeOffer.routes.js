@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { createMakeOffer, vendorReplyOffer, buyerReplyToOffer,
     getAllMakeOffers, getMakeOfferById, deleteAllMakeOffer
-  } from '../controller/makeOffer.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-import { userCheckRole } from '../../../middlewares/checkRole.middleware';
+  } from '../controller/makeOffer.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
 
 
 const router = Router();

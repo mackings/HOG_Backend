@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { 
+import {
   rateVendor,
   getVendorRating,
   deleteVendorRating
-} from '../controller/rate.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-import { userCheckRole } from '../../../middlewares/checkRole.middleware';
+} from '../controller/rate.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
 
 const router = Router();
 

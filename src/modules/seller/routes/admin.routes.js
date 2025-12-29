@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { getAllPendingSellerListings, getSellerListingById, approveSellerListing,
-    createListingFee, getListingFee, rejectSellerListing, totalUsers, totalNumberOfFreeAndPaidListings, 
-    adminTotalEarnings, totalTransactions, totalListings, 
- } from '../controller/admin.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-import { userCheckRole } from '../../../middlewares/checkRole.middleware';
+    createListingFee, getListingFee, rejectSellerListing, totalUsers, totalNumberOfFreeAndPaidListings,
+    adminTotalEarnings, totalTransactions, totalListings,
+ } from '../controller/admin.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
 
 
 const router = Router();

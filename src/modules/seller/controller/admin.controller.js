@@ -2,8 +2,8 @@ import User from '../../user/model/user.model.js';
 import Category from '../../category/model/category.model.js';
 import Listing from '../model/seller.model.js';
 import Transaction from '../../transaction/model/transaction.model.js'; 
-import Fee from "../model/fee.model";
-import { sendApprovalEmail, sendRejectionEmail } from "../../../utils/emailService.utils";
+import Fee from "../model/fee.model.js";
+import { sendApprovalEmail, sendRejectionEmail } from "../../../utils/emailService.utils.js";
 
 
 

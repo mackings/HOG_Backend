@@ -1,9 +1,9 @@
-import User from "../../user/model/user.model"
-import MakeOffer from "../model/makeOffer.model"
-import Review from "../../review/model/review.model"
-import Vendor from "../../vendor/model/vendor.model"
+import User from "../../user/model/user.model.js"
+import MakeOffer from "../model/makeOffer.model.js"
+import Review from "../../review/model/review.model.js"
+import Vendor from "../../vendor/model/vendor.model.js"
 import mongoose from "mongoose";
-import Material from "../../material/model/material.model"
+import Material from "../../material/model/material.model.js"
 
 
 

@@ -1,24 +1,24 @@
 import User from '../../user/model/user.model.js';
-import Material from '../../material/model/material.model';
+import Material from '../../material/model/material.model.js';
 import Vendor from '../../vendor/model/vendor.model.js';
 import Category from '../../category/model/category.model.js';
 import InitializedOrder from '../../material/model/InitializedOrder.model.js';
 import Transactions from '../../transaction/model/transaction.model.js';
 import { sendTransactionEmail, sendSubscriptionEmail, sendTransactionListingEmail } from '../../../utils/emailService.utils.js';
-import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance";
+import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance.js";
 import axios from "axios";
 import crypto from "crypto"
 import mongoose from "mongoose";
 import Review from '../../review/model/review.model.js';
 import Tracking from '../../tracking/model/tracking.model.js';
-
-
-
 import Stripe from 'stripe';
+
+
+
 // const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2024-06-20",
-});
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" })
+  : null;
 
 
 export const createUserAccount = async (req, res, next) => {

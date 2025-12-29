@@ -2,7 +2,7 @@ import User from '../../user/model/user.model.js';
 import Category from '../../category/model/category.model.js';
 import Listing from '../model/seller.model.js';
 import Transaction from '../../transaction/model/transaction.model.js';
-import Tracking from "../../tracking/model/tracking.model";
+import Tracking from "../../tracking/model/tracking.model.js";
 
 
 

@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { createUserAccount, createStripePayment, makeStripeTransfer, getStripeAccountStatus  } from '../controller/stripe.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-import { imageUpload, imageKitUpload } from '../../../utils/imagekit';
+import { createUserAccount, createStripePayment, makeStripeTransfer, getStripeAccountStatus  } from '../controller/stripe.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { imageUpload, imageKitUpload } from '../../../utils/imagekit.js';
 
 
 const router = Router();

@@ -3,12 +3,12 @@ import Category from '../../category/model/category.model.js';
 import Listing from '../model/seller.model.js';
 import Transaction from '../../transaction/model/transaction.model.js';
 import InitializedOrder from '../../material/model/InitializedOrder.model.js';
-import { sendDeliveryEmail } from "../../../utils/emailService.utils";
-import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance";
+import { sendDeliveryEmail } from "../../../utils/emailService.utils.js";
+import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance.js";
 import axios from "axios";
 import crypto from "crypto"
-import Tracking from "../../tracking/model/tracking.model";
-import Fee from "../model/fee.model";
+import Tracking from "../../tracking/model/tracking.model.js";
+import Fee from "../model/fee.model.js";
 
 
 export const getAlSellerListings = async (req, res, next) => {

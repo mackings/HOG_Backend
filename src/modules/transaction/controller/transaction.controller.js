@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
-import User from "../../user/model/user.model";
-import Transaction from "../model/transaction.model";
-import Vendor from "../../vendor/model/vendor.model";
+import User from "../../user/model/user.model.js";
+import Transaction from "../model/transaction.model.js";
+import Vendor from "../../vendor/model/vendor.model.js";
 
 
 export const getAllTransactions = async (req, res, next) => {

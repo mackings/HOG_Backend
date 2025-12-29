@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { createTailor, getTailor, updateTailor, deleteTailor, getAllAssignedMaterials,
-  } from '../controller/vendor.controller';
-import { isAuth } from '../../../middlewares/auth.middleware';
-import { userCheckRole } from '../../../middlewares/checkRole.middleware'
-import { imageUpload, imageKitUpload } from '../../../utils/imagekit';
+  } from '../controller/vendor.controller.js';
+import { isAuth } from '../../../middlewares/auth.middleware.js';
+import { userCheckRole } from '../../../middlewares/checkRole.middleware.js'
+import { imageUpload, imageKitUpload } from '../../../utils/imagekit.js';
 
 
 const router = Router();

@@ -4,7 +4,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "dotenvx run -- bun --watch index.js",
+    "dev": "node --watch index.js",
+    "start": "node index.js",
     "build": "node index.js"
   },
   "devDependencies": {

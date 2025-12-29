@@ -35,7 +35,7 @@ const app = express();
 app.post('/api/v1/stripe/webhook', express.raw({ type: 'application/json' }), webhookPaymentSuccess);
 app.post("/api/v1/rapyd/webhook", express.json({ type: 'application/json' }), rapydWebhook); // express.raw({ type: 'application/json' }),
 
-connectDB();
+// connectDB(); // Moved to index.js to ensure env vars are loaded first
 
 
 app.use(helmet());

@@ -1,5 +1,5 @@
 
-import User from "../modules/user/model/user.model";
+import User from "../modules/user/model/user.model.js";
 
 export const userCheckRole = (allowedRoles = []) => {
   return async (req, res, next) => {
