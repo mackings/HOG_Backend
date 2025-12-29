@@ -5,6 +5,12 @@ import axios from "axios";
 import { sendBankTransferEmail } from "../../../utils/emailService.utils";
 import crypto from "crypto";
 
+import Stripe from 'stripe';
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: "2024-06-20",
+});
+
+
 
 
 export const createBankAccount = async (req, res, next) => {
@@ -39,20 +45,82 @@ export const createBankAccount = async (req, res, next) => {
     }
 }
 
+// export const getBankAccount = async (req, res, next) => {
+//     try {
+//         const { id } = req.user;
+//         const existingAccount = await Bank.find({ userId: id });
+//         if (!existingAccount) {
+//             return res.status(400).json({ message: "Bank account not found for this user" });
+//         }
+//         return res.status(200).json({
+//             data: existingAccount
+//         });
+//     } catch (error) {
+//         next(error);
+//     }
+// }
+
+
 export const getBankAccount = async (req, res, next) => {
-    try {
-        const { id } = req.user;
-        const existingAccount = await Bank.find({ userId: id });
-        if (!existingAccount) {
-            return res.status(400).json({ message: "Bank account not found for this user" });
-        }
-        return res.status(200).json({
-            data: existingAccount
-        });
-    } catch (error) {
-        next(error);
+  try {
+    const { id } = req.user;
+
+    const user = await User.findById(id).select("stripeId email");
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
-}
+
+    const existingAccounts = await Bank.find({ userId: id });
+
+    if (!user.stripeId || existingAccounts.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Bank account or Stripe account not found for this user",
+      });
+    }
+
+    const account = await stripe.accounts.retrieve(user.stripeId);
+
+    const bankAccounts = await stripe.accounts.listExternalAccounts(
+      user.stripeId,
+      { object: "bank_account" }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Stripe and bank account retrieved successfully",
+      data: {
+        // account: {
+        //   id: account.id,
+        //   email: account.email,
+        //   country: account.country,
+        //   charges_enabled: account.charges_enabled,
+        //   payouts_enabled: account.payouts_enabled,
+        //   requirements: {
+        //     currently_due: account.requirements?.currently_due || [],
+        //     eventually_due: account.requirements?.eventually_due || [],
+        //     disabled_reason: account.requirements?.disabled_reason || null,
+        //   },
+        // },
+        stripeBankAccounts: bankAccounts.data.map((bank) => ({
+          id: bank.id,
+          bank_name: bank.bank_name,
+          last4: bank.last4,
+          currency: bank.currency,
+          country: bank.country,
+          status: bank.status,
+        })),
+        localBankAccounts: existingAccounts,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 export const updateBankAccount = async (req, res, next) => {
     try {
