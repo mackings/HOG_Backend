@@ -611,14 +611,22 @@ export const webhookPaymentSuccess = async (req, res) => {
         console.log(`   Review ID: ${review._id}`);
         console.log(`   Previous Amount Paid: ${review.amountPaid || 0}`);
         console.log(`   Adding: ${order.amountPaid}`);
+        console.log(`   Total Cost: ${review.totalCost}`);
+
+        // Calculate new total amount paid after this payment
+        const newAmountPaid = (review.amountPaid || 0) + order.amountPaid;
+        const newAmountToPay = order.paymentStatus === "full payment"
+          ? 0
+          : Math.max(0, review.totalCost - newAmountPaid);
+
+        console.log(`   New Amount Paid: ${newAmountPaid}`);
+        console.log(`   New Amount To Pay: ${newAmountToPay}`);
+        console.log(`   Payment Status: ${order.paymentStatus}`);
 
         await Review.findByIdAndUpdate(review._id, {
           $inc: { amountPaid: order.amountPaid },
           $set: {
-            amountToPay:
-              order.paymentStatus === "full payment"
-                ? 0
-                : order.totalAmount - order.amountPaid,
+            amountToPay: newAmountToPay,
             status: order.paymentStatus,
           },
         });

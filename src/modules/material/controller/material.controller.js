@@ -297,7 +297,7 @@ export const searchMaterials = async (req, res, next) => {
 export const createPaymentOnline = async (req, res, next) => {
   try {
     const { id } = req.user;
-    const { amount, shipmentMethod, address } = req.body;
+    const { amount, shipmentMethod, address, paymentStatus } = req.body;
     const { reviewId } = req.params;
 
     if (!reviewId || !mongoose.Types.ObjectId.isValid(reviewId)) {
@@ -440,7 +440,7 @@ export const createPaymentOnline = async (req, res, next) => {
       materialId: material._id,
       reviewId,
       amountPaid: totalCost,
-      paymentStatus: "full payment",
+      paymentStatus: paymentStatus || "full payment", // Support both part and full payment
     });
 
     const countryCurrencyMapping = {
@@ -711,44 +711,35 @@ export const orderWebhook = async (req, res, next) => {
       ]);
 
       if (vendor?.userId) {
-        if (order.paymentStatus === "part payment") {
-          const deltaPaid = order.amountPaid;
-          const remaining = order.totalAmount - order.amountPaid;
+        // Calculate new amounts after this payment
+        const deltaPaid = order.amountPaid;
+        const newAmountPaid = (review.amountPaid || 0) + deltaPaid;
+        const newAmountToPay = order.paymentStatus === "full payment"
+          ? 0
+          : Math.max(0, review.totalCost - newAmountPaid);
 
-          await User.findByIdAndUpdate(
-            vendor.userId,
-            { $inc: { wallet: deltaPaid } },
-            { new: true }
-          );
+        // Credit vendor wallet
+        await User.findByIdAndUpdate(
+          vendor.userId,
+          { $inc: { wallet: deltaPaid } },
+          { new: true }
+        );
 
-          await Review.findByIdAndUpdate(
-            review._id,
-            { 
-              $set: { status: order.paymentStatus },
-              $inc: { amountPaid: deltaPaid, amountToPay: remaining }
+        // Update review with correct amounts
+        await Review.findByIdAndUpdate(
+          review._id,
+          {
+            $set: {
+              status: order.paymentStatus,
+              amountToPay: newAmountToPay
             },
-            { new: true }
-          );
-        }
+            $inc: { amountPaid: deltaPaid }
+          },
+          { new: true }
+        );
 
+        // Credit platform commission (only on full payment)
         if (order.paymentStatus === "full payment") {
-          const balance = order.amountPaid;
-
-          await User.findByIdAndUpdate(
-            vendor.userId,
-            { $inc: { wallet: balance } },
-            { new: true }
-          );
-
-          await Review.findByIdAndUpdate(
-            review._id,
-            { 
-              $set: { status: order.paymentStatus, amountToPay: 0 }, 
-              $inc: { amountPaid: balance }
-            },
-            { new: true }
-          );
-          
           await User.updateMany(
             { role: { $in: ["admin", "superAdmin"] } },
             {
@@ -758,7 +749,6 @@ export const orderWebhook = async (req, res, next) => {
               }
             }
           );
-
         }
       }
 
