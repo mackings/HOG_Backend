@@ -13,7 +13,9 @@ router.post("/orderWebhook", orderWebhook);
 router.delete("/deleteAllMaterial", deleteAllMaterial);
 router.use(isAuth);
 router.use(userCheckRole(["user", "admin", "tailor"]));
+// Support both with and without categoryId
 router.post("/createMaterial/:categoryId", imageUpload, imageKitUpload, createMaterial);
+router.post("/createMaterial", imageUpload, imageKitUpload, createMaterial);
 router.get("/getAllMaterials", getAllMaterials);
 router.get("/getMaterialById", getMaterialById);
 router.put("/updateMaterial/:materialId", imageUpload, imageKitUpload, updateMaterial);

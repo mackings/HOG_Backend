@@ -18,7 +18,7 @@ export const createMaterial = async (req, res, next) => {
   try {
     const { id } = req.user;
     const { categoryId } = req.params;
-    let { clothMaterial, color, brand, measurement, specialInstructions } = req.body;
+    let { clothMaterial, color, brand, measurement, specialInstructions, attireType } = req.body;
 
     if (typeof measurement === "string") {
       try {
@@ -34,9 +34,29 @@ export const createMaterial = async (req, res, next) => {
       });
     }
 
-    const category = await Category.findById(categoryId);
-    if (!category) {
-      return res.status(404).json({ message: "Category not found" });
+    let finalCategoryId = null;
+    let finalAttireType = null;
+
+    // If categoryId is provided, validate and use it
+    if (categoryId && categoryId !== 'null' && categoryId !== 'undefined') {
+      const category = await Category.findById(categoryId);
+      if (!category) {
+        return res.status(404).json({
+          message: "Category not found. Please provide a valid category ID.",
+          hint: "Call GET /api/v1/category/getAllCategories to get available categories"
+        });
+      }
+      finalCategoryId = categoryId;
+      finalAttireType = category.name;
+    } else {
+      // If no categoryId, attireType must be provided in body
+      if (!attireType) {
+        return res.status(400).json({
+          message: "Either categoryId or attireType must be provided",
+          hint: "You can either select a category or provide attireType in the request body"
+        });
+      }
+      finalAttireType = attireType;
     }
 
     // const vendor = await Vendor.findOne({ userId: id });
@@ -46,18 +66,24 @@ export const createMaterial = async (req, res, next) => {
 
     const images = req.imageUrls || [];
 
-    const material = await Material.create({
+    const materialData = {
       userId: id,
       // vendorId: vendor._id,
-      categoryId,
-      attireType: category.name,
       clothMaterial,
       color,
       brand,
       measurement,
       sampleImage: images,
-      specialInstructions
-    });
+      specialInstructions,
+      attireType: finalAttireType
+    };
+
+    // Only add categoryId if it exists
+    if (finalCategoryId) {
+      materialData.categoryId = finalCategoryId;
+    }
+
+    const material = await Material.create(materialData);
 
     return res.status(201).json({
       success: true,

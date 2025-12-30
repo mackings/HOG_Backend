@@ -8,7 +8,14 @@
     "start": "node index.js",
     "build": "node index.js",
     "deploy": "vercel --prod",
-    "deploy:preview": "vercel"
+    "deploy:preview": "vercel",
+    "seed:categories": "node seedCategories.js",
+    "seed:replace": "node seedCategories.js --replace",
+    "seed:add": "node seedCategories.js --add",
+    "seed:skip": "node seedCategories.js --skip",
+    "test:categories": "node testCategories.js",
+    "seed:delivery": "node seedDeliveryRates.js --replace",
+    "seed:delivery:update": "node seedDeliveryRates.js --update"
   },
   "devDependencies": {
     "@types/bun": "latest"

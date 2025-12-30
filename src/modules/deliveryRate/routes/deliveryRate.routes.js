@@ -8,13 +8,16 @@ import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
 
 const router = Router();
 
+// Public routes (all authenticated users can access)
 router.use(isAuth);
-router.use(userCheckRole(["superAdmin", "admin",]));
-router.post("/createDeliveryRate", createDeliveryRate);
 router.get("/getDeliveryRates", getDeliveryRates);
+router.post("/deliveryCost/:reviewId", deliveryCost);
+
+// Admin-only routes
+router.use(userCheckRole(["superAdmin", "admin"]));
+router.post("/createDeliveryRate", createDeliveryRate);
 router.put("/updateDeliveryRate/:id", updateDeliveryRate);
 router.delete("/deleteDeliveryRate/:id", deleteDeliveryRate);
-router.post("/deliveryCost/:reviewId", deliveryCost);
 
 
 export default router;

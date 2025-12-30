@@ -194,9 +194,31 @@ export const vendorReplyOffer = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid action type" });
     }
 
-    const materialCost = Number(counterMaterialCost) || 0;
-    const workmanshipCost = Number(counterWorkmanshipCost) || 0;
-    const totalCost = materialCost + workmanshipCost;
+    // Get the latest buyer/customer offer from chats for acceptance
+    let materialCost, workmanshipCost, totalCost;
+
+    if (action === "accepted") {
+      // Find the last customer counter offer to accept those values
+      const latestCustomerOffer = [...offer.chats]
+        .reverse()
+        .find(chat => chat.senderType === "customer" && (chat.action === "countered" || chat.action === "incoming"));
+
+      if (latestCustomerOffer) {
+        materialCost = latestCustomerOffer.counterMaterialCost || 0;
+        workmanshipCost = latestCustomerOffer.counterWorkmanshipCost || 0;
+        totalCost = latestCustomerOffer.counterTotalCost || (materialCost + workmanshipCost);
+      } else {
+        // Fallback to provided values
+        materialCost = Number(counterMaterialCost) || 0;
+        workmanshipCost = Number(counterWorkmanshipCost) || 0;
+        totalCost = materialCost + workmanshipCost;
+      }
+    } else {
+      // For countered or rejected, use provided values
+      materialCost = Number(counterMaterialCost) || 0;
+      workmanshipCost = Number(counterWorkmanshipCost) || 0;
+      totalCost = materialCost + workmanshipCost;
+    }
 
     // Create chat entry
     const newChat = {
@@ -218,7 +240,7 @@ export const vendorReplyOffer = async (req, res, next) => {
     } else {
       offer.status = action;
     }
-    // offer.status = action;
+
     await offer.save();
 
     // ✅ Sync with review if accepted
@@ -229,18 +251,20 @@ export const vendorReplyOffer = async (req, res, next) => {
           $set: {
             materialTotalCost: materialCost,
             workmanshipTotalCost: workmanshipCost,
-            totalCost
+            totalCost,
+            subTotalCost: totalCost,
           },
         },
         { new: true }
       );
+      console.log(`✅ Review ${offer.reviewId} updated with accepted offer amounts`);
     }
 
     return res.status(200).json({
       success: true,
       message:
         action === "accepted"
-          ? "Offer accepted successfully"
+          ? "Offer accepted successfully. Review has been updated."
           : action === "rejected"
           ? "Offer rejected successfully"
           : "Counter offer sent successfully",
@@ -270,18 +294,19 @@ export const buyerReplyToOffer = async (req, res, next) => {
     }
 
     const offer = await MakeOffer.findById(offerId)
-    .populate({
+      .populate({
         path: "userId",
         select: "fullName email profileImage role",
       })
-      // .populate({
-      //   path: "vendorId",
-      //   select: "businessName userId",
-      //   populate: {
-      //     path: "userId",
-      //     select: "fullName email",
-      //   },
-      // })
+      .populate({
+        path: "vendorId",
+        select: "businessName userId",
+        populate: {
+          path: "userId",
+          select: "fullName email",
+        },
+      });
+
     if (!offer) {
       return res.status(404).json({ success: false, message: "Offer not found" });
     }
@@ -311,11 +336,34 @@ export const buyerReplyToOffer = async (req, res, next) => {
       });
     }
 
-    const materialCost = Number(counterMaterialCost) || 0;
-    const workmanshipCost = Number(counterWorkmanshipCost) || 0;
-    const totalCost = materialCost + workmanshipCost;
+    // Get the latest vendor offer from chats for acceptance
+    let materialCost, workmanshipCost, totalCost;
 
-    // Create new chat message instead of updating
+    if (action === "accepted") {
+      // Find the last vendor counter offer to accept those values
+      const latestVendorOffer = [...offer.chats]
+        .reverse()
+        .find(chat => chat.senderType === "vendor" && chat.action === "countered");
+
+      if (latestVendorOffer) {
+        materialCost = latestVendorOffer.counterMaterialCost || 0;
+        workmanshipCost = latestVendorOffer.counterWorkmanshipCost || 0;
+        totalCost = latestVendorOffer.counterTotalCost || (materialCost + workmanshipCost);
+      } else {
+        // No vendor counter, use original offer values
+        const originalOffer = offer.chats.find(chat => chat.senderType === "customer");
+        materialCost = originalOffer?.counterMaterialCost || 0;
+        workmanshipCost = originalOffer?.counterWorkmanshipCost || 0;
+        totalCost = originalOffer?.counterTotalCost || (materialCost + workmanshipCost);
+      }
+    } else {
+      // For countered or rejected, use provided values
+      materialCost = Number(counterMaterialCost) || 0;
+      workmanshipCost = Number(counterWorkmanshipCost) || 0;
+      totalCost = materialCost + workmanshipCost;
+    }
+
+    // Create new chat message
     const newChat = {
       senderType: "customer",
       action,
@@ -338,11 +386,28 @@ export const buyerReplyToOffer = async (req, res, next) => {
 
     await offer.save();
 
+    // ✅ Sync with review if buyer accepts the offer
+    if (action === "accepted" && offer.reviewId) {
+      await Review.findByIdAndUpdate(
+        offer.reviewId,
+        {
+          $set: {
+            materialTotalCost: materialCost,
+            workmanshipTotalCost: workmanshipCost,
+            totalCost,
+            subTotalCost: totalCost,
+          },
+        },
+        { new: true }
+      );
+      console.log(`✅ Review ${offer.reviewId} updated with accepted offer amounts`);
+    }
+
     return res.status(200).json({
       success: true,
       message:
         action === "accepted"
-          ? "You accepted the vendor's offer successfully"
+          ? "You accepted the vendor's offer successfully. Review has been updated."
           : action === "rejected"
           ? "You rejected the vendor's offer successfully"
           : "Counter offer sent successfully",

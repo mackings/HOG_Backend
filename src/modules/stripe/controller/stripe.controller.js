@@ -40,6 +40,14 @@ export const createUserAccount = async (req, res, next) => {
         capabilities: {
           transfers: { requested: true },
         },
+        settings: {
+          payouts: {
+            schedule: {
+              interval: "daily",  // Automatic daily payouts
+              delay_days: 2       // Standard 2-day delay (minimum for new accounts)
+            }
+          }
+        },
         // individual: {
         //   email: user.email,
         //   first_name: user.fullName.split(" ")[0],
