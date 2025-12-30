@@ -366,7 +366,7 @@ export const createStripePayment = async (req, res, next) => {
 
     return res.status(201).json({
       success: true,
-      message: "Stripe checkout created successfully",
+      message: "Stripe checkout created successfully.",
       data: {
         order,
         checkoutUrl: session.url,
