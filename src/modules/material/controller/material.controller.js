@@ -335,11 +335,19 @@ export const createPaymentOnline = async (req, res, next) => {
     const pickupAddress = vendor.address;
     const deliveryAddress = address || materialOwner.address;
 
-    const geocodeReceiverResponse = await axios.get(`https://api.geoapify.com/v1/geocode/search`, {
-        params: { text: deliveryAddress, apiKey: "14ea724d207e48ebabdcb893aa97217e" }
+    // Geocode delivery address using OpenStreetMap Nominatim (free)
+    const geocodeReceiverResponse = await axios.get(`https://nominatim.openstreetmap.org/search`, {
+        params: {
+            q: deliveryAddress,
+            format: 'json',
+            limit: 1
+        },
+        headers: {
+            'User-Agent': 'HOG-Fashion-App/1.0'
+        }
     });
 
-    const Location = geocodeReceiverResponse.data.features;
+    const Location = geocodeReceiverResponse.data;
     if (!Location.length) {
         return res.status(400).json({
             success: false,
@@ -349,16 +357,23 @@ export const createPaymentOnline = async (req, res, next) => {
     }
 
     const deliveryLocation = {
-        latitude: Location[0].geometry.coordinates[1],
-        longitude: Location[0].geometry.coordinates[0]
+        latitude: parseFloat(Location[0].lat),
+        longitude: parseFloat(Location[0].lon)
     };
 
-    // Geocode sender address
-    const geocodeSenderResponse = await axios.get(`https://api.geoapify.com/v1/geocode/search`, {
-        params: { text: pickupAddress, apiKey: "14ea724d207e48ebabdcb893aa97217e" }
+    // Geocode sender address using OpenStreetMap Nominatim (free)
+    const geocodeSenderResponse = await axios.get(`https://nominatim.openstreetmap.org/search`, {
+        params: {
+            q: pickupAddress,
+            format: 'json',
+            limit: 1
+        },
+        headers: {
+            'User-Agent': 'HOG-Fashion-App/1.0'
+        }
     });
 
-    const senderAddress = geocodeSenderResponse.data.features;
+    const senderAddress = geocodeSenderResponse.data;
     if (!senderAddress.length) {
         return res.status(400).json({
             success: false,
@@ -368,8 +383,8 @@ export const createPaymentOnline = async (req, res, next) => {
     }
 
     const senderLocation = {
-        latitude: senderAddress[0].geometry.coordinates[1],
-        longitude: senderAddress[0].geometry.coordinates[0]
+        latitude: parseFloat(senderAddress[0].lat),
+        longitude: parseFloat(senderAddress[0].lon)
     };
 
     // Shipment costs

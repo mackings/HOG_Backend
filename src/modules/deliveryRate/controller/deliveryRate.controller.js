@@ -124,18 +124,32 @@ export const deliveryCost = async (req, res, next) => {
       });
     }
 
-    // Geocode delivery address
+    // Geocode delivery and pickup addresses using OpenStreetMap Nominatim (free)
     const [deliveryGeo, pickupGeo] = await Promise.all([
-      axios.get(`https://api.geoapify.com/v1/geocode/search`, {
-        params: { text: deliveryAddress, apiKey: process.env.GEOAPIFY_API_KEY },
+      axios.get(`https://nominatim.openstreetmap.org/search`, {
+        params: {
+          q: deliveryAddress,
+          format: 'json',
+          limit: 1
+        },
+        headers: {
+          'User-Agent': 'HOG-Fashion-App/1.0'
+        }
       }),
-      axios.get(`https://api.geoapify.com/v1/geocode/search`, {
-        params: { text: pickupAddress, apiKey: process.env.GEOAPIFY_API_KEY },
+      axios.get(`https://nominatim.openstreetmap.org/search`, {
+        params: {
+          q: pickupAddress,
+          format: 'json',
+          limit: 1
+        },
+        headers: {
+          'User-Agent': 'HOG-Fashion-App/1.0'
+        }
       }),
     ]);
 
-    const deliveryData = deliveryGeo.data.features;
-    const pickupData = pickupGeo.data.features;
+    const deliveryData = deliveryGeo.data;
+    const pickupData = pickupGeo.data;
 
     if (!deliveryData.length || !pickupData.length) {
       return res.status(400).json({
@@ -145,13 +159,13 @@ export const deliveryCost = async (req, res, next) => {
     }
 
     const deliveryLocation = {
-      latitude: deliveryData[0].geometry.coordinates[1],
-      longitude: deliveryData[0].geometry.coordinates[0],
+      latitude: parseFloat(deliveryData[0].lat),
+      longitude: parseFloat(deliveryData[0].lon),
     };
 
     const senderLocation = {
-      latitude: pickupData[0].geometry.coordinates[1],
-      longitude: pickupData[0].geometry.coordinates[0],
+      latitude: parseFloat(pickupData[0].lat),
+      longitude: parseFloat(pickupData[0].lon),
     };
 
     // Shipment cost calculation

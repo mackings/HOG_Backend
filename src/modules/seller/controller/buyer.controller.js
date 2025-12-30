@@ -145,12 +145,20 @@ export const purchaseListing = async (req, res, next) => {
         
         const pickupAddress = listingOwner.address;
         const deliveryAddress = user.address || address;
-    
-        const geocodeReceiverResponse = await axios.get(`https://api.geoapify.com/v1/geocode/search`, {
-            params: { text: deliveryAddress, apiKey: process.env.GEOAPIFY_API_KEY }
+
+        // Geocode delivery address using OpenStreetMap Nominatim (free)
+        const geocodeReceiverResponse = await axios.get(`https://nominatim.openstreetmap.org/search`, {
+            params: {
+                q: deliveryAddress,
+                format: 'json',
+                limit: 1
+            },
+            headers: {
+                'User-Agent': 'HOG-Fashion-App/1.0'
+            }
         });
-    
-        const Location = geocodeReceiverResponse.data.features;
+
+        const Location = geocodeReceiverResponse.data;
         if (!Location.length) {
             return res.status(400).json({
                 success: false,
@@ -158,18 +166,25 @@ export const purchaseListing = async (req, res, next) => {
                 error: `Geocoding failed for deliveryAddress: ${deliveryAddress}`
             });
         }
-    
+
         const deliveryLocation = {
-            latitude: Location[0].geometry.coordinates[1],
-            longitude: Location[0].geometry.coordinates[0]
+            latitude: parseFloat(Location[0].lat),
+            longitude: parseFloat(Location[0].lon)
         };
-    
-        // Geocode sender address
-        const geocodeSenderResponse = await axios.get(`https://api.geoapify.com/v1/geocode/search`, {
-            params: { text: pickupAddress, apiKey: process.env.GEOAPIFY_API_KEY }
+
+        // Geocode sender address using OpenStreetMap Nominatim (free)
+        const geocodeSenderResponse = await axios.get(`https://nominatim.openstreetmap.org/search`, {
+            params: {
+                q: pickupAddress,
+                format: 'json',
+                limit: 1
+            },
+            headers: {
+                'User-Agent': 'HOG-Fashion-App/1.0'
+            }
         });
-    
-        const senderAddress = geocodeSenderResponse.data.features;
+
+        const senderAddress = geocodeSenderResponse.data;
         if (!senderAddress.length) {
             return res.status(400).json({
                 success: false,
@@ -177,10 +192,10 @@ export const purchaseListing = async (req, res, next) => {
                 error: `Geocoding failed for pickupAddress: ${pickupAddress}`
             });
         }
-    
+
         const senderLocation = {
-            latitude: senderAddress[0].geometry.coordinates[1],
-            longitude: senderAddress[0].geometry.coordinates[0]
+            latitude: parseFloat(senderAddress[0].lat),
+            longitude: parseFloat(senderAddress[0].lon)
         };
     
         // Shipment costs
@@ -302,16 +317,23 @@ export const purchaseMultipleListings = async (req, res, next) => {
     const pickupAddress = listingOwner.address;
     const deliveryAddress = address || user.address;
 
-    // 🧭 Geocode
+    // 🧭 Geocode using OpenStreetMap Nominatim (free)
     const geocode = async (addr) => {
-      const response = await axios.get(`https://api.geoapify.com/v1/geocode/search`, {
-        params: { text: addr, apiKey: process.env.GEOAPIFY_API_KEY },
+      const response = await axios.get(`https://nominatim.openstreetmap.org/search`, {
+        params: {
+          q: addr,
+          format: 'json',
+          limit: 1
+        },
+        headers: {
+          'User-Agent': 'HOG-Fashion-App/1.0'
+        }
       });
-      const features = response.data.features;
-      if (!features.length) throw new Error(`Invalid address: ${addr}`);
+      const data = response.data;
+      if (!data.length) throw new Error(`Invalid address: ${addr}`);
       return {
-        latitude: features[0].geometry.coordinates[1],
-        longitude: features[0].geometry.coordinates[0],
+        latitude: parseFloat(data[0].lat),
+        longitude: parseFloat(data[0].lon)
       };
     };
 
