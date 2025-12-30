@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import errorMiddleware from './src/middlewares/error.middleware.js';
 import limiter from './src/middlewares/rateLimit.js';
 import connectDB from './src/connection/database.js';
+import { ensureDbConnection } from './src/middlewares/dbConnect.middleware.js';
 import userRouter from './src/modules/user/routes/user.routes.js';
 import tailorRouter from './src/modules/vendor/routes/vendor.routes.js';
 import materialRouter from './src/modules/material/routes/materilas.routes.js';
@@ -32,8 +33,10 @@ import conversionRouter from './src/modules/conversion/routes/conversion.routes.
 
 const app = express();
 
-app.post('/api/v1/stripe/webhook', express.raw({ type: 'application/json' }), webhookPaymentSuccess);
-app.post("/api/v1/rapyd/webhook", express.json({ type: 'application/json' }), rapydWebhook); // express.raw({ type: 'application/json' }),
+// Webhook routes BEFORE body parsing middleware (they need raw body)
+// Also include DB connection middleware
+app.post('/api/v1/stripe/webhook', express.raw({ type: 'application/json' }), ensureDbConnection, webhookPaymentSuccess);
+app.post("/api/v1/rapyd/webhook", express.json({ type: 'application/json' }), ensureDbConnection, rapydWebhook);
 
 // connectDB(); // Moved to index.js to ensure env vars are loaded first
 
@@ -43,6 +46,9 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 // app.use(limiter);
+
+// Apply database connection middleware to ALL API routes
+app.use(ensureDbConnection);
 
 
 app.get('/', (req, res) => {
