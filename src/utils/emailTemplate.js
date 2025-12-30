@@ -733,3 +733,111 @@ export const sendDeliveryEmailTemplate = (vendorName, fee, netAmount, trackingNu
   `;
 };
 
+
+export const sendPayoutNotificationEmailTemplate = (vendor, amount, reference) => {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }
+        .header { background: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+        .content { padding: 20px; }
+        .amount { font-size: 32px; color: #4CAF50; font-weight: bold; text-align: center; margin: 20px 0; }
+        .details { background: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .footer { text-align: center; color: #666; font-size: 12px; margin-top: 30px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>💰 Payment Received!</h1>
+        </div>
+        <div class="content">
+          <p>Hello <strong>${vendor.businessName || 'Vendor'}</strong>,</p>
+          <p>Great news! You've received a payment from a customer.</p>
+
+          <div class="amount">$${amount.toFixed(2)}</div>
+
+          <div class="details">
+            <p><strong>Payment Details:</strong></p>
+            <p>📝 Reference: ${reference}</p>
+            <p>💵 Amount: $${amount.toFixed(2)}</p>
+            <p>📅 Date: ${new Date().toLocaleDateString()}</p>
+            <p>⏰ Time: ${new Date().toLocaleTimeString()}</p>
+          </div>
+
+          <p>The funds have been credited to your wallet and are available immediately.</p>
+
+          <p style="text-align: center; margin-top: 30px;">
+            <a href="${process.env.FRONTEND_URL}/dashboard/wallet"
+               style="background: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
+              View Wallet
+            </a>
+          </p>
+        </div>
+        <div class="footer">
+          <p>Thank you for using HOG Fashion Platform</p>
+          <p>&copy; ${new Date().getFullYear()} HOG. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
+
+
+export const sendPaymentReceivedEmailTemplate = (user, amount, vendor, reference) => {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }
+        .header { background: #2196F3; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+        .content { padding: 20px; }
+        .amount { font-size: 32px; color: #2196F3; font-weight: bold; text-align: center; margin: 20px 0; }
+        .details { background: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .footer { text-align: center; color: #666; font-size: 12px; margin-top: 30px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>✅ Payment Successful!</h1>
+        </div>
+        <div class="content">
+          <p>Hello <strong>${user.fullName}</strong>,</p>
+          <p>Your payment has been processed successfully.</p>
+
+          <div class="amount">$${amount.toFixed(2)}</div>
+
+          <div class="details">
+            <p><strong>Payment Details:</strong></p>
+            <p>👔 Vendor: ${vendor.businessName}</p>
+            <p>💵 Amount Paid: $${amount.toFixed(2)}</p>
+            <p>📝 Reference: ${reference}</p>
+            <p>📅 Date: ${new Date().toLocaleDateString()}</p>
+          </div>
+
+          <p>Your order is being processed. You'll receive updates on delivery soon!</p>
+
+          <p style="text-align: center; margin-top: 30px;">
+            <a href="${process.env.FRONTEND_URL}/orders/${reference}"
+               style="background: #2196F3; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
+              Track Order
+            </a>
+          </p>
+        </div>
+        <div class="footer">
+          <p>Thank you for shopping with HOG Fashion</p>
+          <p>&copy; ${new Date().getFullYear()} HOG. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
+

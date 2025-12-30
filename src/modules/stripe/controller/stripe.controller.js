@@ -4,7 +4,7 @@ import Vendor from '../../vendor/model/vendor.model.js';
 import Category from '../../category/model/category.model.js';
 import InitializedOrder from '../../material/model/InitializedOrder.model.js';
 import Transactions from '../../transaction/model/transaction.model.js';
-import { sendTransactionEmail, sendSubscriptionEmail, sendTransactionListingEmail } from '../../../utils/emailService.utils.js';
+import { sendTransactionEmail, sendSubscriptionEmail, sendTransactionListingEmail, sendPayoutNotificationEmail, sendPaymentReceivedEmail } from '../../../utils/emailService.utils.js';
 import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance.js";
 import axios from "axios";
 import crypto from "crypto"
@@ -467,32 +467,62 @@ export const webhookPaymentSuccess = async (req, res) => {
       }
     }
 
-    // 🔹 MARKETPLACE PAYMENT
+    // 🔹 MARKETPLACE PAYMENT - Auto-Payout to Vendor
     if (order.vendorId && order.materialId) {
       const review = await Review.findById(order.reviewId);
       const vendor = await Vendor.findById(order.vendorId);
+      const buyer = await User.findById(order.userId);
 
       if (vendor?.userId && review) {
-        const user = await User.findByIdAndUpdate(vendor.userId, {
-          $inc: { wallet: order.amountPaid },
-        });
+        const vendorUser = await User.findById(vendor.userId);
 
-        if (user.stripeId) {
-          const transferGroup = crypto.randomBytes(6).toString("hex");
-      // 💸 Transfer funds
-          await stripe.transfers.create({
-            amount: Math.round(order.amountPaid * 100), // cents
-            currency: "usd",
-            destination: user.stripeId,
-            transfer_group: transferGroup,
-          });
-          await User.findByIdAndUpdate(
-            user._id,
-            { $inc: { wallet: -order.amountPaid } },
-            { new: true }
-          );
+        // 💰 Credit vendor's wallet in database
+        await User.findByIdAndUpdate(vendor.userId, {
+          $inc: { wallet: order.amountPaid },
+        }, { new: true });
+
+        // 💸 If vendor has Stripe connected account, transfer funds
+        if (vendorUser.stripeId && stripe) {
+          try {
+            const transferGroup = crypto.randomBytes(6).toString("hex");
+
+            await stripe.transfers.create({
+              amount: Math.round(order.amountPaid * 100), // cents
+              currency: "usd",
+              destination: vendorUser.stripeId,
+              transfer_group: transferGroup,
+              description: `Payment for Order ${order.paymentReference}`,
+              metadata: {
+                vendorId: vendor._id.toString(),
+                orderId: order._id.toString(),
+                reference: order.paymentReference
+              }
+            });
+
+            console.log(`✅ Stripe Transfer successful to vendor: ${vendor.businessName}`);
+          } catch (stripeError) {
+            console.error("❌ Stripe transfer failed:", stripeError.message);
+            // Don't fail the whole transaction - wallet is already credited
+          }
         }
 
+        // 📧 Send payout notification email to vendor
+        try {
+          await sendPayoutNotificationEmail(vendor, vendorUser, order.amountPaid, order.paymentReference);
+          console.log(`✅ Payout notification sent to vendor: ${vendorUser.email}`);
+        } catch (emailError) {
+          console.error("❌ Vendor email failed:", emailError.message);
+        }
+
+        // 📧 Send payment confirmation email to buyer
+        try {
+          await sendPaymentReceivedEmail(buyer, order.amountPaid, vendor, order.paymentReference);
+          console.log(`✅ Payment confirmation sent to buyer: ${buyer.email}`);
+        } catch (emailError) {
+          console.error("❌ Buyer email failed:", emailError.message);
+        }
+
+        // 📝 Update review status
         await Review.findByIdAndUpdate(review._id, {
           $inc: { amountPaid: order.amountPaid },
           $set: {
@@ -504,6 +534,7 @@ export const webhookPaymentSuccess = async (req, res) => {
           },
         });
 
+        // 💼 Credit platform commission (only on full payment)
         if (order.paymentStatus === "full payment") {
           await User.updateMany(
             { role: { $in: ["admin", "superAdmin"] } },
@@ -515,6 +546,8 @@ export const webhookPaymentSuccess = async (req, res) => {
             }
           );
         }
+
+        console.log(`✅ Vendor wallet credited: $${order.amountPaid} - ${vendor.businessName}`);
       }
     }
 

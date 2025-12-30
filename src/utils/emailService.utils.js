@@ -1,7 +1,8 @@
 import nodemailer from "nodemailer";
 import { sendVerifyTokenEmailTemplate, sendResetPasswordEmailTemplate, sendBankTransferEmailTemplate,
   sendTransactionEmailTemplate, sendSubscriptionEmailTemplate, sendReviewUpdateEmailTemplate,
-  sendTransactionListingEmailTemplate, sendApprovalEmailTemplate, sendRejectionEmailTemplate, sendDeliveryEmailTemplate
+  sendTransactionListingEmailTemplate, sendApprovalEmailTemplate, sendRejectionEmailTemplate, sendDeliveryEmailTemplate,
+  sendPayoutNotificationEmailTemplate, sendPaymentReceivedEmailTemplate
  } from "../utils/emailTemplate.js";
 
 // Create Gmail transporter
@@ -145,5 +146,23 @@ export const sendDeliveryEmail = async (listingOwner, fee, netAmount, trackingNu
     to: listingOwner.email,
     subject: "Your order has been delivered-Wallet Credited",
     htmlContent: sendDeliveryEmailTemplate(listingOwner, fee, netAmount, trackingNumber),
+  });
+};
+
+
+export const sendPayoutNotificationEmail = async (vendor, vendorUser, amount, reference) => {
+  return sendEmail({
+    to: vendorUser.email,
+    subject: "💰 Payment Received - Wallet Credited",
+    htmlContent: sendPayoutNotificationEmailTemplate(vendor, amount, reference),
+  });
+};
+
+
+export const sendPaymentReceivedEmail = async (user, amount, vendor, reference) => {
+  return sendEmail({
+    to: user.email,
+    subject: "✅ Payment Successful - Order Confirmed",
+    htmlContent: sendPaymentReceivedEmailTemplate(user, amount, vendor, reference),
   });
 };
