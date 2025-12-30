@@ -390,9 +390,13 @@ export const createStripePayment = async (req, res, next) => {
 
 
 export const webhookPaymentSuccess = async (req, res) => {
+  console.log("\n🔔 ========== STRIPE WEBHOOK CALLED ==========");
+  console.log("📅 Timestamp:", new Date().toISOString());
+
   const sig = req.headers["stripe-signature"];
 
   if (!sig) {
+    console.error("❌ Missing Stripe signature header");
     return res.status(400).send("Missing Stripe signature header");
   }
 
@@ -404,12 +408,14 @@ export const webhookPaymentSuccess = async (req, res) => {
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
+    console.log("✅ Webhook signature verified successfully");
   } catch (error) {
-    console.error("Webhook verification failed:", error.message);
+    console.error("❌ Webhook verification failed:", error.message);
     return res.status(400).send(`Webhook Error: ${error.message}`);
   }
 
-  console.log(`✅ Webhook received: ${event.type}`);
+  console.log(`\n📨 Event Type: ${event.type}`);
+  console.log(`📋 Event ID: ${event.id}`);
 
   try {
     let reference;
@@ -417,29 +423,51 @@ export const webhookPaymentSuccess = async (req, res) => {
     if (event.type === "payment_intent.succeeded") {
       const intent = event.data.object;
       reference = intent.metadata?.reference;
+      console.log("💳 Payment Intent Event - Reference:", reference);
     }
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
       reference = session.metadata?.reference;
+      console.log("🛒 Checkout Session Event - Reference:", reference);
+      console.log("💰 Amount Total:", session.amount_total);
+      console.log("💵 Currency:", session.currency);
     }
 
     if (!reference) {
+      console.log("⚠️  No payment reference found in metadata. Skipping processing.");
       return res.status(200).json({ received: true });
     }
 
+    console.log(`\n🔍 Searching for order with reference: ${reference}`);
     const order = await InitializedOrder.findOne({ paymentReference: reference });
+
     if (!order) {
+      console.error(`❌ Order NOT FOUND for reference: ${reference}`);
+      console.log("💡 This could mean:");
+      console.log("   1. Order was never created");
+      console.log("   2. Order was already deleted");
+      console.log("   3. Payment reference mismatch");
       return res.status(200).json({ message: "Order not found" });
     }
 
+    console.log(`✅ Order found: ${order._id}`);
+    console.log(`   User ID: ${order.userId}`);
+    console.log(`   Vendor ID: ${order.vendorId}`);
+    console.log(`   Amount Paid: ${order.amountPaid}`);
+    console.log(`   Material ID: ${order.materialId}`);
+
+    console.log(`\n🔍 Checking for existing transaction...`);
     const existingTransaction = await Transactions.findOne({
       paymentReference: reference,
     });
 
     if (existingTransaction) {
+      console.log("⚠️  Transaction already processed. Skipping.");
       return res.status(200).json({ message: "Already processed" });
     }
+
+    console.log("✅ No duplicate found. Creating new transaction...");
 
     const transaction = await Transactions.create({
       userId: order.userId,
@@ -460,8 +488,15 @@ export const webhookPaymentSuccess = async (req, res) => {
       materialId: order.materialId || null,
     });
 
+    console.log(`✅ TRANSACTION CREATED SUCCESSFULLY!`);
+    console.log(`   Transaction ID: ${transaction._id}`);
+    console.log(`   Payment Reference: ${transaction.paymentReference}`);
+    console.log(`   User ID: ${transaction.userId}`);
+    console.log(`   Amount: ${transaction.amountPaid}`);
+
     // 🔹 SUBSCRIPTION
     if (["Standard", "Premium", "Enterprise"].includes(transaction.plan)) {
+      console.log(`\n📦 Processing subscription: ${transaction.plan}`);
       await User.findByIdAndUpdate(order.userId, {
         subscriptionPlan: transaction.plan.toLowerCase(),
         subscriptionStartDate: transaction.subscriptionStartDate,
@@ -472,25 +507,49 @@ export const webhookPaymentSuccess = async (req, res) => {
       const user = await User.findById(order.userId);
       if (user) {
         await sendSubscriptionEmail(user, transaction.totalAmount);
+        console.log(`✅ Subscription email sent to: ${user.email}`);
       }
     }
 
     // 🔹 MARKETPLACE PAYMENT - Auto-Payout to Vendor
     if (order.vendorId && order.materialId) {
+      console.log(`\n💼 Processing marketplace payment...`);
+      console.log(`   Vendor ID: ${order.vendorId}`);
+      console.log(`   Material ID: ${order.materialId}`);
+      console.log(`   Review ID: ${order.reviewId}`);
+
       const review = await Review.findById(order.reviewId);
       const vendor = await Vendor.findById(order.vendorId);
       const buyer = await User.findById(order.userId);
 
+      console.log(`   Review found: ${review ? 'Yes' : 'No'}`);
+      console.log(`   Vendor found: ${vendor ? 'Yes' : 'No'}`);
+      console.log(`   Buyer found: ${buyer ? 'Yes' : 'No'}`);
+
       if (vendor?.userId && review) {
+        console.log(`\n💰 Crediting vendor wallet...`);
+        console.log(`   Vendor User ID: ${vendor.userId}`);
+        console.log(`   Amount to credit: ${order.amountPaid}`);
+
         const vendorUser = await User.findById(vendor.userId);
+        console.log(`   Vendor User found: ${vendorUser ? 'Yes' : 'No'}`);
+        console.log(`   Vendor Email: ${vendorUser?.email}`);
+        console.log(`   Current Wallet Balance: ${vendorUser?.wallet || 0}`);
 
         // 💰 Credit vendor's wallet in database
-        await User.findByIdAndUpdate(vendor.userId, {
+        const updatedVendor = await User.findByIdAndUpdate(vendor.userId, {
           $inc: { wallet: order.amountPaid },
         }, { new: true });
 
+        console.log(`✅ VENDOR WALLET CREDITED!`);
+        console.log(`   Previous Balance: ${vendorUser?.wallet || 0}`);
+        console.log(`   Amount Added: ${order.amountPaid}`);
+        console.log(`   New Balance: ${updatedVendor.wallet}`);
+
         // 💸 If vendor has Stripe connected account, transfer funds
         if (vendorUser.stripeId && stripe) {
+          console.log(`\n💸 Initiating Stripe transfer to connected account...`);
+          console.log(`   Stripe Account ID: ${vendorUser.stripeId}`);
           try {
             const transferGroup = crypto.randomBytes(6).toString("hex");
 
@@ -510,8 +569,10 @@ export const webhookPaymentSuccess = async (req, res) => {
             console.log(`✅ Stripe Transfer successful to vendor: ${vendor.businessName}`);
           } catch (stripeError) {
             console.error("❌ Stripe transfer failed:", stripeError.message);
-            // Don't fail the whole transaction - wallet is already credited
+            console.log("⚠️  Wallet credited but Stripe transfer failed - vendor can withdraw manually");
           }
+        } else {
+          console.log(`ℹ️  No Stripe connected account found - wallet credited only`);
         }
 
         // 📧 Send payout notification email to vendor
@@ -531,6 +592,11 @@ export const webhookPaymentSuccess = async (req, res) => {
         }
 
         // 📝 Update review status
+        console.log(`\n📝 Updating review status...`);
+        console.log(`   Review ID: ${review._id}`);
+        console.log(`   Previous Amount Paid: ${review.amountPaid || 0}`);
+        console.log(`   Adding: ${order.amountPaid}`);
+
         await Review.findByIdAndUpdate(review._id, {
           $inc: { amountPaid: order.amountPaid },
           $set: {
@@ -542,8 +608,14 @@ export const webhookPaymentSuccess = async (req, res) => {
           },
         });
 
+        console.log(`✅ Review updated successfully`);
+
         // 💼 Credit platform commission (only on full payment)
         if (order.paymentStatus === "full payment") {
+          console.log(`\n💼 Crediting platform commission...`);
+          console.log(`   Commission: ${review.commission}`);
+          console.log(`   Tax: ${review.tax}`);
+
           await User.updateMany(
             { role: { $in: ["admin", "superAdmin"] } },
             {
@@ -553,20 +625,34 @@ export const webhookPaymentSuccess = async (req, res) => {
               },
             }
           );
+
+          console.log(`✅ Platform commission credited to admins`);
         }
 
-        console.log(`✅ Vendor wallet credited: $${order.amountPaid} - ${vendor.businessName}`);
+        console.log(`\n✅ MARKETPLACE PAYMENT COMPLETE!`);
+        console.log(`   Vendor: ${vendor.businessName}`);
+        console.log(`   Amount: ${order.amountPaid}`);
+      } else {
+        console.log(`\n⚠️  Skipping vendor payment - missing vendor or review data`);
       }
+    } else {
+      console.log(`\nℹ️  Not a marketplace payment - skipping vendor payout`);
     }
 
     // 🔹 TRACKING
+    console.log(`\n📍 Updating tracking status...`);
     await Tracking.findOneAndUpdate(
       { reference },
       { status: "success" },
       { new: true }
     );
+    console.log(`✅ Tracking updated to 'success'`);
 
+    console.log(`\n🗑️  Deleting initialized order...`);
     await InitializedOrder.findByIdAndDelete(order._id);
+    console.log(`✅ Initialized order deleted`);
+
+    console.log(`\n🎉 ========== WEBHOOK PROCESSING COMPLETE ==========\n`);
 
     return res.status(200).json({
       success: true,
@@ -574,7 +660,89 @@ export const webhookPaymentSuccess = async (req, res) => {
       order: transaction,
     });
   } catch (error) {
-    console.error("Webhook processing error:", error);
+    console.error("\n❌ ========== WEBHOOK PROCESSING ERROR ==========");
+    console.error("Error Message:", error.message);
+    console.error("Error Stack:", error.stack);
+    console.error("================================================\n");
     return res.status(500).json({ error: "Webhook processing failed" });
+  }
+};
+
+
+// 🔍 DEBUG: Manual webhook verification endpoint
+export const verifyPaymentProcessing = async (req, res) => {
+  try {
+    const { paymentReference } = req.params;
+
+    console.log(`\n🔍 ========== MANUAL VERIFICATION ==========`);
+    console.log(`Payment Reference: ${paymentReference}`);
+
+    // Check initialized order
+    const order = await InitializedOrder.findOne({ paymentReference });
+    console.log(`\n📦 Initialized Order:`);
+    if (order) {
+      console.log(`   ✅ Found: ${order._id}`);
+      console.log(`   User ID: ${order.userId}`);
+      console.log(`   Vendor ID: ${order.vendorId}`);
+      console.log(`   Amount: ${order.amountPaid}`);
+      console.log(`   Payment Status: ${order.paymentStatus}`);
+    } else {
+      console.log(`   ❌ Not found (may have been processed and deleted)`);
+    }
+
+    // Check transaction
+    const transaction = await Transactions.findOne({ paymentReference });
+    console.log(`\n💳 Transaction:`);
+    if (transaction) {
+      console.log(`   ✅ Found: ${transaction._id}`);
+      console.log(`   User ID: ${transaction.userId}`);
+      console.log(`   Vendor ID: ${transaction.vendorId}`);
+      console.log(`   Amount: ${transaction.amountPaid}`);
+      console.log(`   Payment Status: ${transaction.paymentStatus}`);
+      console.log(`   Created At: ${transaction.createdAt}`);
+    } else {
+      console.log(`   ❌ Not found - Transaction was never created!`);
+    }
+
+    // Check tracking
+    const tracking = await Tracking.findOne({ reference: paymentReference });
+    console.log(`\n📍 Tracking:`);
+    if (tracking) {
+      console.log(`   ✅ Status: ${tracking.status}`);
+    } else {
+      console.log(`   ❌ Not found`);
+    }
+
+    console.log(`\n========================================\n`);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        initializedOrder: order ? {
+          id: order._id,
+          userId: order.userId,
+          vendorId: order.vendorId,
+          amountPaid: order.amountPaid,
+          paymentStatus: order.paymentStatus,
+        } : null,
+        transaction: transaction ? {
+          id: transaction._id,
+          userId: transaction.userId,
+          vendorId: transaction.vendorId,
+          amountPaid: transaction.amountPaid,
+          paymentStatus: transaction.paymentStatus,
+          createdAt: transaction.createdAt,
+        } : null,
+        tracking: tracking ? {
+          status: tracking.status,
+        } : null,
+      },
+      message: transaction
+        ? "✅ Payment was processed successfully"
+        : "❌ Payment was NOT processed - webhook may not have been triggered",
+    });
+  } catch (error) {
+    console.error("Verification error:", error);
+    return res.status(500).json({ error: error.message });
   }
 };
