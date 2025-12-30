@@ -5,10 +5,20 @@ import ImageKit from "imagekit";
 import path from "path";
 import mime from "mime-types";
 import FormData from "form-data";
+import os from "os";
 
+// Use /tmp directory for Vercel serverless compatibility
+const uploadDir = process.env.NODE_ENV === 'production' ? '/tmp' : 'uploads/';
+
+// Ensure upload directory exists (only needed for local development)
+if (process.env.NODE_ENV !== 'production') {
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+}
 
 const storage = multer.diskStorage({
-  destination: "uploads/",
+  destination: uploadDir,
   filename: (req, file, cb) => {
     cb(null, Date.now() + "-" + file.originalname);
   },
