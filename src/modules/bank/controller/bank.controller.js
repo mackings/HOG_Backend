@@ -73,47 +73,88 @@ export const getBankAccount = async (req, res, next) => {
       });
     }
 
-    const existingAccounts = await Bank.find({ userId: id });
+    // Get manually added banks from database
+    const manualBanks = await Bank.find({ userId: id });
 
-    if (!user.stripeId || existingAccounts.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Bank account or Stripe account not found for this user",
-      });
-    }
+    // Initialize Stripe banks array
+    let stripeBanks = [];
+    let stripeAccountInfo = null;
 
-    const account = await stripe.accounts.retrieve(user.stripeId);
+    // Fetch Stripe connected account banks if user has Stripe account
+    if (user.stripeId && stripe) {
+      try {
+        const account = await stripe.accounts.retrieve(user.stripeId);
 
-    const bankAccounts = await stripe.accounts.listExternalAccounts(
-      user.stripeId,
-      { object: "bank_account" }
-    );
+        const externalAccounts = await stripe.accounts.listExternalAccounts(
+          user.stripeId,
+          { object: "bank_account" }
+        );
 
-    return res.status(200).json({
-      success: true,
-      message: "Stripe and bank account retrieved successfully",
-      data: {
-        // account: {
-        //   id: account.id,
-        //   email: account.email,
-        //   country: account.country,
-        //   charges_enabled: account.charges_enabled,
-        //   payouts_enabled: account.payouts_enabled,
-        //   requirements: {
-        //     currently_due: account.requirements?.currently_due || [],
-        //     eventually_due: account.requirements?.eventually_due || [],
-        //     disabled_reason: account.requirements?.disabled_reason || null,
-        //   },
-        // },
-        stripeBankAccounts: bankAccounts.data.map((bank) => ({
+        stripeAccountInfo = {
+          id: account.id,
+          email: account.email,
+          country: account.country,
+          charges_enabled: account.charges_enabled,
+          payouts_enabled: account.payouts_enabled,
+          details_submitted: account.details_submitted,
+          requirements: {
+            currently_due: account.requirements?.currently_due || [],
+            eventually_due: account.requirements?.eventually_due || [],
+            disabled_reason: account.requirements?.disabled_reason || null,
+          },
+        };
+
+        stripeBanks = externalAccounts.data.map((bank) => ({
           id: bank.id,
+          source: "stripe",
           bank_name: bank.bank_name,
+          account_holder_name: bank.account_holder_name,
           last4: bank.last4,
+          routing_number: bank.routing_number,
           currency: bank.currency,
           country: bank.country,
           status: bank.status,
-        })),
-        localBankAccounts: existingAccounts,
+          default_for_currency: bank.default_for_currency,
+        }));
+      } catch (stripeError) {
+        console.error("Error fetching Stripe banks:", stripeError.message);
+        // Continue even if Stripe fetch fails
+      }
+    }
+
+    // Format manual banks to match structure
+    const formattedManualBanks = manualBanks.map((bank) => ({
+      id: bank._id,
+      source: "manual",
+      bank_name: bank.bankName,
+      account_holder_name: bank.accountName,
+      account_number: bank.accountNumber,
+      bank_code: bank.bankCode,
+      created_at: bank.createdAt,
+    }));
+
+    // Merge all banks
+    const allBanks = [...stripeBanks, ...formattedManualBanks];
+
+    // Check if user has any banks at all
+    if (allBanks.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No bank accounts found. Please add a bank account or connect your Stripe account.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Bank accounts retrieved successfully",
+      data: {
+        stripeAccount: stripeAccountInfo,
+        banks: allBanks,
+        summary: {
+          total: allBanks.length,
+          stripe: stripeBanks.length,
+          manual: formattedManualBanks.length,
+        },
       },
     });
   } catch (error) {
