@@ -253,6 +253,8 @@ export const vendorReplyOffer = async (req, res, next) => {
             workmanshipTotalCost: workmanshipCost,
             totalCost,
             subTotalCost: totalCost,
+            hasAcceptedOffer: true,
+            acceptedOfferId: offer._id,
           },
         },
         { new: true }
@@ -396,6 +398,8 @@ export const buyerReplyToOffer = async (req, res, next) => {
             workmanshipTotalCost: workmanshipCost,
             totalCost,
             subTotalCost: totalCost,
+            hasAcceptedOffer: true,
+            acceptedOfferId: offer._id,
           },
         },
         { new: true }

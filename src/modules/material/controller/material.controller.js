@@ -309,10 +309,20 @@ export const createPaymentOnline = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    const review = await Review.findOne({ _id: reviewId });
+    const review = await Review.findOne({ _id: reviewId }).populate('acceptedOfferId');
     if (!review) {
       return res.status(404).json({ success: false, message: "Review not found" });
     }
+
+    // Check if offer negotiation is required and completed
+    if (review.hasAcceptedOffer === false && !review.acceptedOfferId) {
+      return res.status(400).json({
+        success: false,
+        message: "Please negotiate and accept an offer before making payment",
+        requiresOffer: true
+      });
+    }
+
     // Validate material
     const material = await Material.findOne({ _id: review.materialId });
     if (!material) {

@@ -61,6 +61,14 @@ const reviewSchema = new mongoose.Schema({
     country: {
         type: String,
     },
+    hasAcceptedOffer: {
+        type: Boolean,
+        default: false,
+    },
+    acceptedOfferId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "MakeOffer",
+    },
     status: {
         type: String,
         enum: ["pending", "approved", "rejected", "requesting", "quote", "part payment", "full payment"],
