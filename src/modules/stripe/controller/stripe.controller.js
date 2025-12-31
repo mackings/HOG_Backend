@@ -267,89 +267,50 @@ export const createStripePayment = async (req, res, next) => {
       });
     }
 
-    const pickupAddress = vendor.address;
     const deliveryAddress = address || materialOwner.address;
 
-    // Geocode delivery address using OpenStreetMap Nominatim (free)
-    const geocodeReceiverResponse = await axios.get(`https://nominatim.openstreetmap.org/search`, {
-        params: {
-            q: deliveryAddress,
-            format: 'json',
-            limit: 1
-        },
-        headers: {
-            'User-Agent': 'HOG-Fashion-App/1.0'
-        }
-    });
-
-    const Location = geocodeReceiverResponse.data;
-    if (!Location.length) {
-        return res.status(400).json({
-            success: false,
-            message: 'Invalid deliveryAddress provided',
-            error: `Geocoding failed for deliveryAddress: ${deliveryAddress}`
-        });
-    }
-
-    const deliveryLocation = {
-        latitude: parseFloat(Location[0].lat),
-        longitude: parseFloat(Location[0].lon)
-    };
-
-    // Geocode sender address using OpenStreetMap Nominatim (free)
-    const geocodeSenderResponse = await axios.get(`https://nominatim.openstreetmap.org/search`, {
-        params: {
-            q: pickupAddress,
-            format: 'json',
-            limit: 1
-        },
-        headers: {
-            'User-Agent': 'HOG-Fashion-App/1.0'
-        }
-    });
-
-    const senderAddress = geocodeSenderResponse.data;
-    if (!senderAddress.length) {
-        return res.status(400).json({
-            success: false,
-            message: 'Invalid pickupAddress provided',
-            error: `Geocoding failed for pickupAddress: ${pickupAddress}`
-        });
-    }
-
-    const senderLocation = {
-        latitude: parseFloat(senderAddress[0].lat),
-        longitude: parseFloat(senderAddress[0].lon)
-    };
-
-    // Shipment costs
-    const numberOfPackages = 1;
+    // Get flat delivery rate from database
     const method = (shipmentMethod || "").trim().toLowerCase();
     if (!method) {
-    return res.status(400).json({ success: false, message: "shipmentMethod is required" });
+      return res.status(400).json({ success: false, message: "shipmentMethod is required" });
     }
 
-    // Shipment cost calculation
-    let shipmentCost;
-    // const method = shipmentMethod.toLowerCase();
-
+    let deliveryType;
     switch (method) {
       case "express":
-        shipmentCost = await expressCalculateCost(deliveryLocation, senderLocation, numberOfPackages);
+        deliveryType = "Express";
         break;
       case "cargo":
-        shipmentCost = await cargoCalculateCost(deliveryLocation, senderLocation, numberOfPackages);
+        deliveryType = "Cargo";
         break;
       case "regular":
-        shipmentCost = await regularCalculateCost(deliveryLocation, senderLocation, numberOfPackages);
+        deliveryType = "Regular";
         break;
       default:
-        return res.status(400).json({ success: false, message: "Invalid shipment method" });
+        return res.status(400).json({ success: false, message: "Invalid shipment method. Choose Express, Cargo, or Regular" });
     }
 
-    const shipping = Math.round(shipmentCost);
-    const productCost = Number(amount);
-    const totalCost = shipping + productCost;
+    // Import DeliveryRate model
+    const DeliveryRate = (await import('../../deliveryRate/model/deliveryRate.model.js')).default;
+
+    const deliveryRate = await DeliveryRate.findOne({ deliveryType });
+    if (!deliveryRate) {
+      return res.status(400).json({
+        success: false,
+        message: `Delivery rate not found for ${deliveryType}. Please contact support.`
+      });
+    }
+
+    // Simple flat rate calculation
+    const productCost = parseFloat(amount);
+    const deliveryFee = Number(deliveryRate.amount);
+    const totalCost = productCost + deliveryFee;
+
+    console.log("💰 PAYMENT CALCULATION:");
+    console.log(`   Product Cost: $${productCost.toFixed(2)} USD`);
+    console.log(`   Delivery Fee (${deliveryType}): $${deliveryFee.toFixed(2)} USD`);
+    console.log(`   Total Cost: $${totalCost.toFixed(2)} USD`);
+    console.log(`   Stripe Amount (cents): ${Math.round(totalCost * 100)}`);
 
 
     const paymentReference = crypto.randomBytes(8).toString("hex");
@@ -378,7 +339,9 @@ export const createStripePayment = async (req, res, next) => {
     });
 
     const userCurrency = "USD";
-    const amountInCents = totalCost * 100;
+    const amountInCents = Math.round(totalCost * 100);
+
+    console.log(`   Final Stripe Charge: ${amountInCents} cents ($${(amountInCents / 100).toFixed(2)})\n`);
 
     const session = await stripe.checkout.sessions.create({
       // payment_method_types: ["card"],
