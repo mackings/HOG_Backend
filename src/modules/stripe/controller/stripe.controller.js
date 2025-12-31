@@ -250,6 +250,14 @@ export const createStripePayment = async (req, res, next) => {
       });
     }
 
+    console.log("\n📋 REVIEW DETAILS:");
+    console.log(`   Review ID: ${review._id}`);
+    console.log(`   Total Cost: ₦${review.totalCost}`);
+    console.log(`   Amount Paid: ₦${review.amountPaid || 0}`);
+    console.log(`   Amount To Pay: ₦${review.amountToPay || review.totalCost}`);
+    console.log(`   Payment Status: ${paymentStatus}`);
+    console.log(`   Review Country: ${review.country}`);
+
     const material = await Material.findById(review.materialId);
     if (!material) {
       return res.status(404).json({ success: false, message: "Material not found" });
@@ -309,13 +317,53 @@ export const createStripePayment = async (req, res, next) => {
     const vendorCountry = vendorUser?.country?.toUpperCase().trim() || '';
     const isInternationalVendor = ['UNITED STATES', 'US', 'USA', 'UNITED KINGDOM', 'UK', 'GB'].includes(vendorCountry);
 
+    console.log(`\n🌍 Vendor Location: ${vendorCountry}`);
+    console.log(`   International Vendor: ${isInternationalVendor ? 'Yes' : 'No'}`);
+
+    // Determine payment amount based on payment status
+    let productCostNGN;
+    if (paymentStatus === "full payment") {
+      productCostNGN = review.amountToPay || review.totalCost;
+      console.log(`   Payment Type: FULL PAYMENT`);
+      console.log(`   Amount to charge: ₦${productCostNGN.toFixed(2)}`);
+    } else if (paymentStatus === "part payment") {
+      // For part payment, use the amount from request (user-specified)
+      productCostNGN = parseFloat(amount) || 0;
+      console.log(`   Payment Type: PART PAYMENT`);
+      console.log(`   User specified amount: ₦${productCostNGN.toFixed(2)}`);
+
+      // Validate part payment amount
+      const remainingBalance = review.amountToPay || review.totalCost;
+      if (productCostNGN > remainingBalance) {
+        return res.status(400).json({
+          success: false,
+          message: `Part payment amount (₦${productCostNGN}) exceeds remaining balance (₦${remainingBalance})`
+        });
+      }
+      if (productCostNGN <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Part payment amount must be greater than 0"
+        });
+      }
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "paymentStatus must be either 'full payment' or 'part payment'"
+      });
+    }
+
     let deliveryFee;
+    let productCost;
+    let totalCost;
     let currencySymbol;
+    let ngnToUsdRate = 1;
 
     if (isInternationalVendor) {
-      // Stripe payment - convert delivery fee from NGN to USD
-      console.log(`🌍 International vendor detected (${vendorCountry})`);
-      console.log(`   Converting delivery fee: ₦${deliveryFeeNGN} NGN → USD`);
+      // Stripe payment - convert from NGN to USD
+      console.log(`\n💱 Converting NGN → USD...`);
+      console.log(`   Product Cost (NGN): ₦${productCostNGN.toFixed(2)}`);
+      console.log(`   Delivery Fee (NGN): ₦${deliveryFeeNGN.toFixed(2)}`);
 
       try {
         // Call conversion API
@@ -324,42 +372,40 @@ export const createStripePayment = async (req, res, next) => {
         const conversionResponse = await axios.get(apiUrl);
 
         if (conversionResponse?.data?.result === "success" && conversionResponse?.data?.conversion_rate) {
-          const conversionRate = conversionResponse.data.conversion_rate;
-          deliveryFee = Math.round(deliveryFeeNGN * conversionRate * 100) / 100;
-          console.log(`   Conversion Rate: 1 NGN = $${conversionRate} USD`);
-          console.log(`   Delivery Fee in USD: $${deliveryFee.toFixed(2)}`);
+          ngnToUsdRate = conversionResponse.data.conversion_rate;
+          console.log(`   ✅ Exchange Rate: 1 NGN = $${ngnToUsdRate} USD`);
         } else {
           // Fallback rate if API fails
-          const fallbackRate = 0.000692;
-          deliveryFee = Math.round(deliveryFeeNGN * fallbackRate * 100) / 100;
-          console.log(`   ⚠️  Using fallback rate: 1 NGN = $${fallbackRate} USD`);
-          console.log(`   Delivery Fee in USD: $${deliveryFee.toFixed(2)}`);
+          ngnToUsdRate = 0.000692;
+          console.log(`   ⚠️  Using fallback rate: 1 NGN = $${ngnToUsdRate} USD`);
         }
       } catch (error) {
         // Fallback rate on error
-        const fallbackRate = 0.000692;
-        deliveryFee = Math.round(deliveryFeeNGN * fallbackRate * 100) / 100;
-        console.log(`   ⚠️  Conversion API error, using fallback rate`);
-        console.log(`   Delivery Fee in USD: $${deliveryFee.toFixed(2)}`);
+        ngnToUsdRate = 0.000692;
+        console.log(`   ⚠️  API error, using fallback rate: 1 NGN = $${ngnToUsdRate} USD`);
       }
 
+      // Convert both product cost and delivery fee to USD
+      productCost = Math.round(productCostNGN * ngnToUsdRate * 100) / 100;
+      deliveryFee = Math.round(deliveryFeeNGN * ngnToUsdRate * 100) / 100;
+      totalCost = productCost + deliveryFee;
       currencySymbol = '$';
+
+      console.log(`   Product Cost (USD): $${productCost.toFixed(2)}`);
+      console.log(`   Delivery Fee (USD): $${deliveryFee.toFixed(2)}`);
     } else {
-      // Paystack payment - keep delivery fee in NGN
-      console.log(`🇳🇬 Nigerian/Local vendor - keeping delivery fee in NGN`);
+      // Paystack/Nigerian vendor - keep in NGN
+      console.log(`\n🇳🇬 Keeping amounts in NGN (Nigerian vendor)`);
+      productCost = productCostNGN;
       deliveryFee = deliveryFeeNGN;
-      console.log(`   Delivery Fee in NGN: ₦${deliveryFee.toFixed(2)}`);
+      totalCost = productCost + deliveryFee;
       currencySymbol = '₦';
     }
 
-    // Calculate total
-    const productCost = parseFloat(amount);
-    const totalCost = productCost + deliveryFee;
-
-    console.log("\n💰 PAYMENT BREAKDOWN:");
+    console.log("\n💰 FINAL PAYMENT BREAKDOWN:");
     console.log(`   Product Cost: ${currencySymbol}${productCost.toFixed(2)}`);
     console.log(`   Delivery Fee (${deliveryType}): ${currencySymbol}${deliveryFee.toFixed(2)}`);
-    console.log(`   Total: ${currencySymbol}${totalCost.toFixed(2)}`);
+    console.log(`   Total Charge: ${currencySymbol}${totalCost.toFixed(2)}`);
 
 
     const paymentReference = crypto.randomBytes(8).toString("hex");
@@ -376,8 +422,8 @@ export const createStripePayment = async (req, res, next) => {
         measurement: material.measurement,
         sampleImage: material.sampleImage,
       }],
-      totalAmount: totalCost,
-      amountPaid: totalCost,
+      totalAmount: review.totalCost, // Store original NGN total
+      amountPaid: productCostNGN, // Store NGN amount (without delivery for now)
       paymentMethod: "Stripe",
       paymentReference,
       deliveryAddress,
@@ -386,6 +432,12 @@ export const createStripePayment = async (req, res, next) => {
       reviewId,
       paymentStatus,
     });
+
+    console.log(`\n📦 Order Created:`);
+    console.log(`   Order ID: ${order._id}`);
+    console.log(`   Amount Paid (NGN): ₦${productCostNGN.toFixed(2)}`);
+    console.log(`   Total Amount (NGN): ₦${review.totalCost.toFixed(2)}`);
+    console.log(`   Payment Reference: ${paymentReference}`);
 
     const userCurrency = "USD";
     const amountInCents = Math.round(totalCost * 100);
