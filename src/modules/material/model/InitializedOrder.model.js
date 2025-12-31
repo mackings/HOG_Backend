@@ -87,7 +87,15 @@ const initializedOrderSchema = new mongoose.Schema({
   amountPaid: {
     type: Number,
     default: 0,
-  },  
+  },
+  amountPaidUSD: {
+    type: Number,
+    default: 0,
+  },
+  exchangeRate: {
+    type: Number,
+    default: 0,
+  },
   title: {
       type: String,
   },

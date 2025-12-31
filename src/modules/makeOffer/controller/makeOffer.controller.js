@@ -245,18 +245,57 @@ export const vendorReplyOffer = async (req, res, next) => {
 
     // ✅ Sync with review if accepted
     if (action === "accepted" && offer.reviewId) {
+      // Check if vendor is international to calculate USD amounts
+      const Vendor = (await import('../../vendor/model/vendor.model.js')).default;
+      const User = (await import('../../user/model/user.model.js')).default;
+
+      const review = await Review.findById(offer.reviewId);
+      const vendor = await Vendor.findById(review.vendorId);
+      const vendorUser = await User.findById(vendor.userId);
+
+      const vendorCountry = vendorUser?.country?.toUpperCase().trim() || '';
+      const isInternationalVendor = ['UNITED STATES', 'US', 'USA', 'UNITED KINGDOM', 'UK', 'GB'].includes(vendorCountry);
+
+      let updateData = {
+        materialTotalCost: materialCost,
+        workmanshipTotalCost: workmanshipCost,
+        totalCost,
+        subTotalCost: totalCost,
+        amountToPay: totalCost,
+        hasAcceptedOffer: true,
+        acceptedOfferId: offer._id,
+        isInternationalVendor,
+      };
+
+      // If international vendor, convert to USD
+      if (isInternationalVendor) {
+        try {
+          const axios = (await import('axios')).default;
+          const apiKey = process.env.EXCHANGE_RATE_API_KEY;
+          const apiUrl = `https://v6.exchangerate-api.com/v6/${apiKey}/pair/NGN/USD`;
+          const conversionResponse = await axios.get(apiUrl);
+
+          let exchangeRate = 0.000692; // fallback
+          if (conversionResponse?.data?.result === "success") {
+            exchangeRate = conversionResponse.data.conversion_rate;
+          }
+
+          updateData.exchangeRate = exchangeRate;
+          updateData.materialTotalCostUSD = Math.round(materialCost * exchangeRate * 100) / 100;
+          updateData.workmanshipTotalCostUSD = Math.round(workmanshipCost * exchangeRate * 100) / 100;
+          updateData.totalCostUSD = Math.round(totalCost * exchangeRate * 100) / 100;
+          updateData.subTotalCostUSD = Math.round(totalCost * exchangeRate * 100) / 100;
+          updateData.amountToPayUSD = Math.round(totalCost * exchangeRate * 100) / 100;
+
+          console.log(`💱 Converted to USD: ₦${totalCost} → $${updateData.totalCostUSD} (Rate: ${exchangeRate})`);
+        } catch (error) {
+          console.error('Currency conversion failed:', error.message);
+        }
+      }
+
       await Review.findByIdAndUpdate(
         offer.reviewId,
-        {
-          $set: {
-            materialTotalCost: materialCost,
-            workmanshipTotalCost: workmanshipCost,
-            totalCost,
-            subTotalCost: totalCost,
-            hasAcceptedOffer: true,
-            acceptedOfferId: offer._id,
-          },
-        },
+        { $set: updateData },
         { new: true }
       );
       console.log(`✅ Review ${offer.reviewId} updated with accepted offer amounts`);
@@ -390,18 +429,57 @@ export const buyerReplyToOffer = async (req, res, next) => {
 
     // ✅ Sync with review if buyer accepts the offer
     if (action === "accepted" && offer.reviewId) {
+      // Check if vendor is international to calculate USD amounts
+      const Vendor = (await import('../../vendor/model/vendor.model.js')).default;
+      const User = (await import('../../user/model/user.model.js')).default;
+
+      const review = await Review.findById(offer.reviewId);
+      const vendor = await Vendor.findById(review.vendorId);
+      const vendorUser = await User.findById(vendor.userId);
+
+      const vendorCountry = vendorUser?.country?.toUpperCase().trim() || '';
+      const isInternationalVendor = ['UNITED STATES', 'US', 'USA', 'UNITED KINGDOM', 'UK', 'GB'].includes(vendorCountry);
+
+      let updateData = {
+        materialTotalCost: materialCost,
+        workmanshipTotalCost: workmanshipCost,
+        totalCost,
+        subTotalCost: totalCost,
+        amountToPay: totalCost,
+        hasAcceptedOffer: true,
+        acceptedOfferId: offer._id,
+        isInternationalVendor,
+      };
+
+      // If international vendor, convert to USD
+      if (isInternationalVendor) {
+        try {
+          const axios = (await import('axios')).default;
+          const apiKey = process.env.EXCHANGE_RATE_API_KEY;
+          const apiUrl = `https://v6.exchangerate-api.com/v6/${apiKey}/pair/NGN/USD`;
+          const conversionResponse = await axios.get(apiUrl);
+
+          let exchangeRate = 0.000692; // fallback
+          if (conversionResponse?.data?.result === "success") {
+            exchangeRate = conversionResponse.data.conversion_rate;
+          }
+
+          updateData.exchangeRate = exchangeRate;
+          updateData.materialTotalCostUSD = Math.round(materialCost * exchangeRate * 100) / 100;
+          updateData.workmanshipTotalCostUSD = Math.round(workmanshipCost * exchangeRate * 100) / 100;
+          updateData.totalCostUSD = Math.round(totalCost * exchangeRate * 100) / 100;
+          updateData.subTotalCostUSD = Math.round(totalCost * exchangeRate * 100) / 100;
+          updateData.amountToPayUSD = Math.round(totalCost * exchangeRate * 100) / 100;
+
+          console.log(`💱 Converted to USD: ₦${totalCost} → $${updateData.totalCostUSD} (Rate: ${exchangeRate})`);
+        } catch (error) {
+          console.error('Currency conversion failed:', error.message);
+        }
+      }
+
       await Review.findByIdAndUpdate(
         offer.reviewId,
-        {
-          $set: {
-            materialTotalCost: materialCost,
-            workmanshipTotalCost: workmanshipCost,
-            totalCost,
-            subTotalCost: totalCost,
-            hasAcceptedOffer: true,
-            acceptedOfferId: offer._id,
-          },
-        },
+        { $set: updateData },
         { new: true }
       );
       console.log(`✅ Review ${offer.reviewId} updated with accepted offer amounts`);

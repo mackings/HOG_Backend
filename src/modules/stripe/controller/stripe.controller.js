@@ -250,14 +250,6 @@ export const createStripePayment = async (req, res, next) => {
       });
     }
 
-    console.log("\n📋 REVIEW DETAILS:");
-    console.log(`   Review ID: ${review._id}`);
-    console.log(`   Total Cost: ₦${review.totalCost}`);
-    console.log(`   Amount Paid: ₦${review.amountPaid || 0}`);
-    console.log(`   Amount To Pay: ₦${review.amountToPay || review.totalCost}`);
-    console.log(`   Payment Status: ${paymentStatus}`);
-    console.log(`   Review Country: ${review.country}`);
-
     const material = await Material.findById(review.materialId);
     if (!material) {
       return res.status(404).json({ success: false, message: "Material not found" });
@@ -275,9 +267,19 @@ export const createStripePayment = async (req, res, next) => {
       });
     }
 
-    const deliveryAddress = address || materialOwner.address;
+    // Check if vendor is international
+    const vendorUser = await User.findById(vendor.userId);
+    const vendorCountry = vendorUser?.country?.toUpperCase().trim() || '';
+    const isInternationalVendor = ['UNITED STATES', 'US', 'USA', 'UNITED KINGDOM', 'UK', 'GB'].includes(vendorCountry);
 
-    // Get flat delivery rate from database
+    console.log("\n📋 PAYMENT REQUEST:");
+    console.log(`   Review ID: ${review._id}`);
+    console.log(`   Vendor Country: ${vendorCountry}`);
+    console.log(`   International Vendor: ${isInternationalVendor ? 'Yes' : 'No'}`);
+    console.log(`   Payment Status: ${paymentStatus}`);
+    console.log(`   Frontend Amount Sent: ${amount || 'N/A'}`);
+
+    // Get delivery rate
     const method = (shipmentMethod || "").trim().toLowerCase();
     if (!method) {
       return res.status(400).json({ success: false, message: "shipmentMethod is required" });
@@ -298,9 +300,7 @@ export const createStripePayment = async (req, res, next) => {
         return res.status(400).json({ success: false, message: "Invalid shipment method. Choose Express, Cargo, or Regular" });
     }
 
-    // Import DeliveryRate model
     const DeliveryRate = (await import('../../deliveryRate/model/deliveryRate.model.js')).default;
-
     const deliveryRate = await DeliveryRate.findOne({ deliveryType });
     if (!deliveryRate) {
       return res.status(400).json({
@@ -309,35 +309,49 @@ export const createStripePayment = async (req, res, next) => {
       });
     }
 
-    // Get delivery fee from database (stored in NGN)
     const deliveryFeeNGN = Number(deliveryRate.amount);
 
-    // Determine if this is a Stripe payment (international vendor)
-    const vendorUser = await User.findById(vendor.userId);
-    const vendorCountry = vendorUser?.country?.toUpperCase().trim() || '';
-    const isInternationalVendor = ['UNITED STATES', 'US', 'USA', 'UNITED KINGDOM', 'UK', 'GB'].includes(vendorCountry);
-
-    console.log(`\n🌍 Vendor Location: ${vendorCountry}`);
-    console.log(`   International Vendor: ${isInternationalVendor ? 'Yes' : 'No'}`);
-
-    // Determine payment amount based on payment status
+    // BACKEND HANDLES ALL CURRENCY LOGIC
     let productCostNGN;
+    let productCostUSD;
+    let deliveryFeeUSD;
+    let totalCostUSD;
+    let ngnToUsdRate = review.exchangeRate || 0.000692;
+
+    console.log("\n💰 AMOUNTS FROM REVIEW:");
+    console.log(`   Total Cost (NGN): ₦${review.totalCost}`);
+    console.log(`   Amount Paid (NGN): ₦${review.amountPaid || 0}`);
+    console.log(`   Amount To Pay (NGN): ₦${review.amountToPay || review.totalCost}`);
+
+    if (isInternationalVendor) {
+      console.log(`   Total Cost (USD): $${review.totalCostUSD || 0}`);
+      console.log(`   Amount Paid (USD): $${review.amountPaidUSD || 0}`);
+      console.log(`   Amount To Pay (USD): $${review.amountToPayUSD || 0}`);
+      console.log(`   Exchange Rate: ${ngnToUsdRate}`);
+    }
+
+    // Determine payment amount
     if (paymentStatus === "full payment") {
       productCostNGN = review.amountToPay || review.totalCost;
-      console.log(`   Payment Type: FULL PAYMENT`);
-      console.log(`   Amount to charge: ₦${productCostNGN.toFixed(2)}`);
-    } else if (paymentStatus === "part payment") {
-      // For part payment, use the amount from request (user-specified)
-      productCostNGN = parseFloat(amount) || 0;
-      console.log(`   Payment Type: PART PAYMENT`);
-      console.log(`   User specified amount: ₦${productCostNGN.toFixed(2)}`);
 
-      // Validate part payment amount
-      const remainingBalance = review.amountToPay || review.totalCost;
-      if (productCostNGN > remainingBalance) {
+      if (isInternationalVendor) {
+        productCostUSD = review.amountToPayUSD || review.totalCostUSD || 0;
+        console.log(`\n✅ FULL PAYMENT (International Vendor)`);
+        console.log(`   Charging: $${productCostUSD.toFixed(2)} USD`);
+      } else {
+        console.log(`\n✅ FULL PAYMENT (Nigerian Vendor)`);
+        console.log(`   Charging: ₦${productCostNGN.toFixed(2)} NGN`);
+      }
+    } else if (paymentStatus === "part payment") {
+      // Frontend sends NGN amount always
+      productCostNGN = parseFloat(amount) || 0;
+
+      // Validate against NGN balance
+      const remainingBalanceNGN = review.amountToPay || review.totalCost;
+      if (productCostNGN > remainingBalanceNGN) {
         return res.status(400).json({
           success: false,
-          message: `Part payment amount (₦${productCostNGN}) exceeds remaining balance (₦${remainingBalance})`
+          message: `Part payment amount (₦${productCostNGN}) exceeds remaining balance (₦${remainingBalanceNGN})`
         });
       }
       if (productCostNGN <= 0) {
@@ -346,6 +360,18 @@ export const createStripePayment = async (req, res, next) => {
           message: "Part payment amount must be greater than 0"
         });
       }
+
+      if (isInternationalVendor) {
+        // Convert NGN part payment to USD
+        productCostUSD = Math.round(productCostNGN * ngnToUsdRate * 100) / 100;
+        console.log(`\n✅ PART PAYMENT (International Vendor)`);
+        console.log(`   NGN Amount: ₦${productCostNGN.toFixed(2)}`);
+        console.log(`   Converted to: $${productCostUSD.toFixed(2)} USD`);
+        console.log(`   Exchange Rate: ${ngnToUsdRate}`);
+      } else {
+        console.log(`\n✅ PART PAYMENT (Nigerian Vendor)`);
+        console.log(`   Charging: ₦${productCostNGN.toFixed(2)} NGN`);
+      }
     } else {
       return res.status(400).json({
         success: false,
@@ -353,63 +379,21 @@ export const createStripePayment = async (req, res, next) => {
       });
     }
 
-    let deliveryFee;
-    let productCost;
-    let totalCost;
-    let currencySymbol;
-    let ngnToUsdRate = 1;
-
+    // Calculate delivery fee in USD for international vendors
     if (isInternationalVendor) {
-      // Stripe payment - convert from NGN to USD
-      console.log(`\n💱 Converting NGN → USD...`);
-      console.log(`   Product Cost (NGN): ₦${productCostNGN.toFixed(2)}`);
-      console.log(`   Delivery Fee (NGN): ₦${deliveryFeeNGN.toFixed(2)}`);
+      deliveryFeeUSD = Math.round(deliveryFeeNGN * ngnToUsdRate * 100) / 100;
+      totalCostUSD = productCostUSD + deliveryFeeUSD;
 
-      try {
-        // Call conversion API
-        const apiKey = process.env.EXCHANGE_RATE_API_KEY;
-        const apiUrl = `https://v6.exchangerate-api.com/v6/${apiKey}/pair/NGN/USD`;
-        const conversionResponse = await axios.get(apiUrl);
-
-        if (conversionResponse?.data?.result === "success" && conversionResponse?.data?.conversion_rate) {
-          ngnToUsdRate = conversionResponse.data.conversion_rate;
-          console.log(`   ✅ Exchange Rate: 1 NGN = $${ngnToUsdRate} USD`);
-        } else {
-          // Fallback rate if API fails
-          ngnToUsdRate = 0.000692;
-          console.log(`   ⚠️  Using fallback rate: 1 NGN = $${ngnToUsdRate} USD`);
-        }
-      } catch (error) {
-        // Fallback rate on error
-        ngnToUsdRate = 0.000692;
-        console.log(`   ⚠️  API error, using fallback rate: 1 NGN = $${ngnToUsdRate} USD`);
-      }
-
-      // Convert both product cost and delivery fee to USD
-      productCost = Math.round(productCostNGN * ngnToUsdRate * 100) / 100;
-      deliveryFee = Math.round(deliveryFeeNGN * ngnToUsdRate * 100) / 100;
-      totalCost = productCost + deliveryFee;
-      currencySymbol = '$';
-
-      console.log(`   Product Cost (USD): $${productCost.toFixed(2)}`);
-      console.log(`   Delivery Fee (USD): $${deliveryFee.toFixed(2)}`);
-    } else {
-      // Paystack/Nigerian vendor - keep in NGN
-      console.log(`\n🇳🇬 Keeping amounts in NGN (Nigerian vendor)`);
-      productCost = productCostNGN;
-      deliveryFee = deliveryFeeNGN;
-      totalCost = productCost + deliveryFee;
-      currencySymbol = '₦';
+      console.log(`\n💳 STRIPE CHARGE BREAKDOWN:`);
+      console.log(`   Product Cost: $${productCostUSD.toFixed(2)}`);
+      console.log(`   Delivery Fee: $${deliveryFeeUSD.toFixed(2)} (${deliveryType})`);
+      console.log(`   Total: $${totalCostUSD.toFixed(2)}`);
     }
 
-    console.log("\n💰 FINAL PAYMENT BREAKDOWN:");
-    console.log(`   Product Cost: ${currencySymbol}${productCost.toFixed(2)}`);
-    console.log(`   Delivery Fee (${deliveryType}): ${currencySymbol}${deliveryFee.toFixed(2)}`);
-    console.log(`   Total Charge: ${currencySymbol}${totalCost.toFixed(2)}`);
-
-
+    const deliveryAddress = address || materialOwner.address;
     const paymentReference = crypto.randomBytes(8).toString("hex");
 
+    // Store data for webhook
     const order = await InitializedOrder.create({
       userId: user._id,
       cartItems: [{
@@ -422,8 +406,8 @@ export const createStripePayment = async (req, res, next) => {
         measurement: material.measurement,
         sampleImage: material.sampleImage,
       }],
-      totalAmount: review.totalCost, // Store original NGN total
-      amountPaid: productCostNGN, // Store NGN amount (without delivery for now)
+      totalAmount: review.totalCost, // NGN total
+      amountPaid: productCostNGN, // NGN amount being paid
       paymentMethod: "Stripe",
       paymentReference,
       deliveryAddress,
@@ -431,25 +415,26 @@ export const createStripePayment = async (req, res, next) => {
       materialId: material._id,
       reviewId,
       paymentStatus,
+      exchangeRate: ngnToUsdRate,
+      amountPaidUSD: productCostUSD || 0,
     });
 
     console.log(`\n📦 Order Created:`);
     console.log(`   Order ID: ${order._id}`);
-    console.log(`   Amount Paid (NGN): ₦${productCostNGN.toFixed(2)}`);
-    console.log(`   Total Amount (NGN): ₦${review.totalCost.toFixed(2)}`);
     console.log(`   Payment Reference: ${paymentReference}`);
+    console.log(`   NGN Amount: ₦${productCostNGN.toFixed(2)}`);
+    if (isInternationalVendor) {
+      console.log(`   USD Amount: $${productCostUSD.toFixed(2)}`);
+    }
 
-    const userCurrency = "USD";
-    const amountInCents = Math.round(totalCost * 100);
-
-    console.log(`   Final Stripe Charge: ${amountInCents} cents ($${(amountInCents / 100).toFixed(2)})\n`);
+    const amountInCents = Math.round(totalCostUSD * 100);
+    console.log(`   Stripe Charge: ${amountInCents} cents ($${(amountInCents / 100).toFixed(2)})\n`);
 
     const session = await stripe.checkout.sessions.create({
-      // payment_method_types: ["card"],
       mode: "payment",
       line_items: [{
         price_data: {
-          currency: userCurrency,
+          currency: "USD",
           product_data: { name: `OrderId-${paymentReference}` },
           unit_amount: amountInCents,
         },
@@ -615,34 +600,56 @@ export const webhookPaymentSuccess = async (req, res) => {
       console.log(`   Buyer found: ${buyer ? 'Yes' : 'No'}`);
 
       if (vendor?.userId && review) {
+        const vendorUser = await User.findById(vendor.userId);
+        const vendorCountry = vendorUser?.country?.toUpperCase().trim() || '';
+        const isInternationalVendor = ['UNITED STATES', 'US', 'USA', 'UNITED KINGDOM', 'UK', 'GB'].includes(vendorCountry);
+
         console.log(`\n💰 Crediting vendor wallet...`);
         console.log(`   Vendor User ID: ${vendor.userId}`);
-        console.log(`   Amount to credit: ${order.amountPaid}`);
-
-        const vendorUser = await User.findById(vendor.userId);
-        console.log(`   Vendor User found: ${vendorUser ? 'Yes' : 'No'}`);
+        console.log(`   Vendor Country: ${vendorCountry}`);
+        console.log(`   International Vendor: ${isInternationalVendor ? 'Yes' : 'No'}`);
         console.log(`   Vendor Email: ${vendorUser?.email}`);
-        console.log(`   Current Wallet Balance: ${vendorUser?.wallet || 0}`);
+        console.log(`   Current Wallet Balance: $${vendorUser?.wallet || 0}`);
+
+        // Determine amount to credit based on vendor type
+        let amountToCredit;
+        let currencyLabel;
+
+        if (isInternationalVendor) {
+          // Credit USD amount
+          amountToCredit = order.amountPaidUSD || order.amountPaid;
+          currencyLabel = 'USD';
+          console.log(`   Amount Paid (NGN): ₦${order.amountPaid}`);
+          console.log(`   Amount Paid (USD): $${amountToCredit}`);
+          console.log(`   Exchange Rate: ${order.exchangeRate}`);
+        } else {
+          // Credit NGN amount
+          amountToCredit = order.amountPaid;
+          currencyLabel = 'NGN';
+          console.log(`   Amount Paid (NGN): ₦${amountToCredit}`);
+        }
+
+        console.log(`   Amount to credit: ${currencyLabel === 'USD' ? '$' : '₦'}${amountToCredit}`);
 
         // 💰 Credit vendor's wallet in database
         const updatedVendor = await User.findByIdAndUpdate(vendor.userId, {
-          $inc: { wallet: order.amountPaid },
+          $inc: { wallet: amountToCredit },
         }, { new: true });
 
         console.log(`✅ VENDOR WALLET CREDITED!`);
-        console.log(`   Previous Balance: ${vendorUser?.wallet || 0}`);
-        console.log(`   Amount Added: ${order.amountPaid}`);
-        console.log(`   New Balance: ${updatedVendor.wallet}`);
+        console.log(`   Previous Balance: $${vendorUser?.wallet || 0}`);
+        console.log(`   Amount Added: ${currencyLabel === 'USD' ? '$' : '₦'}${amountToCredit}`);
+        console.log(`   New Balance: $${updatedVendor.wallet}`);
 
         // 💸 If vendor has Stripe connected account, transfer funds
-        if (vendorUser.stripeId && stripe) {
+        if (vendorUser.stripeId && stripe && isInternationalVendor) {
           console.log(`\n💸 Initiating Stripe transfer to connected account...`);
           console.log(`   Stripe Account ID: ${vendorUser.stripeId}`);
           try {
             const transferGroup = crypto.randomBytes(6).toString("hex");
 
             await stripe.transfers.create({
-              amount: Math.round(order.amountPaid * 100), // cents
+              amount: Math.round(amountToCredit * 100), // cents
               currency: "usd",
               destination: vendorUser.stripeId,
               transfer_group: transferGroup,
@@ -665,7 +672,7 @@ export const webhookPaymentSuccess = async (req, res) => {
 
         // 📧 Send payout notification email to vendor
         try {
-          await sendPayoutNotificationEmail(vendor, vendorUser, order.amountPaid, order.paymentReference);
+          await sendPayoutNotificationEmail(vendor, vendorUser, amountToCredit, order.paymentReference);
           console.log(`✅ Payout notification sent to vendor: ${vendorUser.email}`);
         } catch (emailError) {
           console.error("❌ Vendor email failed:", emailError.message);
@@ -673,7 +680,7 @@ export const webhookPaymentSuccess = async (req, res) => {
 
         // 📧 Send payment confirmation email to buyer
         try {
-          await sendPaymentReceivedEmail(buyer, order.amountPaid, vendor, order.paymentReference);
+          await sendPaymentReceivedEmail(buyer, amountToCredit, vendor, order.paymentReference);
           console.log(`✅ Payment confirmation sent to buyer: ${buyer.email}`);
         } catch (emailError) {
           console.error("❌ Buyer email failed:", emailError.message);
@@ -682,27 +689,48 @@ export const webhookPaymentSuccess = async (req, res) => {
         // 📝 Update review status
         console.log(`\n📝 Updating review status...`);
         console.log(`   Review ID: ${review._id}`);
-        console.log(`   Previous Amount Paid: ${review.amountPaid || 0}`);
-        console.log(`   Adding: ${order.amountPaid}`);
-        console.log(`   Total Cost: ${review.totalCost}`);
+        console.log(`   Previous Amount Paid (NGN): ₦${review.amountPaid || 0}`);
+        console.log(`   Adding (NGN): ₦${order.amountPaid}`);
+        console.log(`   Total Cost (NGN): ₦${review.totalCost}`);
 
-        // Calculate new total amount paid after this payment
-        const newAmountPaid = (review.amountPaid || 0) + order.amountPaid;
-        const newAmountToPay = order.paymentStatus === "full payment"
+        if (isInternationalVendor) {
+          console.log(`   Previous Amount Paid (USD): $${review.amountPaidUSD || 0}`);
+          console.log(`   Adding (USD): $${order.amountPaidUSD || 0}`);
+          console.log(`   Total Cost (USD): $${review.totalCostUSD || 0}`);
+        }
+
+        // Calculate new amounts
+        const newAmountPaidNGN = (review.amountPaid || 0) + order.amountPaid;
+        const newAmountToPayNGN = order.paymentStatus === "full payment"
           ? 0
-          : Math.max(0, review.totalCost - newAmountPaid);
+          : Math.max(0, review.totalCost - newAmountPaidNGN);
 
-        console.log(`   New Amount Paid: ${newAmountPaid}`);
-        console.log(`   New Amount To Pay: ${newAmountToPay}`);
-        console.log(`   Payment Status: ${order.paymentStatus}`);
-
-        await Review.findByIdAndUpdate(review._id, {
+        let reviewUpdate = {
           $inc: { amountPaid: order.amountPaid },
           $set: {
-            amountToPay: newAmountToPay,
+            amountToPay: newAmountToPayNGN,
             status: order.paymentStatus,
           },
-        });
+        };
+
+        if (isInternationalVendor && order.amountPaidUSD) {
+          const newAmountPaidUSD = (review.amountPaidUSD || 0) + order.amountPaidUSD;
+          const newAmountToPayUSD = order.paymentStatus === "full payment"
+            ? 0
+            : Math.max(0, (review.totalCostUSD || 0) - newAmountPaidUSD);
+
+          reviewUpdate.$inc.amountPaidUSD = order.amountPaidUSD;
+          reviewUpdate.$set.amountToPayUSD = newAmountToPayUSD;
+
+          console.log(`   New Amount Paid (USD): $${newAmountPaidUSD.toFixed(2)}`);
+          console.log(`   New Amount To Pay (USD): $${newAmountToPayUSD.toFixed(2)}`);
+        }
+
+        console.log(`   New Amount Paid (NGN): ₦${newAmountPaidNGN.toFixed(2)}`);
+        console.log(`   New Amount To Pay (NGN): ₦${newAmountToPayNGN.toFixed(2)}`);
+        console.log(`   Payment Status: ${order.paymentStatus}`);
+
+        await Review.findByIdAndUpdate(review._id, reviewUpdate);
 
         console.log(`✅ Review updated successfully`);
 
@@ -727,7 +755,7 @@ export const webhookPaymentSuccess = async (req, res) => {
 
         console.log(`\n✅ MARKETPLACE PAYMENT COMPLETE!`);
         console.log(`   Vendor: ${vendor.businessName}`);
-        console.log(`   Amount: ${order.amountPaid}`);
+        console.log(`   Amount: ${currencyLabel === 'USD' ? '$' : '₦'}${amountToCredit}`);
       } else {
         console.log(`\n⚠️  Skipping vendor payment - missing vendor or review data`);
       }

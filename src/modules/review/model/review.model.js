@@ -18,6 +18,7 @@ const reviewSchema = new mongoose.Schema({
         ref: "Material",
         required: true,
     },
+    // NGN amounts (primary storage - always in Naira)
     materialTotalCost: {
         type: Number,
         default: 0,
@@ -41,6 +42,39 @@ const reviewSchema = new mongoose.Schema({
     amountToPay: {
         type: Number,
         default: 0,
+    },
+    // USD amounts (for international vendors only)
+    materialTotalCostUSD: {
+        type: Number,
+        default: 0,
+    },
+    workmanshipTotalCostUSD: {
+        type: Number,
+        default: 0,
+    },
+    subTotalCostUSD: {
+        type: Number,
+        default: 0,
+    },
+    totalCostUSD: {
+        type: Number,
+        default: 0,
+    },
+    amountPaidUSD: {
+        type: Number,
+        default: 0,
+    },
+    amountToPayUSD: {
+        type: Number,
+        default: 0,
+    },
+    exchangeRate: {
+        type: Number,
+        default: 0,
+    },
+    isInternationalVendor: {
+        type: Boolean,
+        default: false,
     },
     deliveryDate: {
         type: Date,
