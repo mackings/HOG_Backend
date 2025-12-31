@@ -1,0 +1,371 @@
+{
+  "title": "HOG Fashion Payment Integration Guide for Flutter Team",
+  "version": "2.0",
+  "lastUpdated": "2025-12-31",
+
+  "overview": {
+    "description": "Backend now handles ALL currency conversions. Frontend always sends NGN amounts, backend converts to USD for international vendors.",
+    "paymentGateways": {
+      "nigerian_vendors": "Paystack (NGN)",
+      "international_vendors": "Stripe (USD)"
+    }
+  },
+
+  "review_model_structure": {
+    "description": "Review model now stores both NGN and USD amounts when vendor is international",
+    "fields": {
+      "nigerian_amounts": {
+        "materialTotalCost": "number - Material cost in NGN",
+        "workmanshipTotalCost": "number - Workmanship cost in NGN",
+        "subTotalCost": "number - Subtotal in NGN",
+        "totalCost": "number - Total cost in NGN",
+        "amountPaid": "number - Amount already paid in NGN",
+        "amountToPay": "number - Remaining balance in NGN"
+      },
+      "usd_amounts": {
+        "description": "Only populated when isInternationalVendor = true",
+        "materialTotalCostUSD": "number - Material cost in USD",
+        "workmanshipTotalCostUSD": "number - Workmanship cost in USD",
+        "subTotalCostUSD": "number - Subtotal in USD",
+        "totalCostUSD": "number - Total cost in USD",
+        "amountPaidUSD": "number - Amount already paid in USD",
+        "amountToPayUSD": "number - Remaining balance in USD"
+      },
+      "currency_info": {
+        "exchangeRate": "number - NGN to USD exchange rate (e.g., 0.000692)",
+        "isInternationalVendor": "boolean - true if vendor is US/UK, false if Nigerian"
+      },
+      "other_fields": {
+        "hasAcceptedOffer": "boolean - true if offer was accepted",
+        "acceptedOfferId": "ObjectId - Reference to accepted offer",
+        "status": "string - 'pending', 'approved', 'rejected', 'requesting', 'quote', 'part payment', 'full payment'"
+      }
+    }
+  },
+
+  "sample_review_response": {
+    "nigerian_vendor_example": {
+      "_id": "60a7b8c9d4e5f6a7b8c9d4e5",
+      "userId": "60a7b8c9d4e5f6a7b8c9d4e6",
+      "vendorId": "60a7b8c9d4e5f6a7b8c9d4e7",
+      "materialId": "60a7b8c9d4e5f6a7b8c9d4e8",
+      "materialTotalCost": 20000,
+      "workmanshipTotalCost": 10000,
+      "subTotalCost": 30000,
+      "totalCost": 30000,
+      "amountPaid": 0,
+      "amountToPay": 30000,
+      "materialTotalCostUSD": 0,
+      "workmanshipTotalCostUSD": 0,
+      "subTotalCostUSD": 0,
+      "totalCostUSD": 0,
+      "amountPaidUSD": 0,
+      "amountToPayUSD": 0,
+      "exchangeRate": 0,
+      "isInternationalVendor": false,
+      "hasAcceptedOffer": true,
+      "acceptedOfferId": "60a7b8c9d4e5f6a7b8c9d4e9",
+      "status": "quote"
+    },
+    "international_vendor_example": {
+      "_id": "60a7b8c9d4e5f6a7b8c9d4e5",
+      "userId": "60a7b8c9d4e5f6a7b8c9d4e6",
+      "vendorId": "60a7b8c9d4e5f6a7b8c9d4e7",
+      "materialId": "60a7b8c9d4e5f6a7b8c9d4e8",
+      "materialTotalCost": 20000,
+      "workmanshipTotalCost": 10000,
+      "subTotalCost": 30000,
+      "totalCost": 30000,
+      "amountPaid": 0,
+      "amountToPay": 30000,
+      "materialTotalCostUSD": 13.84,
+      "workmanshipTotalCostUSD": 6.92,
+      "subTotalCostUSD": 20.76,
+      "totalCostUSD": 20.76,
+      "amountPaidUSD": 0,
+      "amountToPayUSD": 20.76,
+      "exchangeRate": 0.000692,
+      "isInternationalVendor": true,
+      "hasAcceptedOffer": true,
+      "acceptedOfferId": "60a7b8c9d4e5f6a7b8c9d4e9",
+      "status": "quote"
+    }
+  },
+
+  "flutter_implementation": {
+    "step_1_display_prices": {
+      "description": "When displaying quote/review to user, check vendor type",
+      "code_logic": "if (review.isInternationalVendor) { display USD amounts } else { display NGN amounts }",
+      "example": {
+        "nigerian_vendor": "Show: ₦30,000 (use review.totalCost)",
+        "international_vendor": "Show: $20.76 (use review.totalCostUSD)"
+      }
+    },
+
+    "step_2_part_payment_input": {
+      "description": "ALWAYS collect and send NGN amounts to backend, even for international vendors",
+      "important": "Frontend does NOT convert currencies. Backend handles all conversions.",
+      "user_input": {
+        "nigerian_vendor": "User enters: ₦15,000",
+        "international_vendor": "User STILL enters: ₦15,000 (NOT USD)"
+      },
+      "validation": {
+        "check_against": "review.amountToPay (NGN) - always validate against NGN amount",
+        "max_amount": "review.amountToPay",
+        "min_amount": 1
+      }
+    },
+
+    "step_3_payment_request": {
+      "endpoint": "POST /api/v1/stripe/make-payment/:reviewId",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer <user_token>"
+      },
+      "request_body_full_payment": {
+        "paymentStatus": "full payment",
+        "shipmentMethod": "Regular",
+        "address": {
+          "street": "123 Main St",
+          "city": "Lagos",
+          "state": "Lagos",
+          "country": "Nigeria"
+        }
+      },
+      "request_body_part_payment": {
+        "paymentStatus": "part payment",
+        "amount": "15000",
+        "shipmentMethod": "Express",
+        "address": {
+          "street": "123 Main St",
+          "city": "Lagos",
+          "state": "Lagos",
+          "country": "Nigeria"
+        }
+      },
+      "important_notes": [
+        "amount field is ALWAYS in NGN (Naira), never USD",
+        "For full payment, omit 'amount' field - backend uses review.amountToPay",
+        "For part payment, send NGN amount in 'amount' field",
+        "Backend will convert to USD automatically for international vendors"
+      ]
+    },
+
+    "step_4_response_handling": {
+      "success_response": {
+        "success": true,
+        "message": "Stripe checkout created successfully.",
+        "data": {
+          "order": {
+            "_id": "60a7b8c9d4e5f6a7b8c9d4ea",
+            "userId": "60a7b8c9d4e5f6a7b8c9d4e6",
+            "vendorId": "60a7b8c9d4e5f6a7b8c9d4e7",
+            "totalAmount": 30000,
+            "amountPaid": 15000,
+            "amountPaidUSD": 10.38,
+            "exchangeRate": 0.000692,
+            "paymentMethod": "Stripe",
+            "paymentReference": "abc123def456",
+            "paymentStatus": "part payment"
+          },
+          "checkoutUrl": "https://checkout.stripe.com/c/pay/cs_test_..."
+        }
+      },
+      "action": "Redirect user to checkoutUrl to complete payment"
+    }
+  },
+
+  "payment_flow_examples": {
+    "scenario_1": {
+      "description": "Nigerian user pays Nigerian vendor (Full Payment)",
+      "vendor_type": "Nigerian",
+      "quote_total": "₦30,000",
+      "payment_type": "Full Payment",
+      "flutter_sends": {
+        "paymentStatus": "full payment",
+        "shipmentMethod": "Regular"
+      },
+      "backend_processes": {
+        "reads": "review.totalCost = ₦30,000",
+        "delivery_fee": "₦50",
+        "total": "₦30,050",
+        "payment_gateway": "Paystack",
+        "vendor_receives": "₦30,000 in NGN"
+      }
+    },
+
+    "scenario_2": {
+      "description": "Nigerian user pays US vendor (Full Payment)",
+      "vendor_type": "US (International)",
+      "quote_total_ngn": "₦30,000",
+      "quote_total_usd": "$20.76",
+      "payment_type": "Full Payment",
+      "flutter_sends": {
+        "paymentStatus": "full payment",
+        "shipmentMethod": "Express"
+      },
+      "backend_processes": {
+        "reads": "review.totalCostUSD = $20.76",
+        "delivery_fee_ngn": "₦70",
+        "delivery_fee_usd": "$0.05",
+        "total_charge": "$20.81",
+        "payment_gateway": "Stripe",
+        "vendor_receives": "$20.76 in USD"
+      }
+    },
+
+    "scenario_3": {
+      "description": "Nigerian user pays US vendor (Part Payment)",
+      "vendor_type": "US (International)",
+      "quote_total_ngn": "₦30,000",
+      "quote_total_usd": "$20.76",
+      "payment_type": "Part Payment",
+      "user_pays": "₦15,000",
+      "flutter_sends": {
+        "paymentStatus": "part payment",
+        "amount": "15000",
+        "shipmentMethod": "Regular"
+      },
+      "backend_processes": {
+        "reads": "amount = ₦15,000",
+        "converts_to_usd": "$10.38 (using exchange rate 0.000692)",
+        "delivery_fee_ngn": "₦50",
+        "delivery_fee_usd": "$0.03",
+        "total_charge_stripe": "$10.41",
+        "payment_gateway": "Stripe",
+        "vendor_receives": "$10.38 in USD",
+        "review_updated": {
+          "amountPaid": "₦15,000",
+          "amountToPay": "₦15,000",
+          "amountPaidUSD": "$10.38",
+          "amountToPayUSD": "$10.38"
+        }
+      }
+    },
+
+    "scenario_4": {
+      "description": "Nigerian user pays Nigerian vendor (Part Payment)",
+      "vendor_type": "Nigerian",
+      "quote_total": "₦30,000",
+      "payment_type": "Part Payment",
+      "user_pays": "₦20,000",
+      "flutter_sends": {
+        "paymentStatus": "part payment",
+        "amount": "20000",
+        "shipmentMethod": "Cargo"
+      },
+      "backend_processes": {
+        "reads": "amount = ₦20,000",
+        "delivery_fee": "₦90",
+        "total": "₦20,090",
+        "payment_gateway": "Paystack",
+        "vendor_receives": "₦20,000 in NGN",
+        "review_updated": {
+          "amountPaid": "₦20,000",
+          "amountToPay": "₦10,000"
+        }
+      }
+    }
+  },
+
+  "ui_display_guidelines": {
+    "quote_card": {
+      "description": "How to display amounts in quote/review cards",
+      "logic": "if (review.isInternationalVendor) { show USD } else { show NGN }",
+      "example_nigerian": {
+        "material": "₦20,000",
+        "workmanship": "₦10,000",
+        "total": "₦30,000",
+        "balance": "₦30,000"
+      },
+      "example_international": {
+        "material": "$13.84",
+        "workmanship": "$6.92",
+        "total": "$20.76",
+        "balance": "$20.76"
+      }
+    },
+
+    "payment_input_form": {
+      "description": "ALWAYS use NGN for input, even for international vendors",
+      "label": "Enter amount to pay (in Naira)",
+      "placeholder": "e.g., 15000",
+      "currency_symbol": "₦",
+      "validation_message": "Amount must be between ₦1 and ₦${review.amountToPay}",
+      "important": "DO NOT show USD input or convert on frontend"
+    },
+
+    "after_payment_display": {
+      "description": "After payment, fetch updated review and display balances",
+      "nigerian_vendor": {
+        "total": "Total: ₦${review.totalCost}",
+        "paid": "Paid: ₦${review.amountPaid}",
+        "balance": "Balance: ₦${review.amountToPay}"
+      },
+      "international_vendor": {
+        "total": "Total: $${review.totalCostUSD}",
+        "paid": "Paid: $${review.amountPaidUSD}",
+        "balance": "Balance: $${review.amountToPayUSD}"
+      }
+    }
+  },
+
+  "error_handling": {
+    "validation_errors": {
+      "400_invalid_amount": {
+        "message": "Part payment amount (₦X) exceeds remaining balance (₦Y)",
+        "action": "Show error to user, adjust input"
+      },
+      "400_missing_offer": {
+        "message": "Please negotiate and accept an offer before making payment",
+        "action": "Redirect to negotiation/offer screen"
+      }
+    },
+    "server_errors": {
+      "500_conversion_failed": {
+        "message": "Currency conversion failed",
+        "action": "Show generic error, retry payment"
+      }
+    }
+  },
+
+  "testing_checklist": [
+    "✅ Nigerian vendor + Full payment (NGN)",
+    "✅ Nigerian vendor + Part payment (NGN)",
+    "✅ US vendor + Full payment (display USD, send NGN)",
+    "✅ US vendor + Part payment (display USD, send NGN)",
+    "✅ Verify amounts in review are updated correctly (both NGN and USD)",
+    "✅ Verify vendor receives correct currency amount",
+    "✅ Verify balance calculation is correct after part payment",
+    "✅ Test with different delivery methods (Regular, Express, Cargo)"
+  ],
+
+  "migration_notes": {
+    "breaking_changes": [
+      "Review model now has additional USD fields",
+      "Frontend must STOP sending USD amounts",
+      "Frontend must ALWAYS send NGN amounts, even for international vendors"
+    ],
+    "required_changes": [
+      "Update all payment input forms to collect NGN amounts only",
+      "Update display logic to show USD when isInternationalVendor = true",
+      "Remove any currency conversion logic from Flutter app",
+      "Update validation to check against review.amountToPay (NGN)"
+    ]
+  },
+
+  "api_endpoints_summary": {
+    "create_payment": {
+      "url": "POST /api/v1/stripe/make-payment/:reviewId",
+      "description": "Create Stripe payment for international vendor",
+      "body": {
+        "paymentStatus": "'full payment' | 'part payment'",
+        "amount": "string (NGN amount for part payment, omit for full)",
+        "shipmentMethod": "'Regular' | 'Express' | 'Cargo'",
+        "address": "object (optional, will use material owner address if not provided)"
+      },
+      "returns": "{ success, message, data: { order, checkoutUrl } }"
+    }
+  }
+}
