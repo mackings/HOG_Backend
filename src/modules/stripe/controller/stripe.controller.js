@@ -301,16 +301,65 @@ export const createStripePayment = async (req, res, next) => {
       });
     }
 
-    // Simple flat rate calculation
+    // Get delivery fee from database (stored in NGN)
+    const deliveryFeeNGN = Number(deliveryRate.amount);
+
+    // Determine if this is a Stripe payment (international vendor)
+    const vendorUser = await User.findById(vendor.userId);
+    const vendorCountry = vendorUser?.country?.toUpperCase().trim() || '';
+    const isInternationalVendor = ['UNITED STATES', 'US', 'USA', 'UNITED KINGDOM', 'UK', 'GB'].includes(vendorCountry);
+
+    let deliveryFee;
+    let currencySymbol;
+
+    if (isInternationalVendor) {
+      // Stripe payment - convert delivery fee from NGN to USD
+      console.log(`🌍 International vendor detected (${vendorCountry})`);
+      console.log(`   Converting delivery fee: ₦${deliveryFeeNGN} NGN → USD`);
+
+      try {
+        // Call conversion API
+        const apiKey = process.env.EXCHANGE_RATE_API_KEY;
+        const apiUrl = `https://v6.exchangerate-api.com/v6/${apiKey}/pair/NGN/USD`;
+        const conversionResponse = await axios.get(apiUrl);
+
+        if (conversionResponse?.data?.result === "success" && conversionResponse?.data?.conversion_rate) {
+          const conversionRate = conversionResponse.data.conversion_rate;
+          deliveryFee = Math.round(deliveryFeeNGN * conversionRate * 100) / 100;
+          console.log(`   Conversion Rate: 1 NGN = $${conversionRate} USD`);
+          console.log(`   Delivery Fee in USD: $${deliveryFee.toFixed(2)}`);
+        } else {
+          // Fallback rate if API fails
+          const fallbackRate = 0.000692;
+          deliveryFee = Math.round(deliveryFeeNGN * fallbackRate * 100) / 100;
+          console.log(`   ⚠️  Using fallback rate: 1 NGN = $${fallbackRate} USD`);
+          console.log(`   Delivery Fee in USD: $${deliveryFee.toFixed(2)}`);
+        }
+      } catch (error) {
+        // Fallback rate on error
+        const fallbackRate = 0.000692;
+        deliveryFee = Math.round(deliveryFeeNGN * fallbackRate * 100) / 100;
+        console.log(`   ⚠️  Conversion API error, using fallback rate`);
+        console.log(`   Delivery Fee in USD: $${deliveryFee.toFixed(2)}`);
+      }
+
+      currencySymbol = '$';
+    } else {
+      // Paystack payment - keep delivery fee in NGN
+      console.log(`🇳🇬 Nigerian/Local vendor - keeping delivery fee in NGN`);
+      deliveryFee = deliveryFeeNGN;
+      console.log(`   Delivery Fee in NGN: ₦${deliveryFee.toFixed(2)}`);
+      currencySymbol = '₦';
+    }
+
+    // Calculate total
     const productCost = parseFloat(amount);
-    const deliveryFee = Number(deliveryRate.amount);
     const totalCost = productCost + deliveryFee;
 
-    console.log("💰 PAYMENT CALCULATION:");
-    console.log(`   Product Cost: $${productCost.toFixed(2)} USD`);
-    console.log(`   Delivery Fee (${deliveryType}): $${deliveryFee.toFixed(2)} USD`);
-    console.log(`   Total Cost: $${totalCost.toFixed(2)} USD`);
-    console.log(`   Stripe Amount (cents): ${Math.round(totalCost * 100)}`);
+    console.log("\n💰 PAYMENT BREAKDOWN:");
+    console.log(`   Product Cost: ${currencySymbol}${productCost.toFixed(2)}`);
+    console.log(`   Delivery Fee (${deliveryType}): ${currencySymbol}${deliveryFee.toFixed(2)}`);
+    console.log(`   Total: ${currencySymbol}${totalCost.toFixed(2)}`);
 
 
     const paymentReference = crypto.randomBytes(8).toString("hex");
