@@ -38,9 +38,70 @@ export const createReview = async (req, res, next) => {
 
     const { comment, materialTotalCost, workmanshipTotalCost, deliveryDate, reminderDate } = req.body;
 
-    const materialCost = Number(materialTotalCost) || 0;
-    const workmanshipCost = Number(workmanshipTotalCost) || 0;
-    const subTotalCost = materialCost + workmanshipCost;
+    // Get buyer (material owner) to check their country
+    const buyer = await User.findById(material.userId);
+    if (!buyer) {
+      return res.status(404).json({ success: false, message: "Material owner not found" });
+    }
+
+    const tailorCountry = user.country?.toUpperCase().trim() || '';
+    const buyerCountry = buyer.country?.toUpperCase().trim() || '';
+    const isInternationalTailor = ['UNITED STATES', 'US', 'USA', 'UNITED KINGDOM', 'UK', 'GB'].includes(tailorCountry);
+    const isNigerianBuyer = ['NIGERIA', 'NG', 'NIGERIAN'].includes(buyerCountry);
+
+    console.log(`\n💼 REVIEW CREATION:`);
+    console.log(`   Tailor Country: ${tailorCountry} (${isInternationalTailor ? 'International' : 'Nigerian'})`);
+    console.log(`   Buyer Country: ${buyerCountry} (${isNigerianBuyer ? 'Nigerian' : 'International'})`);
+
+    let materialCost = Number(materialTotalCost) || 0;
+    let workmanshipCost = Number(workmanshipTotalCost) || 0;
+    let subTotalCost = materialCost + workmanshipCost;
+
+    let materialCostUSD = 0;
+    let workmanshipCostUSD = 0;
+    let subTotalCostUSD = 0;
+    let totalCostUSD = 0;
+    let exchangeRate = 0;
+
+    // If US/UK tailor quoting to Nigerian buyer, convert USD to NGN
+    if (isInternationalTailor && isNigerianBuyer) {
+      console.log(`   💱 Converting USD → NGN (International tailor → Nigerian buyer)`);
+      console.log(`   Material Cost (USD): $${materialCost}`);
+      console.log(`   Workmanship Cost (USD): $${workmanshipCost}`);
+
+      // Store original USD amounts
+      materialCostUSD = materialCost;
+      workmanshipCostUSD = workmanshipCost;
+      subTotalCostUSD = subTotalCost;
+
+      try {
+        // Get exchange rate USD to NGN
+        const axios = (await import('axios')).default;
+        const apiKey = process.env.EXCHANGE_RATE_API_KEY;
+        const apiUrl = `https://v6.exchangerate-api.com/v6/${apiKey}/pair/USD/NGN`;
+        const conversionResponse = await axios.get(apiUrl);
+
+        if (conversionResponse?.data?.result === "success") {
+          exchangeRate = conversionResponse.data.conversion_rate; // e.g., 1 USD = 1445 NGN
+          console.log(`   ✅ Exchange Rate: 1 USD = ₦${exchangeRate} NGN`);
+        } else {
+          exchangeRate = 1445; // fallback rate
+          console.log(`   ⚠️  Using fallback rate: 1 USD = ₦${exchangeRate} NGN`);
+        }
+      } catch (error) {
+        exchangeRate = 1445; // fallback
+        console.log(`   ⚠️  API error, using fallback rate: 1 USD = ₦${exchangeRate} NGN`);
+      }
+
+      // Convert to NGN for storage
+      materialCost = Math.round(materialCostUSD * exchangeRate);
+      workmanshipCost = Math.round(workmanshipCostUSD * exchangeRate);
+      subTotalCost = materialCost + workmanshipCost;
+
+      console.log(`   Material Cost (NGN): ₦${materialCost}`);
+      console.log(`   Workmanship Cost (NGN): ₦${workmanshipCost}`);
+      console.log(`   Subtotal (NGN): ₦${subTotalCost}`);
+    }
 
     const tax = 20 / 100 * subTotalCost;
 
@@ -49,8 +110,18 @@ export const createReview = async (req, res, next) => {
 
     const grossAmount = Number(subTotalCost).toFixed(0);
     const fee = ((feePercentage / 100) * grossAmount).toFixed(0);
-    // const netAmount = (Number(grossAmount) - Number(fee)).toFixed(0)
     const totalCost = Number(grossAmount) + Number(tax) + Number(fee);
+
+    // Calculate USD total if conversion happened
+    if (isInternationalTailor && isNigerianBuyer && exchangeRate > 0) {
+      const taxUSD = 20 / 100 * subTotalCostUSD;
+      const grossAmountUSD = Number(subTotalCostUSD).toFixed(2);
+      const feeUSD = ((feePercentage / 100) * grossAmountUSD).toFixed(2);
+      totalCostUSD = Number(grossAmountUSD) + Number(taxUSD) + Number(feeUSD);
+      totalCostUSD = Math.round(totalCostUSD * 100) / 100;
+      console.log(`   Total Cost (USD): $${totalCostUSD}`);
+      console.log(`   Total Cost (NGN): ₦${totalCost}`);
+    }
 
     // check if review exists
     let review = await Review.findOne({
@@ -60,23 +131,30 @@ export const createReview = async (req, res, next) => {
       status: "requesting",
     });
 
+    const reviewData = {
+      materialTotalCost: materialCost,
+      workmanshipTotalCost: workmanshipCost,
+      totalCost,
+      tax,
+      subTotalCost,
+      commission: fee,
+      deliveryDate,
+      reminderDate,
+      comment,
+      status: "quote",
+      materialTotalCostUSD,
+      workmanshipTotalCostUSD,
+      subTotalCostUSD,
+      totalCostUSD,
+      amountToPayUSD: totalCostUSD,
+      exchangeRate,
+      isInternationalVendor: isInternationalTailor,
+    };
+
     if (review) {
       review = await Review.findByIdAndUpdate(
         review._id,
-        {
-          $set: {
-            materialTotalCost: materialCost,
-            workmanshipTotalCost: workmanshipCost,
-            totalCost,
-            tax,
-            subTotalCost,
-            commission: fee,
-            deliveryDate,
-            reminderDate,
-            comment,
-            status: "quote",
-          },
-        },
+        { $set: reviewData },
         { new: true }
       );
     } else {
@@ -84,17 +162,8 @@ export const createReview = async (req, res, next) => {
         userId: user._id,
         vendorId: vendor._id,
         materialId: material._id,
-        materialTotalCost: materialCost,
-        workmanshipTotalCost: workmanshipCost,
-        subTotalCost,
-        totalCost,
-        deliveryDate,
-        reminderDate,
-        comment,
-        tax,
-        commission: fee,
-        status: "quote",
-        country: user.country
+        country: user.country,
+        ...reviewData
       });
     }
 

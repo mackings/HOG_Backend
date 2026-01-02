@@ -44,7 +44,7 @@ export const createUserAccount = async (req, res, next) => {
           payouts: {
             schedule: {
               interval: "daily",  // Automatic daily payouts
-              delay_days: 2       // Standard 2-day delay (minimum for new accounts)
+              delay_days: 7      // Standard 2-day delay (minimum for new accounts)
             }
           }
         },
