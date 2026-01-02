@@ -241,14 +241,9 @@ export const createStripePayment = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Review not found" });
     }
 
-    // Check if offer negotiation is required and completed
-    if (review.hasAcceptedOffer === false && !review.acceptedOfferId) {
-      return res.status(400).json({
-        success: false,
-        message: "Please negotiate and accept an offer before making payment",
-        requiresOffer: true
-      });
-    }
+    // Negotiation is optional - users can pay without negotiating
+    // If they negotiated and accepted an offer, use those amounts
+    // Otherwise, use the original quote amounts
 
     const material = await Material.findById(review.materialId);
     if (!material) {
@@ -363,11 +358,13 @@ export const createStripePayment = async (req, res, next) => {
 
       if (isInternationalVendor) {
         // Convert NGN part payment to USD
-        productCostUSD = Math.round(productCostNGN * ngnToUsdRate * 100) / 100;
+        // Exchange rate stored as USD->NGN (e.g., 1445 means 1 USD = 1445 NGN)
+        // So to convert NGN->USD, we divide: NGN ÷ exchangeRate = USD
+        productCostUSD = Math.round(productCostNGN / ngnToUsdRate * 100) / 100;
         console.log(`\n✅ PART PAYMENT (International Vendor)`);
         console.log(`   NGN Amount: ₦${productCostNGN.toFixed(2)}`);
         console.log(`   Converted to: $${productCostUSD.toFixed(2)} USD`);
-        console.log(`   Exchange Rate: ${ngnToUsdRate}`);
+        console.log(`   Exchange Rate: ${ngnToUsdRate} (USD->NGN)`);
       } else {
         console.log(`\n✅ PART PAYMENT (Nigerian Vendor)`);
         console.log(`   Charging: ₦${productCostNGN.toFixed(2)} NGN`);
@@ -381,13 +378,28 @@ export const createStripePayment = async (req, res, next) => {
 
     // Calculate delivery fee in USD for international vendors
     if (isInternationalVendor) {
-      deliveryFeeUSD = Math.round(deliveryFeeNGN * ngnToUsdRate * 100) / 100;
+      // Convert delivery fee NGN->USD using division
+      deliveryFeeUSD = Math.round(deliveryFeeNGN / ngnToUsdRate * 100) / 100;
       totalCostUSD = productCostUSD + deliveryFeeUSD;
 
       console.log(`\n💳 STRIPE CHARGE BREAKDOWN:`);
       console.log(`   Product Cost: $${productCostUSD.toFixed(2)}`);
       console.log(`   Delivery Fee: $${deliveryFeeUSD.toFixed(2)} (${deliveryType})`);
       console.log(`   Total: $${totalCostUSD.toFixed(2)}`);
+
+      // Stripe minimum amount validation ($0.50 USD)
+      const STRIPE_MIN_AMOUNT_USD = 0.50;
+      if (totalCostUSD < STRIPE_MIN_AMOUNT_USD) {
+        const minAmountNGN = Math.ceil(STRIPE_MIN_AMOUNT_USD * ngnToUsdRate);
+        return res.status(400).json({
+          success: false,
+          message: `Minimum payment amount for international vendors is $${STRIPE_MIN_AMOUNT_USD.toFixed(2)} USD (approximately ₦${minAmountNGN.toLocaleString()}). Your current amount of ₦${productCostNGN.toLocaleString()} converts to $${totalCostUSD.toFixed(2)} USD, which is below the minimum.`,
+          minimumAmountNGN: minAmountNGN,
+          minimumAmountUSD: STRIPE_MIN_AMOUNT_USD,
+          yourAmountNGN: productCostNGN,
+          yourAmountUSD: totalCostUSD
+        });
+      }
     }
 
     const deliveryAddress = address || materialOwner.address;

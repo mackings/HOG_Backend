@@ -314,14 +314,9 @@ export const createPaymentOnline = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Review not found" });
     }
 
-    // Check if offer negotiation is required and completed
-    if (review.hasAcceptedOffer === false && !review.acceptedOfferId) {
-      return res.status(400).json({
-        success: false,
-        message: "Please negotiate and accept an offer before making payment",
-        requiresOffer: true
-      });
-    }
+    // Negotiation is optional - users can pay without negotiating
+    // If they negotiated and accepted an offer, use those amounts
+    // Otherwise, use the original quote amounts
 
     // Validate material
     const material = await Material.findOne({ _id: review.materialId });
