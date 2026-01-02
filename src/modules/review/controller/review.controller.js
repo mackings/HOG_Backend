@@ -142,12 +142,13 @@ export const createReview = async (req, res, next) => {
       reminderDate,
       comment,
       status: "quote",
-      materialTotalCostUSD,
-      workmanshipTotalCostUSD,
-      subTotalCostUSD,
-      totalCostUSD,
+      amountToPay: totalCost,
+      materialTotalCostUSD: materialCostUSD,
+      workmanshipTotalCostUSD: workmanshipCostUSD,
+      subTotalCostUSD: subTotalCostUSD,
+      totalCostUSD: totalCostUSD,
       amountToPayUSD: totalCostUSD,
-      exchangeRate,
+      exchangeRate: exchangeRate,
       isInternationalVendor: isInternationalTailor,
     };
 
