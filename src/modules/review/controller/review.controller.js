@@ -63,6 +63,9 @@ export const createReview = async (req, res, next) => {
     let totalCostUSD = 0;
     let exchangeRate = 0;
 
+    const isNigerianTailor = ['NIGERIA', 'NG', 'NIGERIAN'].includes(tailorCountry);
+    const isInternationalBuyer = ['UNITED STATES', 'US', 'USA', 'UNITED KINGDOM', 'UK', 'GB'].includes(buyerCountry);
+
     // If US/UK tailor quoting to Nigerian buyer, convert USD to NGN
     if (isInternationalTailor && isNigerianBuyer) {
       console.log(`   💱 Converting USD → NGN (International tailor → Nigerian buyer)`);
@@ -101,6 +104,34 @@ export const createReview = async (req, res, next) => {
       console.log(`   Material Cost (NGN): ₦${materialCost}`);
       console.log(`   Workmanship Cost (NGN): ₦${workmanshipCost}`);
       console.log(`   Subtotal (NGN): ₦${subTotalCost}`);
+    }
+    // If Nigerian tailor quoting to International buyer, amounts are in NGN, need exchange rate for later USD conversion
+    else if (isNigerianTailor && isInternationalBuyer) {
+      console.log(`   💱 Nigerian tailor → International buyer (will need USD conversion at payment)`);
+      console.log(`   Material Cost (NGN): ₦${materialCost}`);
+      console.log(`   Workmanship Cost (NGN): ₦${workmanshipCost}`);
+
+      try {
+        // Get exchange rate USD to NGN (we'll use this to convert NGN to USD at payment time)
+        const axios = (await import('axios')).default;
+        const apiKey = process.env.EXCHANGE_RATE_API_KEY;
+        const apiUrl = `https://v6.exchangerate-api.com/v6/${apiKey}/pair/USD/NGN`;
+        const conversionResponse = await axios.get(apiUrl);
+
+        if (conversionResponse?.data?.result === "success") {
+          exchangeRate = conversionResponse.data.conversion_rate; // e.g., 1 USD = 1445 NGN
+          console.log(`   ✅ Exchange Rate: 1 USD = ₦${exchangeRate} NGN`);
+        } else {
+          exchangeRate = 1445; // fallback rate
+          console.log(`   ⚠️  Using fallback rate: 1 USD = ₦${exchangeRate} NGN`);
+        }
+      } catch (error) {
+        exchangeRate = 1445; // fallback
+        console.log(`   ⚠️  API error, using fallback rate: 1 USD = ₦${exchangeRate} NGN`);
+      }
+
+      console.log(`   Subtotal (NGN): ₦${subTotalCost}`);
+      console.log(`   ℹ️  Exchange rate stored for payment conversion`);
     }
 
     const tax = 20 / 100 * subTotalCost;
