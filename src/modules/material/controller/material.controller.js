@@ -314,8 +314,25 @@ export const createPaymentOnline = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Review not found" });
     }
 
+    // Check if negotiation requires mutual consent
+    if (review.hasAcceptedOffer && review.acceptedOfferId) {
+      const MakeOffer = (await import('../../makeOffer/model/makeOffer.model.js')).default;
+      const offer = await MakeOffer.findById(review.acceptedOfferId);
+
+      if (offer && !offer.mutualConsentAchieved) {
+        return res.status(400).json({
+          success: false,
+          message: "Payment cannot proceed. Both buyer and vendor must consent to the negotiated offer before payment.",
+          requiresMutualConsent: true,
+          buyerConsent: offer.buyerConsent,
+          vendorConsent: offer.vendorConsent,
+          offerId: offer._id
+        });
+      }
+    }
+
     // Negotiation is optional - users can pay without negotiating
-    // If they negotiated and accepted an offer, use those amounts
+    // If they negotiated and achieved mutual consent, use those amounts
     // Otherwise, use the original quote amounts
 
     // Validate material
