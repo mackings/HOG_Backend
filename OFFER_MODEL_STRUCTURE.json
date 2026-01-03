@@ -1,0 +1,419 @@
+{
+  "title": "MakeOffer Model Structure - Updated with Mutual Consent",
+  "version": "2.0",
+  "date": "2026-01-03",
+
+  "modelStructure": {
+    "MakeOffer": {
+      "_id": {
+        "type": "ObjectId",
+        "example": "677890abcdef123456789012",
+        "description": "Unique identifier for the offer"
+      },
+      "userId": {
+        "type": "ObjectId",
+        "ref": "User",
+        "example": "677890abcdef123456789001",
+        "description": "The buyer who created this offer",
+        "populated": {
+          "_id": "677890abcdef123456789001",
+          "fullName": "John Buyer",
+          "email": "john@example.com",
+          "profileImage": "https://...",
+          "role": "user"
+        }
+      },
+      "vendorId": {
+        "type": "ObjectId",
+        "ref": "Vendor",
+        "example": "677890abcdef123456789002",
+        "description": "The vendor receiving this offer",
+        "populated": {
+          "_id": "677890abcdef123456789002",
+          "businessName": "Elegant Tailors Ltd",
+          "userId": {
+            "_id": "677890abcdef123456789003",
+            "fullName": "Jane Vendor",
+            "email": "jane@eleganttailors.com"
+          }
+        }
+      },
+      "materialId": {
+        "type": "ObjectId",
+        "ref": "Material",
+        "example": "677890abcdef123456789004",
+        "description": "The material being quoted for"
+      },
+      "reviewId": {
+        "type": "ObjectId",
+        "ref": "Review",
+        "example": "677890abcdef123456789005",
+        "description": "The associated quote/review"
+      },
+      "status": {
+        "type": "String",
+        "enum": ["pending", "accepted", "rejected", "countered", "incoming"],
+        "example": "accepted",
+        "description": "Quick reference status (use consent fields for actual logic)",
+        "meaning": {
+          "incoming": "New offer just created by buyer",
+          "pending": "Ongoing negotiation (someone countered)",
+          "accepted": "Someone accepted (check consent fields for details)",
+          "rejected": "Offer rejected by either party",
+          "countered": "Legacy status (now uses 'pending')"
+        }
+      },
+      "total": {
+        "type": "Number",
+        "example": 75000,
+        "description": "Legacy field, not actively used"
+      },
+      "buyerConsent": {
+        "type": "Boolean",
+        "default": false,
+        "example": true,
+        "isNew": true,
+        "description": "Has the BUYER agreed to the current offer terms?",
+        "uiDisplay": "Show green checkmark next to buyer's name if true"
+      },
+      "vendorConsent": {
+        "type": "Boolean",
+        "default": false,
+        "example": true,
+        "isNew": true,
+        "description": "Has the VENDOR agreed to the current offer terms?",
+        "uiDisplay": "Show green checkmark next to vendor's name if true"
+      },
+      "mutualConsentAchieved": {
+        "type": "Boolean",
+        "default": false,
+        "example": true,
+        "isNew": true,
+        "description": "Have BOTH parties agreed? This is the KEY field for payment",
+        "uiDisplay": "Show 'Ready for Payment' badge if true, enable payment button",
+        "paymentRequirement": "MUST be true before payment can proceed (if offer exists)"
+      },
+      "finalMaterialCost": {
+        "type": "Number",
+        "default": 0,
+        "example": 45000,
+        "isNew": true,
+        "description": "Final agreed material cost in NGN (set when mutual consent achieved)"
+      },
+      "finalWorkmanshipCost": {
+        "type": "Number",
+        "default": 0,
+        "example": 30000,
+        "isNew": true,
+        "description": "Final agreed workmanship cost in NGN (set when mutual consent achieved)"
+      },
+      "finalTotalCost": {
+        "type": "Number",
+        "default": 0,
+        "example": 75000,
+        "isNew": true,
+        "description": "Final agreed total cost in NGN (set when mutual consent achieved)"
+      },
+      "chats": {
+        "type": "Array",
+        "description": "WhatsApp-style message history",
+        "example": [
+          {
+            "senderType": "customer",
+            "action": "incoming",
+            "counterMaterialCost": 45000,
+            "counterWorkmanshipCost": 30000,
+            "counterTotalCost": 75000,
+            "comment": "Can we negotiate the price?",
+            "timestamp": "2026-01-03T10:00:00.000Z",
+            "_id": "677890abcdef123456789006"
+          },
+          {
+            "senderType": "vendor",
+            "action": "accepted",
+            "counterMaterialCost": 45000,
+            "counterWorkmanshipCost": 30000,
+            "counterTotalCost": 75000,
+            "comment": "Yes, I accept your offer!",
+            "timestamp": "2026-01-03T10:15:00.000Z",
+            "_id": "677890abcdef123456789007"
+          },
+          {
+            "senderType": "customer",
+            "action": "accepted",
+            "counterMaterialCost": 45000,
+            "counterWorkmanshipCost": 30000,
+            "counterTotalCost": 75000,
+            "comment": "Great! Proceeding to payment.",
+            "timestamp": "2026-01-03T10:20:00.000Z",
+            "_id": "677890abcdef123456789008"
+          }
+        ],
+        "chatStructure": {
+          "senderType": {
+            "type": "String",
+            "enum": ["customer", "vendor"],
+            "description": "Who sent this message?",
+            "uiDisplay": "Align 'customer' right, 'vendor' left"
+          },
+          "action": {
+            "type": "String",
+            "enum": ["accepted", "rejected", "countered", "pending", "incoming"],
+            "description": "What action was taken?",
+            "uiDisplay": {
+              "incoming": "Blue badge 'Initial Offer'",
+              "accepted": "Green badge 'Accepted'",
+              "rejected": "Red badge 'Rejected'",
+              "countered": "Orange badge 'Counter Offer'",
+              "pending": "Yellow badge 'Pending'"
+            }
+          },
+          "counterMaterialCost": {
+            "type": "Number",
+            "description": "Proposed material cost in NGN",
+            "uiDisplay": "Show if action is 'countered' or 'incoming'"
+          },
+          "counterWorkmanshipCost": {
+            "type": "Number",
+            "description": "Proposed workmanship cost in NGN",
+            "uiDisplay": "Show if action is 'countered' or 'incoming'"
+          },
+          "counterTotalCost": {
+            "type": "Number",
+            "description": "Proposed total cost in NGN",
+            "uiDisplay": "Show prominently in message bubble"
+          },
+          "comment": {
+            "type": "String",
+            "description": "Optional message from sender",
+            "uiDisplay": "Show below amounts"
+          },
+          "timestamp": {
+            "type": "Date",
+            "description": "When this message was sent",
+            "uiDisplay": "Show in relative time (e.g., '5 mins ago')"
+          }
+        }
+      },
+      "createdAt": {
+        "type": "Date",
+        "example": "2026-01-03T10:00:00.000Z",
+        "description": "When the offer was first created"
+      },
+      "updatedAt": {
+        "type": "Date",
+        "example": "2026-01-03T10:20:00.000Z",
+        "description": "When the offer was last updated"
+      }
+    }
+  },
+
+  "uiDisplayLogic": {
+    "offerCard": {
+      "title": "Display logic for offer list items",
+      "statusBadge": {
+        "condition_1": {
+          "if": "mutualConsentAchieved === true",
+          "show": "Green badge: 'Ready for Payment ✓'",
+          "color": "#10B981"
+        },
+        "condition_2": {
+          "if": "status === 'accepted' && mutualConsentAchieved === false",
+          "show": "Orange badge: 'Waiting for Confirmation'",
+          "color": "#F59E0B"
+        },
+        "condition_3": {
+          "if": "status === 'rejected'",
+          "show": "Red badge: 'Rejected'",
+          "color": "#EF4444"
+        },
+        "condition_4": {
+          "if": "status === 'incoming'",
+          "show": "Blue badge: 'New Offer'",
+          "color": "#3B82F6"
+        },
+        "condition_5": {
+          "if": "status === 'pending'",
+          "show": "Yellow badge: 'Negotiating'",
+          "color": "#F59E0B"
+        }
+      },
+      "consentIndicators": {
+        "buyerCheckmark": {
+          "show": "if buyerConsent === true",
+          "icon": "✓ (green checkmark)",
+          "label": "Buyer Agreed"
+        },
+        "vendorCheckmark": {
+          "show": "if vendorConsent === true",
+          "icon": "✓ (green checkmark)",
+          "label": "Vendor Agreed"
+        }
+      },
+      "amountDisplay": {
+        "ifMutualConsent": "Show finalTotalCost",
+        "ifNegotiating": "Show latest chat's counterTotalCost",
+        "format": "₦75,000"
+      }
+    },
+
+    "chatScreen": {
+      "title": "WhatsApp-style negotiation interface",
+      "messageBubble": {
+        "customer": {
+          "alignment": "right",
+          "backgroundColor": "#3B82F6",
+          "textColor": "white"
+        },
+        "vendor": {
+          "alignment": "left",
+          "backgroundColor": "#E5E7EB",
+          "textColor": "black"
+        }
+      },
+      "messageContent": [
+        "Action badge (Accepted/Rejected/Counter/Initial)",
+        "Amounts (if action is counter or incoming)",
+        "Comment text",
+        "Timestamp (bottom right, small)"
+      ],
+      "actionButtons": {
+        "showForBuyer": {
+          "when": "Latest message senderType is 'vendor' OR vendorConsent=true and buyerConsent=false",
+          "buttons": [
+            {
+              "label": "Accept",
+              "color": "green",
+              "icon": "✓",
+              "action": "POST /buyerReplyToOffer with action='accepted'"
+            },
+            {
+              "label": "Reject",
+              "color": "red",
+              "icon": "✗",
+              "action": "POST /buyerReplyToOffer with action='rejected'"
+            },
+            {
+              "label": "Counter",
+              "color": "blue",
+              "icon": "↔",
+              "action": "Show amount inputs, POST /buyerReplyToOffer with action='countered'"
+            }
+          ]
+        },
+        "showForVendor": {
+          "when": "Latest message senderType is 'customer'",
+          "buttons": [
+            {
+              "label": "Accept Offer",
+              "color": "green",
+              "icon": "✓",
+              "action": "POST /vendorReplyOffer with action='accepted'"
+            },
+            {
+              "label": "Decline",
+              "color": "red",
+              "icon": "✗",
+              "action": "POST /vendorReplyOffer with action='rejected'"
+            },
+            {
+              "label": "Send Counter",
+              "color": "blue",
+              "icon": "↔",
+              "action": "Show amount inputs, POST /vendorReplyOffer with action='countered'"
+            }
+          ]
+        }
+      },
+      "mutualConsentBanner": {
+        "show": "if mutualConsentAchieved === true",
+        "backgroundColor": "#10B981",
+        "textColor": "white",
+        "message": "🎉 Both parties agreed! Final amount: ₦{finalTotalCost}",
+        "actionButton": {
+          "label": "Proceed to Payment",
+          "action": "Navigate to payment screen"
+        }
+      }
+    },
+
+    "paymentButton": {
+      "title": "Payment button enable/disable logic",
+      "enabledStates": [
+        {
+          "condition": "No offer exists (review.hasAcceptedOffer === false)",
+          "label": "Pay ₦{review.totalCost}",
+          "enabled": true
+        },
+        {
+          "condition": "Offer exists AND mutualConsentAchieved === true",
+          "label": "Pay ₦{offer.finalTotalCost}",
+          "enabled": true
+        }
+      ],
+      "disabledStates": [
+        {
+          "condition": "Offer exists BUT mutualConsentAchieved === false",
+          "label": "Waiting for Agreement",
+          "enabled": false,
+          "tooltip": {
+            "forBuyer": "The vendor needs to confirm the agreed price",
+            "forVendor": "The buyer needs to confirm the agreed price"
+          },
+          "showConsentStatus": {
+            "buyerConsent": "Show buyer checkmark if true",
+            "vendorConsent": "Show vendor checkmark if true"
+          }
+        }
+      ]
+    }
+  },
+
+  "flutterCodeExample": {
+    "description": "Example Flutter code for checking payment eligibility",
+    "dart": "bool canProceedToPayment(MakeOffer? offer, Review review) {\n  // No negotiation - can always pay\n  if (offer == null || !review.hasAcceptedOffer) {\n    return true;\n  }\n  \n  // Negotiation exists - must have mutual consent\n  return offer.mutualConsentAchieved == true;\n}\n\nWidget buildPaymentButton(MakeOffer? offer, Review review) {\n  final canPay = canProceedToPayment(offer, review);\n  \n  return ElevatedButton(\n    onPressed: canPay ? () => proceedToPayment() : null,\n    child: Text(\n      canPay \n        ? 'Pay ${formatCurrency(getFinalAmount(offer, review))}'\n        : 'Waiting for Agreement'\n    ),\n  );\n}\n\ndouble getFinalAmount(MakeOffer? offer, Review review) {\n  if (offer?.mutualConsentAchieved == true) {\n    return offer!.finalTotalCost;\n  }\n  return review.totalCost;\n}"
+  },
+
+  "keyFieldsSummary": {
+    "forListDisplay": [
+      "status - Quick status badge",
+      "mutualConsentAchieved - Show 'Ready' badge if true",
+      "buyerConsent - Show buyer checkmark",
+      "vendorConsent - Show vendor checkmark",
+      "finalTotalCost - Show amount if mutual consent",
+      "chats[last].counterTotalCost - Show latest negotiated amount",
+      "createdAt - Show relative time"
+    ],
+    "forChatDisplay": [
+      "chats - All messages in chronological order",
+      "chats[].senderType - Align message bubbles",
+      "chats[].action - Show action badge",
+      "chats[].counterTotalCost - Show proposed amount",
+      "chats[].comment - Show message text",
+      "chats[].timestamp - Show relative time",
+      "buyerConsent - Enable/disable buyer actions",
+      "vendorConsent - Enable/disable vendor actions",
+      "mutualConsentAchieved - Show success banner"
+    ],
+    "forPaymentValidation": [
+      "mutualConsentAchieved - MUST be true if offer exists",
+      "finalTotalCost - Use this amount if mutual consent",
+      "review.totalCost - Use this if no negotiation"
+    ]
+  },
+
+  "migrationNotes": {
+    "existingOffers": {
+      "note": "Existing offers in database will have new fields set to default values",
+      "defaults": {
+        "buyerConsent": false,
+        "vendorConsent": false,
+        "mutualConsentAchieved": false,
+        "finalMaterialCost": 0,
+        "finalWorkmanshipCost": 0,
+        "finalTotalCost": 0
+      },
+      "recommendation": "Treat existing 'accepted' offers as needing re-confirmation, OR set mutualConsentAchieved=true for all existing status='accepted' offers via migration script"
+    }
+  }
+}

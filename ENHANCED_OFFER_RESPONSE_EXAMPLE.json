@@ -1,0 +1,318 @@
+{
+  "title": "Enhanced Offer Response - With Currency Information",
+  "description": "Updated offer model now includes currency information for easy display in Flutter",
+  "date": "2026-01-03",
+
+  "newFieldsAdded": {
+    "isInternationalVendor": {
+      "type": "Boolean",
+      "description": "Is the vendor from US/UK? (copied from review)",
+      "example": true
+    },
+    "exchangeRate": {
+      "type": "Number",
+      "description": "Exchange rate from review (USD->NGN or NGN->USD)",
+      "example": 1433.737
+    },
+    "buyerCountry": {
+      "type": "String",
+      "description": "Buyer's country for easy display",
+      "example": "Nigeria"
+    },
+    "vendorCountry": {
+      "type": "String",
+      "description": "Vendor's country for easy display",
+      "example": "United States"
+    },
+    "finalMaterialCostUSD": {
+      "type": "Number",
+      "description": "Final agreed material cost in USD (calculated when consent achieved)",
+      "example": 20
+    },
+    "finalWorkmanshipCostUSD": {
+      "type": "Number",
+      "description": "Final agreed workmanship cost in USD (calculated when consent achieved)",
+      "example": 15
+    },
+    "finalTotalCostUSD": {
+      "type": "Number",
+      "description": "Final agreed total cost in USD (calculated when consent achieved)",
+      "example": 35
+    }
+  },
+
+  "exampleResponse_NewOffer": {
+    "scenario": "Nigerian buyer creates offer to US vendor",
+    "success": true,
+    "message": "Offer created successfully",
+    "data": {
+      "_id": "6958d58a542d547ed36c7230",
+      "userId": {
+        "_id": "6953e0e4d1d396ed1a4632a9",
+        "fullName": "New User",
+        "email": "newuser@daouse.com",
+        "role": "user"
+      },
+      "vendorId": {
+        "_id": "6953d02ef2d6aeb0845444b6",
+        "businessName": "New Designer",
+        "userId": {
+          "_id": "6953c907c3ce05254b1c8e55",
+          "fullName": "New designer",
+          "email": "newdesigner@daouse.com"
+        }
+      },
+      "materialId": "6958c73c9158badaa96817f3",
+      "reviewId": "6958c73c9158badaa96817f6",
+      "status": "incoming",
+      "buyerConsent": false,
+      "vendorConsent": false,
+      "mutualConsentAchieved": false,
+      "finalMaterialCost": 0,
+      "finalWorkmanshipCost": 0,
+      "finalTotalCost": 0,
+      "isInternationalVendor": true,
+      "exchangeRate": 1433.737,
+      "buyerCountry": "Nigeria",
+      "vendorCountry": "United States",
+      "finalMaterialCostUSD": 0,
+      "finalWorkmanshipCostUSD": 0,
+      "finalTotalCostUSD": 0,
+      "chats": [
+        {
+          "senderType": "customer",
+          "action": "incoming",
+          "counterMaterialCost": 28675,
+          "counterWorkmanshipCost": 21506,
+          "counterTotalCost": 50181,
+          "comment": "Hello Can we get to negotiate a bit.",
+          "timestamp": "2026-01-03T08:38:34.754Z",
+          "_id": "6958d58a542d547ed36c7231"
+        }
+      ],
+      "createdAt": "2026-01-03T08:38:34.764Z",
+      "updatedAt": "2026-01-03T08:38:34.764Z"
+    },
+    "flutterDisplayLogic": {
+      "showBuyerAmount": "₦50,181 (NGN)",
+      "showVendorAmount": "$35.00 (USD) [calculated: 50181 * 0.000697 ≈ $35]",
+      "note": "For incoming offer, amounts are in NGN. Flutter can calculate USD using exchangeRate for display to vendor."
+    }
+  },
+
+  "exampleResponse_VendorAccepts": {
+    "scenario": "US Vendor accepts Nigerian buyer's offer",
+    "success": true,
+    "message": "Offer accepted successfully. Waiting for buyer to confirm consent.",
+    "data": {
+      "_id": "6958d58a542d547ed36c7230",
+      "status": "accepted",
+      "buyerConsent": false,
+      "vendorConsent": true,
+      "mutualConsentAchieved": false,
+      "finalMaterialCost": 28675,
+      "finalWorkmanshipCost": 21506,
+      "finalTotalCost": 50181,
+      "isInternationalVendor": true,
+      "exchangeRate": 0.000697,
+      "buyerCountry": "Nigeria",
+      "vendorCountry": "United States",
+      "finalMaterialCostUSD": 20,
+      "finalWorkmanshipCostUSD": 15,
+      "finalTotalCostUSD": 35,
+      "chats": [
+        {
+          "senderType": "customer",
+          "action": "incoming",
+          "counterMaterialCost": 28675,
+          "counterWorkmanshipCost": 21506,
+          "counterTotalCost": 50181,
+          "comment": "Hello Can we get to negotiate a bit.",
+          "timestamp": "2026-01-03T08:38:34.754Z"
+        },
+        {
+          "senderType": "vendor",
+          "action": "accepted",
+          "counterMaterialCost": 28675,
+          "counterWorkmanshipCost": 21506,
+          "counterTotalCost": 50181,
+          "comment": "Yes, I accept this price!",
+          "timestamp": "2026-01-03T08:45:00.000Z"
+        }
+      ]
+    },
+    "mutualConsentAchieved": false,
+    "buyerConsent": false,
+    "vendorConsent": true,
+    "flutterDisplayLogic": {
+      "showBuyerAmount": "₦50,181 (NGN)",
+      "showVendorAmount": "$35.00 (USD)",
+      "note": "USD amounts now pre-calculated in finalMaterialCostUSD, finalWorkmanshipCostUSD, finalTotalCostUSD"
+    }
+  },
+
+  "exampleResponse_MutualConsent": {
+    "scenario": "Buyer confirms, mutual consent achieved",
+    "success": true,
+    "message": "Offer accepted successfully. Both parties have consented. You can now proceed to payment.",
+    "data": {
+      "_id": "6958d58a542d547ed36c7230",
+      "status": "accepted",
+      "buyerConsent": true,
+      "vendorConsent": true,
+      "mutualConsentAchieved": true,
+      "finalMaterialCost": 28675,
+      "finalWorkmanshipCost": 21506,
+      "finalTotalCost": 50181,
+      "isInternationalVendor": true,
+      "exchangeRate": 0.000697,
+      "buyerCountry": "Nigeria",
+      "vendorCountry": "United States",
+      "finalMaterialCostUSD": 20,
+      "finalWorkmanshipCostUSD": 15,
+      "finalTotalCostUSD": 35,
+      "chats": [
+        {
+          "senderType": "customer",
+          "action": "incoming",
+          "counterMaterialCost": 28675,
+          "counterWorkmanshipCost": 21506,
+          "counterTotalCost": 50181,
+          "comment": "Hello Can we get to negotiate a bit.",
+          "timestamp": "2026-01-03T08:38:34.754Z"
+        },
+        {
+          "senderType": "vendor",
+          "action": "accepted",
+          "counterMaterialCost": 28675,
+          "counterWorkmanshipCost": 21506,
+          "counterTotalCost": 50181,
+          "comment": "Yes, I accept this price!",
+          "timestamp": "2026-01-03T08:45:00.000Z"
+        },
+        {
+          "senderType": "customer",
+          "action": "accepted",
+          "counterMaterialCost": 28675,
+          "counterWorkmanshipCost": 21506,
+          "counterTotalCost": 50181,
+          "comment": "Perfect! Let's proceed.",
+          "timestamp": "2026-01-03T08:47:00.000Z"
+        }
+      ]
+    },
+    "mutualConsentAchieved": true,
+    "buyerConsent": true,
+    "vendorConsent": true,
+    "flutterDisplayLogic": {
+      "showBuyerAmount": "₦50,181 (NGN)",
+      "showVendorAmount": "$35.00 (USD)",
+      "showSuccessBanner": "Both parties agreed! Buyer pays ₦50,181, Vendor receives $35.00",
+      "enablePaymentButton": true
+    }
+  },
+
+  "exampleResponse_NigerianToNigerian": {
+    "scenario": "Nigerian buyer to Nigerian vendor (no currency conversion)",
+    "success": true,
+    "message": "Offer created successfully",
+    "data": {
+      "_id": "offer456",
+      "status": "incoming",
+      "buyerConsent": false,
+      "vendorConsent": false,
+      "mutualConsentAchieved": false,
+      "finalMaterialCost": 0,
+      "finalWorkmanshipCost": 0,
+      "finalTotalCost": 0,
+      "isInternationalVendor": false,
+      "exchangeRate": 0,
+      "buyerCountry": "Nigeria",
+      "vendorCountry": "Nigeria",
+      "finalMaterialCostUSD": 0,
+      "finalWorkmanshipCostUSD": 0,
+      "finalTotalCostUSD": 0,
+      "chats": [
+        {
+          "senderType": "customer",
+          "action": "incoming",
+          "counterMaterialCost": 45000,
+          "counterWorkmanshipCost": 30000,
+          "counterTotalCost": 75000,
+          "comment": "Can we negotiate?",
+          "timestamp": "2026-01-03T09:00:00.000Z"
+        }
+      ]
+    },
+    "flutterDisplayLogic": {
+      "showBuyerAmount": "₦75,000 (NGN)",
+      "showVendorAmount": "₦75,000 (NGN)",
+      "note": "Both see NGN amounts. No USD conversion needed since isInternationalVendor = false"
+    }
+  },
+
+  "flutterImplementationGuide": {
+    "title": "How to Display Amounts in Flutter",
+    "dartCode": "String getAmountDisplay(MakeOffer offer, bool isVendorView) {\n  // For Nigerian to Nigerian\n  if (!offer.isInternationalVendor) {\n    return formatCurrency(offer.finalTotalCost > 0 \n      ? offer.finalTotalCost \n      : offer.chats.last.counterTotalCost, 'NGN');\n  }\n\n  // For International vendor\n  if (isVendorView) {\n    // Vendor sees USD\n    double usdAmount = offer.finalTotalCostUSD > 0 \n      ? offer.finalTotalCostUSD \n      : (offer.chats.last.counterTotalCost * offer.exchangeRate);\n    return formatCurrency(usdAmount, 'USD');\n  } else {\n    // Buyer sees NGN\n    return formatCurrency(offer.finalTotalCost > 0 \n      ? offer.finalTotalCost \n      : offer.chats.last.counterTotalCost, 'NGN');\n  }\n}\n\nWidget buildAmountInfo(MakeOffer offer) {\n  return Column(\n    children: [\n      // Buyer's view\n      Text(\n        'Buyer pays: ${formatCurrency(offer.finalTotalCost, \"NGN\")}',\n        style: TextStyle(fontWeight: FontWeight.bold),\n      ),\n      // Vendor's view (if international)\n      if (offer.isInternationalVendor)\n        Text(\n          'Vendor receives: ${formatCurrency(offer.finalTotalCostUSD, \"USD\")}',\n          style: TextStyle(color: Colors.grey[600]),\n        ),\n      // Exchange rate info\n      if (offer.isInternationalVendor)\n        Text(\n          'Exchange rate: ${offer.exchangeRate}',\n          style: TextStyle(fontSize: 12, color: Colors.grey),\n        ),\n    ],\n  );\n}",
+    "benefitsOfNewFields": [
+      "No need to calculate USD amounts in Flutter - already provided",
+      "Easy to show buyer's country and vendor's country",
+      "Clear indication if conversion needed (isInternationalVendor)",
+      "Exchange rate readily available for display",
+      "Both NGN and USD amounts accessible without calculation"
+    ]
+  },
+
+  "uiDisplayExamples": {
+    "offerCard": {
+      "title": "Offer List Item Display",
+      "layout": {
+        "line1": "From: [buyerCountry] → To: [vendorCountry]",
+        "line2_ifInternational": "₦[finalTotalCost] (Buyer) / $[finalTotalCostUSD] (Vendor)",
+        "line2_ifLocal": "₦[finalTotalCost]",
+        "line3": "Status: [mutualConsentAchieved badge]"
+      }
+    },
+    "chatScreen": {
+      "title": "Negotiation Chat Display",
+      "amountBubble": {
+        "forInternationalVendor": {
+          "buyerView": "You propose: ₦50,181",
+          "vendorView": "Customer proposes: $35.00 (₦50,181)",
+          "note": "Vendor sees both currencies for clarity"
+        },
+        "forLocalVendor": {
+          "bothView": "Proposed: ₦75,000"
+        }
+      }
+    },
+    "mutualConsentBanner": {
+      "title": "Agreement Confirmation",
+      "content_international": {
+        "text": "🎉 Both parties agreed!",
+        "buyerAmount": "You will pay: ₦50,181",
+        "vendorAmount": "Vendor will receive: $35.00",
+        "exchangeRate": "Rate: 1 USD = ₦1,433.74"
+      },
+      "content_local": {
+        "text": "🎉 Both parties agreed!",
+        "amount": "Final price: ₦75,000"
+      }
+    }
+  },
+
+  "keyBenefits": [
+    "✅ All currency information in ONE response",
+    "✅ No need to fetch review separately for currency info",
+    "✅ Pre-calculated USD amounts when consent achieved",
+    "✅ Easy to display buyer and vendor countries",
+    "✅ Clear indication of international vs local transaction",
+    "✅ Exchange rate readily available",
+    "✅ Simplifies Flutter implementation significantly"
+  ],
+
+  "migrationNote": {
+    "existingOffers": "Existing offers will have new fields set to defaults (false, 0, empty string). They will be populated on next update.",
+    "recommendedAction": "Run a migration script to copy isInternationalVendor, exchangeRate from associated reviews to existing offers, or wait for natural updates."
+  }
+}

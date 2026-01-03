@@ -1,0 +1,763 @@
+{
+  "title": "HOG Fashion - Simplified Offer Negotiation with Mutual Consent",
+  "version": "2.0",
+  "lastUpdated": "2026-01-03",
+  "overview": {
+    "description": "A WhatsApp-style chat-based offer negotiation system where buyers and vendors can seamlessly negotiate prices. Both parties must provide consent before payment can proceed.",
+    "keyFeatures": [
+      "Chat-style negotiation interface",
+      "Three simple actions: Accept, Reject, Negotiate (Counter)",
+      "Mutual consent requirement - both parties must agree before payment",
+      "Seamless integration with existing review and payment systems",
+      "Real-time status tracking for both parties"
+    ]
+  },
+
+  "workFlow": {
+    "step1": {
+      "title": "Vendor Creates Quote (Review)",
+      "description": "Vendor creates initial quote for buyer's material",
+      "endpoint": "POST /api/v1/review/createReview/:materialId",
+      "result": "Review created with initial costs in NGN (and USD if international vendor)"
+    },
+    "step2": {
+      "title": "Buyer Initiates Negotiation (Optional)",
+      "description": "Buyer can either pay directly OR start negotiation",
+      "endpoint": "POST /api/v1/makeOffer/createMakeOffer/:reviewId",
+      "action": "Buyer proposes counter amounts",
+      "result": "Offer created with status 'incoming', waiting for vendor response"
+    },
+    "step3": {
+      "title": "Vendor Responds to Offer",
+      "description": "Vendor can Accept, Reject, or Counter the buyer's offer",
+      "endpoint": "POST /api/v1/makeOffer/vendorReplyOffer/:offerId",
+      "actions": {
+        "accept": {
+          "description": "Vendor accepts buyer's offer",
+          "result": "vendorConsent = true, waiting for buyer to confirm",
+          "message": "Offer accepted successfully. Waiting for buyer to confirm consent."
+        },
+        "reject": {
+          "description": "Vendor rejects the offer",
+          "result": "Offer status = rejected, negotiation ends",
+          "message": "Offer rejected successfully"
+        },
+        "counter": {
+          "description": "Vendor proposes different amounts",
+          "result": "New counter offer sent, consents reset, waiting for buyer",
+          "message": "Counter offer sent successfully"
+        }
+      }
+    },
+    "step4": {
+      "title": "Buyer Responds to Vendor's Reply",
+      "description": "Buyer can Accept, Reject, or Counter the vendor's response",
+      "endpoint": "POST /api/v1/makeOffer/buyerReplyToOffer/:offerId",
+      "actions": {
+        "accept": {
+          "description": "Buyer accepts vendor's counter or confirms vendor's acceptance",
+          "result": "buyerConsent = true, if vendor already consented → mutualConsentAchieved = true",
+          "messages": {
+            "mutualConsent": "Offer accepted successfully. Both parties have consented. You can now proceed to payment.",
+            "waitingForVendor": "Offer accepted successfully. Waiting for vendor to confirm consent."
+          }
+        },
+        "reject": {
+          "description": "Buyer rejects the vendor's counter",
+          "result": "Offer status = rejected, negotiation ends",
+          "message": "You rejected the vendor's offer successfully"
+        },
+        "counter": {
+          "description": "Buyer proposes new amounts",
+          "result": "New counter offer sent, consents reset, waiting for vendor",
+          "message": "Counter offer sent successfully"
+        }
+      }
+    },
+    "step5": {
+      "title": "Mutual Consent Achieved",
+      "description": "When both parties accept, mutual consent is achieved",
+      "conditions": [
+        "buyerConsent = true",
+        "vendorConsent = true",
+        "mutualConsentAchieved = true"
+      ],
+      "result": "Review is updated with final agreed amounts, payment can proceed"
+    },
+    "step6": {
+      "title": "Payment",
+      "description": "Buyer proceeds to payment (only allowed with mutual consent OR no negotiation)",
+      "endpoints": {
+        "stripe": "POST /api/v1/stripe/make-payment/:reviewId (International vendors)",
+        "paystack": "POST /api/v1/material/createPaymentOnline/:reviewId (Nigerian vendors)"
+      },
+      "validation": "If offer exists, mutualConsentAchieved must be true"
+    }
+  },
+
+  "updatedOfferModel": {
+    "modelName": "MakeOffer",
+    "fields": {
+      "userId": {
+        "type": "ObjectId",
+        "ref": "User",
+        "description": "The buyer who created the offer"
+      },
+      "vendorId": {
+        "type": "ObjectId",
+        "ref": "Vendor",
+        "description": "The vendor receiving the offer"
+      },
+      "materialId": {
+        "type": "ObjectId",
+        "ref": "Material",
+        "description": "The material being quoted"
+      },
+      "reviewId": {
+        "type": "ObjectId",
+        "ref": "Review",
+        "description": "The associated review/quote"
+      },
+      "status": {
+        "type": "String",
+        "enum": ["pending", "accepted", "rejected", "countered", "incoming"],
+        "description": "Current offer status for quick filtering"
+      },
+      "buyerConsent": {
+        "type": "Boolean",
+        "default": false,
+        "description": "NEW: Has the buyer consented to the current offer?"
+      },
+      "vendorConsent": {
+        "type": "Boolean",
+        "default": false,
+        "description": "NEW: Has the vendor consented to the current offer?"
+      },
+      "mutualConsentAchieved": {
+        "type": "Boolean",
+        "default": false,
+        "description": "NEW: Have both parties consented? Required for payment"
+      },
+      "finalMaterialCost": {
+        "type": "Number",
+        "default": 0,
+        "description": "NEW: Final agreed material cost in NGN"
+      },
+      "finalWorkmanshipCost": {
+        "type": "Number",
+        "default": 0,
+        "description": "NEW: Final agreed workmanship cost in NGN"
+      },
+      "finalTotalCost": {
+        "type": "Number",
+        "default": 0,
+        "description": "NEW: Final agreed total cost in NGN"
+      },
+      "chats": {
+        "type": "Array",
+        "description": "WhatsApp-style message history",
+        "structure": {
+          "senderType": {
+            "type": "String",
+            "enum": ["customer", "vendor"],
+            "description": "Who sent this message"
+          },
+          "action": {
+            "type": "String",
+            "enum": ["accepted", "rejected", "countered", "pending", "incoming"],
+            "description": "What action was taken"
+          },
+          "counterMaterialCost": {
+            "type": "Number",
+            "description": "Proposed material cost in NGN"
+          },
+          "counterWorkmanshipCost": {
+            "type": "Number",
+            "description": "Proposed workmanship cost in NGN"
+          },
+          "counterTotalCost": {
+            "type": "Number",
+            "description": "Proposed total cost in NGN"
+          },
+          "comment": {
+            "type": "String",
+            "description": "Optional message from sender"
+          },
+          "timestamp": {
+            "type": "Date",
+            "description": "When this message was sent"
+          }
+        }
+      }
+    }
+  },
+
+  "apiEndpoints": {
+    "createOffer": {
+      "method": "POST",
+      "endpoint": "/api/v1/makeOffer/createMakeOffer/:reviewId",
+      "description": "Buyer creates or updates an offer for a review",
+      "headers": {
+        "Authorization": "Bearer {token}",
+        "Content-Type": "application/json"
+      },
+      "requestBody": {
+        "materialTotalCost": 45000,
+        "workmanshipTotalCost": 30000,
+        "comment": "Can we reduce the price a bit?"
+      },
+      "responseSuccess": {
+        "success": true,
+        "message": "Offer created successfully",
+        "data": {
+          "_id": "offer123",
+          "userId": "buyer123",
+          "vendorId": "vendor123",
+          "reviewId": "review123",
+          "status": "incoming",
+          "buyerConsent": false,
+          "vendorConsent": false,
+          "mutualConsentAchieved": false,
+          "finalMaterialCost": 0,
+          "finalWorkmanshipCost": 0,
+          "finalTotalCost": 0,
+          "chats": [
+            {
+              "senderType": "customer",
+              "action": "incoming",
+              "counterMaterialCost": 45000,
+              "counterWorkmanshipCost": 30000,
+              "counterTotalCost": 75000,
+              "comment": "Can we reduce the price a bit?",
+              "timestamp": "2026-01-03T10:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+
+    "vendorReply": {
+      "method": "POST",
+      "endpoint": "/api/v1/makeOffer/vendorReplyOffer/:offerId",
+      "description": "Vendor responds to buyer's offer",
+      "headers": {
+        "Authorization": "Bearer {vendorToken}",
+        "Content-Type": "application/json"
+      },
+      "requestBodyOptions": {
+        "accept": {
+          "action": "accepted",
+          "comment": "Accepted! Let's proceed"
+        },
+        "reject": {
+          "action": "rejected",
+          "comment": "Sorry, price too low"
+        },
+        "counter": {
+          "action": "countered",
+          "counterMaterialCost": 48000,
+          "counterWorkmanshipCost": 32000,
+          "comment": "How about this price?"
+        }
+      },
+      "responseAccept": {
+        "success": true,
+        "message": "Offer accepted successfully. Waiting for buyer to confirm consent.",
+        "data": {
+          "_id": "offer123",
+          "status": "accepted",
+          "buyerConsent": false,
+          "vendorConsent": true,
+          "mutualConsentAchieved": false,
+          "finalMaterialCost": 45000,
+          "finalWorkmanshipCost": 30000,
+          "finalTotalCost": 75000,
+          "chats": [
+            {
+              "senderType": "customer",
+              "action": "incoming",
+              "counterMaterialCost": 45000,
+              "counterWorkmanshipCost": 30000,
+              "counterTotalCost": 75000,
+              "comment": "Can we reduce the price a bit?",
+              "timestamp": "2026-01-03T10:00:00Z"
+            },
+            {
+              "senderType": "vendor",
+              "action": "accepted",
+              "counterMaterialCost": 45000,
+              "counterWorkmanshipCost": 30000,
+              "counterTotalCost": 75000,
+              "comment": "Accepted! Let's proceed",
+              "timestamp": "2026-01-03T10:15:00Z"
+            }
+          ]
+        },
+        "mutualConsentAchieved": false,
+        "buyerConsent": false,
+        "vendorConsent": true
+      }
+    },
+
+    "buyerReply": {
+      "method": "POST",
+      "endpoint": "/api/v1/makeOffer/buyerReplyToOffer/:offerId",
+      "description": "Buyer responds to vendor's counter or confirms vendor's acceptance",
+      "headers": {
+        "Authorization": "Bearer {token}",
+        "Content-Type": "application/json"
+      },
+      "requestBodyOptions": {
+        "confirmAcceptance": {
+          "action": "accepted",
+          "comment": "Great! I confirm the agreement"
+        },
+        "acceptCounter": {
+          "action": "accepted",
+          "comment": "Your counter price works for me"
+        },
+        "rejectCounter": {
+          "action": "rejected",
+          "comment": "Sorry, still too high"
+        },
+        "sendCounter": {
+          "action": "countered",
+          "counterMaterialCost": 46000,
+          "counterWorkmanshipCost": 31000,
+          "comment": "Let's meet in the middle"
+        }
+      },
+      "responseMutualConsent": {
+        "success": true,
+        "message": "Offer accepted successfully. Both parties have consented. You can now proceed to payment.",
+        "data": {
+          "_id": "offer123",
+          "status": "accepted",
+          "buyerConsent": true,
+          "vendorConsent": true,
+          "mutualConsentAchieved": true,
+          "finalMaterialCost": 45000,
+          "finalWorkmanshipCost": 30000,
+          "finalTotalCost": 75000,
+          "chats": [
+            {
+              "senderType": "customer",
+              "action": "incoming",
+              "counterMaterialCost": 45000,
+              "counterWorkmanshipCost": 30000,
+              "counterTotalCost": 75000,
+              "comment": "Can we reduce the price a bit?",
+              "timestamp": "2026-01-03T10:00:00Z"
+            },
+            {
+              "senderType": "vendor",
+              "action": "accepted",
+              "counterMaterialCost": 45000,
+              "counterWorkmanshipCost": 30000,
+              "counterTotalCost": 75000,
+              "comment": "Accepted! Let's proceed",
+              "timestamp": "2026-01-03T10:15:00Z"
+            },
+            {
+              "senderType": "customer",
+              "action": "accepted",
+              "counterMaterialCost": 45000,
+              "counterWorkmanshipCost": 30000,
+              "counterTotalCost": 75000,
+              "comment": "Great! I confirm the agreement",
+              "timestamp": "2026-01-03T10:20:00Z"
+            }
+          ]
+        },
+        "mutualConsentAchieved": true,
+        "buyerConsent": true,
+        "vendorConsent": true
+      }
+    },
+
+    "getAllOffers": {
+      "method": "GET",
+      "endpoint": "/api/v1/makeOffer/getAllMakeOffers",
+      "description": "Get all offers for logged-in user (as buyer or vendor)",
+      "headers": {
+        "Authorization": "Bearer {token}"
+      },
+      "responseSuccess": {
+        "success": true,
+        "message": "Make offers retrieved successfully",
+        "count": 2,
+        "data": [
+          {
+            "_id": "offer123",
+            "userId": {
+              "_id": "buyer123",
+              "fullName": "John Doe",
+              "email": "john@example.com"
+            },
+            "vendorId": {
+              "_id": "vendor123",
+              "businessName": "Fashion House",
+              "userId": {
+                "fullName": "Jane Vendor",
+                "email": "jane@example.com"
+              }
+            },
+            "status": "accepted",
+            "buyerConsent": true,
+            "vendorConsent": true,
+            "mutualConsentAchieved": true,
+            "finalMaterialCost": 45000,
+            "finalWorkmanshipCost": 30000,
+            "finalTotalCost": 75000,
+            "chats": [],
+            "chatSummary": {
+              "totalMessages": 3,
+              "latestMessage": {
+                "senderType": "customer",
+                "action": "accepted",
+                "comment": "Great! I confirm the agreement",
+                "timestamp": "2026-01-03T10:20:00Z"
+              }
+            },
+            "createdAt": "2026-01-03T10:00:00Z",
+            "updatedAt": "2026-01-03T10:20:00Z"
+          }
+        ]
+      }
+    },
+
+    "getOfferById": {
+      "method": "GET",
+      "endpoint": "/api/v1/makeOffer/getMakeOfferById/:offerId",
+      "description": "Get specific offer with full chat history",
+      "headers": {
+        "Authorization": "Bearer {token}"
+      },
+      "responseSuccess": {
+        "success": true,
+        "message": "Offer retrieved successfully",
+        "data": {
+          "_id": "offer123",
+          "status": "accepted",
+          "buyerConsent": true,
+          "vendorConsent": true,
+          "mutualConsentAchieved": true,
+          "finalMaterialCost": 45000,
+          "finalWorkmanshipCost": 30000,
+          "finalTotalCost": 75000,
+          "chats": [
+            {
+              "senderType": "customer",
+              "action": "incoming",
+              "counterMaterialCost": 45000,
+              "counterWorkmanshipCost": 30000,
+              "counterTotalCost": 75000,
+              "comment": "Can we reduce the price a bit?",
+              "timestamp": "2026-01-03T10:00:00Z"
+            },
+            {
+              "senderType": "vendor",
+              "action": "accepted",
+              "counterMaterialCost": 45000,
+              "counterWorkmanshipCost": 30000,
+              "counterTotalCost": 75000,
+              "comment": "Accepted! Let's proceed",
+              "timestamp": "2026-01-03T10:15:00Z"
+            },
+            {
+              "senderType": "customer",
+              "action": "accepted",
+              "counterMaterialCost": 45000,
+              "counterWorkmanshipCost": 30000,
+              "counterTotalCost": 75000,
+              "comment": "Great! I confirm the agreement",
+              "timestamp": "2026-01-03T10:20:00Z"
+            }
+          ],
+          "chatSummary": {
+            "totalMessages": 3,
+            "latestMessage": {
+              "senderType": "customer",
+              "action": "accepted",
+              "comment": "Great! I confirm the agreement",
+              "timestamp": "2026-01-03T10:20:00Z"
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "paymentValidation": {
+    "description": "Payment endpoints now validate mutual consent before processing",
+    "stripeEndpoint": "POST /api/v1/stripe/make-payment/:reviewId",
+    "paystackEndpoint": "POST /api/v1/material/createPaymentOnline/:reviewId",
+    "validation": {
+      "noNegotiation": {
+        "condition": "review.hasAcceptedOffer = false OR review.acceptedOfferId is null",
+        "result": "Payment proceeds with original quote amounts"
+      },
+      "withNegotiation": {
+        "condition": "review.hasAcceptedOffer = true AND review.acceptedOfferId exists",
+        "requirements": [
+          "Fetch the offer by acceptedOfferId",
+          "Check offer.mutualConsentAchieved = true",
+          "If not true, reject payment"
+        ],
+        "errorResponse": {
+          "success": false,
+          "message": "Payment cannot proceed. Both buyer and vendor must consent to the negotiated offer before payment.",
+          "requiresMutualConsent": true,
+          "buyerConsent": false,
+          "vendorConsent": true,
+          "offerId": "offer123"
+        }
+      }
+    }
+  },
+
+  "uiGuidance": {
+    "offerListScreen": {
+      "description": "Display all offers for the user",
+      "displayLogic": {
+        "statusBadges": {
+          "pending": "Yellow badge - 'Negotiating'",
+          "accepted_noConsent": "Orange badge - 'Waiting for Confirmation'",
+          "accepted_mutualConsent": "Green badge - 'Ready for Payment'",
+          "rejected": "Red badge - 'Rejected'",
+          "incoming": "Blue badge - 'New Offer'"
+        },
+        "consentIndicators": [
+          "Show checkmark for buyer if buyerConsent = true",
+          "Show checkmark for vendor if vendorConsent = true",
+          "Show 'Both Agreed' badge if mutualConsentAchieved = true"
+        ]
+      }
+    },
+
+    "chatScreen": {
+      "description": "WhatsApp-style negotiation interface",
+      "layout": {
+        "messageList": "Display chats array in chronological order",
+        "messageBubbles": {
+          "customer": "Align right, blue background",
+          "vendor": "Align left, gray background"
+        },
+        "messageContent": [
+          "Show action badge (Accepted/Rejected/Counter Offer/Initial Offer)",
+          "Show proposed amounts if action = countered or incoming",
+          "Show comment text",
+          "Show timestamp"
+        ]
+      },
+      "actionButtons": {
+        "buyer": {
+          "whenToShow": "When latest message is from vendor OR buyer can confirm vendor's acceptance",
+          "buttons": [
+            {
+              "label": "Accept",
+              "color": "green",
+              "action": "Call buyerReplyToOffer with action=accepted"
+            },
+            {
+              "label": "Reject",
+              "color": "red",
+              "action": "Call buyerReplyToOffer with action=rejected"
+            },
+            {
+              "label": "Counter Offer",
+              "color": "blue",
+              "action": "Show amount input fields, call buyerReplyToOffer with action=countered"
+            }
+          ]
+        },
+        "vendor": {
+          "whenToShow": "When latest message is from customer",
+          "buttons": [
+            {
+              "label": "Accept Offer",
+              "color": "green",
+              "action": "Call vendorReplyOffer with action=accepted"
+            },
+            {
+              "label": "Decline",
+              "color": "red",
+              "action": "Call vendorReplyOffer with action=rejected"
+            },
+            {
+              "label": "Send Counter",
+              "color": "blue",
+              "action": "Show amount input fields, call vendorReplyOffer with action=countered"
+            }
+          ]
+        }
+      },
+      "consentBanner": {
+        "show": "When mutualConsentAchieved = true",
+        "message": "Both parties have agreed! You can now proceed to payment.",
+        "color": "green",
+        "action": "Show 'Proceed to Payment' button"
+      }
+    },
+
+    "paymentButton": {
+      "enabledConditions": [
+        "No negotiation (review.hasAcceptedOffer = false)",
+        "OR mutualConsentAchieved = true"
+      ],
+      "disabledState": {
+        "condition": "Negotiation exists but mutualConsentAchieved = false",
+        "message": "Waiting for both parties to agree to the negotiated price",
+        "tooltipBuyer": "The vendor needs to confirm the agreed price before you can pay",
+        "tooltipVendor": "The buyer needs to confirm the agreed price before payment can be made"
+      }
+    }
+  },
+
+  "exampleScenarios": {
+    "scenario1_simpleAcceptance": {
+      "title": "Vendor accepts buyer's first offer",
+      "steps": [
+        {
+          "step": 1,
+          "actor": "Buyer",
+          "action": "Creates offer with ₦75,000",
+          "result": "status=incoming, buyerConsent=false, vendorConsent=false"
+        },
+        {
+          "step": 2,
+          "actor": "Vendor",
+          "action": "Accepts the offer (action=accepted)",
+          "result": "status=accepted, buyerConsent=false, vendorConsent=true, message='Waiting for buyer to confirm'"
+        },
+        {
+          "step": 3,
+          "actor": "Buyer",
+          "action": "Confirms acceptance (action=accepted)",
+          "result": "status=accepted, buyerConsent=true, vendorConsent=true, mutualConsentAchieved=true, Review updated, message='Both parties consented, proceed to payment'"
+        },
+        {
+          "step": 4,
+          "actor": "Buyer",
+          "action": "Makes payment",
+          "result": "Payment succeeds, money transferred"
+        }
+      ]
+    },
+
+    "scenario2_backAndForth": {
+      "title": "Multiple counter offers before agreement",
+      "steps": [
+        {
+          "step": 1,
+          "actor": "Buyer",
+          "action": "Offers ₦70,000",
+          "result": "status=incoming"
+        },
+        {
+          "step": 2,
+          "actor": "Vendor",
+          "action": "Counters with ₦80,000",
+          "result": "status=pending, consents reset to false"
+        },
+        {
+          "step": 3,
+          "actor": "Buyer",
+          "action": "Counters with ₦75,000",
+          "result": "status=pending, consents reset to false"
+        },
+        {
+          "step": 4,
+          "actor": "Vendor",
+          "action": "Accepts ₦75,000",
+          "result": "vendorConsent=true, waiting for buyer"
+        },
+        {
+          "step": 5,
+          "actor": "Buyer",
+          "action": "Confirms (action=accepted)",
+          "result": "mutualConsentAchieved=true, can proceed to payment"
+        }
+      ]
+    },
+
+    "scenario3_rejection": {
+      "title": "Vendor rejects buyer's offer",
+      "steps": [
+        {
+          "step": 1,
+          "actor": "Buyer",
+          "action": "Offers ₦60,000",
+          "result": "status=incoming"
+        },
+        {
+          "step": 2,
+          "actor": "Vendor",
+          "action": "Rejects (action=rejected, comment='Price too low')",
+          "result": "status=rejected, negotiation ends, consents=false"
+        },
+        {
+          "step": 3,
+          "actor": "Buyer",
+          "action": "Can create new offer or pay original quote amount",
+          "result": "Either starts new negotiation or proceeds without negotiation"
+        }
+      ]
+    },
+
+    "scenario4_noNegotiation": {
+      "title": "Buyer pays without negotiating",
+      "steps": [
+        {
+          "step": 1,
+          "actor": "Vendor",
+          "action": "Creates review with quote ₦100,000",
+          "result": "Review created"
+        },
+        {
+          "step": 2,
+          "actor": "Buyer",
+          "action": "Views quote, proceeds directly to payment",
+          "result": "Payment succeeds with original quote amount, no offer required"
+        }
+      ]
+    }
+  },
+
+  "keyChanges": {
+    "modelChanges": [
+      "Added buyerConsent (Boolean)",
+      "Added vendorConsent (Boolean)",
+      "Added mutualConsentAchieved (Boolean)",
+      "Added finalMaterialCost, finalWorkmanshipCost, finalTotalCost (Numbers)"
+    ],
+    "behaviorChanges": [
+      "When vendor accepts → sets vendorConsent=true, waits for buyer",
+      "When buyer accepts → sets buyerConsent=true, waits for vendor",
+      "When both consent → mutualConsentAchieved=true, Review updated",
+      "Any counter offer → resets all consents to false",
+      "Rejection → resets all consents to false, ends negotiation",
+      "Payment requires mutualConsentAchieved=true if offer exists"
+    ],
+    "apiResponseChanges": [
+      "All offer responses now include buyerConsent, vendorConsent, mutualConsentAchieved",
+      "Success messages indicate consent status",
+      "Payment endpoints return detailed consent error if validation fails"
+    ]
+  },
+
+  "testingChecklist": [
+    "✓ Buyer creates offer → status=incoming, consents=false",
+    "✓ Vendor accepts → vendorConsent=true, waiting for buyer",
+    "✓ Buyer confirms → mutualConsentAchieved=true, Review updated",
+    "✓ Payment succeeds with mutual consent",
+    "✓ Payment blocked without mutual consent",
+    "✓ Counter offer resets consents",
+    "✓ Multiple back-and-forth counters work correctly",
+    "✓ Rejection ends negotiation",
+    "✓ Payment without negotiation works",
+    "✓ International vendor USD conversion works with negotiated amounts",
+    "✓ Chat history displays in correct order",
+    "✓ Final amounts stored correctly when mutual consent achieved"
+  ]
+}
