@@ -537,24 +537,34 @@ export const buyerReplyToOffer = async (req, res, next) => {
       // If international vendor, convert to USD
       if (isInternationalVendor) {
         try {
-          const axios = (await import('axios')).default;
-          const apiKey = process.env.EXCHANGE_RATE_API_KEY;
-          const apiUrl = `https://v6.exchangerate-api.com/v6/${apiKey}/pair/NGN/USD`;
-          const conversionResponse = await axios.get(apiUrl);
+          // Use the existing exchange rate from the review (already stored as 1 USD = X NGN)
+          let exchangeRate = review.exchangeRate || 0;
 
-          let exchangeRate = 0.000692; // fallback
-          if (conversionResponse?.data?.result === "success") {
-            exchangeRate = conversionResponse.data.conversion_rate;
+          // If no exchange rate in review, fetch it
+          if (exchangeRate === 0) {
+            const axios = (await import('axios')).default;
+            const apiKey = process.env.EXCHANGE_RATE_API_KEY;
+            const apiUrl = `https://v6.exchangerate-api.com/v6/${apiKey}/pair/USD/NGN`;
+            const conversionResponse = await axios.get(apiUrl);
+
+            if (conversionResponse?.data?.result === "success") {
+              exchangeRate = conversionResponse.data.conversion_rate; // e.g., 1 USD = 1438 NGN
+            } else {
+              exchangeRate = 1438; // fallback
+            }
+
+            console.log(`   ⚠️  Review had no exchange rate, fetched: 1 USD = ₦${exchangeRate}`);
           }
 
-          updateData.exchangeRate = exchangeRate;
-          updateData.materialTotalCostUSD = Math.round(materialCost * exchangeRate * 100) / 100;
-          updateData.workmanshipTotalCostUSD = Math.round(workmanshipCost * exchangeRate * 100) / 100;
-          updateData.totalCostUSD = Math.round(totalCost * exchangeRate * 100) / 100;
-          updateData.subTotalCostUSD = Math.round(totalCost * exchangeRate * 100) / 100;
-          updateData.amountToPayUSD = Math.round(totalCost * exchangeRate * 100) / 100;
+          // DO NOT overwrite the exchange rate - keep it as USD->NGN
+          // Convert NGN to USD by dividing by the rate
+          updateData.materialTotalCostUSD = Math.round(materialCost / exchangeRate * 100) / 100;
+          updateData.workmanshipTotalCostUSD = Math.round(workmanshipCost / exchangeRate * 100) / 100;
+          updateData.totalCostUSD = Math.round(totalCost / exchangeRate * 100) / 100;
+          updateData.subTotalCostUSD = Math.round(totalCost / exchangeRate * 100) / 100;
+          updateData.amountToPayUSD = Math.round(totalCost / exchangeRate * 100) / 100;
 
-          console.log(`💱 Converted to USD: ₦${totalCost} → $${updateData.totalCostUSD} (Rate: ${exchangeRate})`);
+          console.log(`💱 Converted to USD: ₦${totalCost} → $${updateData.totalCostUSD} (Rate: 1 USD = ₦${exchangeRate})`);
         } catch (error) {
           console.error('Currency conversion failed:', error.message);
         }
