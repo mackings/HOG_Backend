@@ -328,12 +328,14 @@ export const getReviewById = async (req, res, next) => {
   try {
     const { id } = req.user;
     const user = await User.findById(id);
+    
     if (user.role !== "tailor") {
-        return res.status(403).json({
+      return res.status(403).json({
         success: false,
         message: "You are not authorized to create a review and quote of the material for the vendor",
       });
     }
+    
     const { reviewId } = req.params;
 
     // Validate reviewId upfront
@@ -341,37 +343,32 @@ export const getReviewById = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid review ID" });
     }
 
-    // Ensure user exists
-    // const user = await User.findById(id);
-    // if (!user) {
-    //   return res.status(404).json({ success: false, message: "User not found" });
-    // }
-
-    // const vendor = await Vendor.findOne({ userId: user._id });
-
-    // // Fetch materials owned by vendor
-    // const materialIds = await Material.find({ userId: user._id }).distinct("_id");
-
-    // Look up review by ID that belongs either to vendor or vendor’s materials
-    const review = await Review.findOne({
-      _id: reviewId,
-      // $or: [{ vendorId: vendor._id }, { materialId: { $in: materialIds } }],
-    })
-      .populate("userId", "fullName email image")
+    // Look up review by ID
+    const review = await Review.findOne({ _id: reviewId })
+      .populate("userId", "fullName email address phoneNumber country") // 🔥 Added address, phoneNumber, country
       .populate(
         "materialId",
         "userId attireType clothMaterial color brand measurement sampleImage settlement isDelivered specialInstructions"
       )
       .populate("vendorId", "userId businessName businessEmail businessPhone")
-      .lean();
+      .lean(); // 🔥 Use lean() for better performance
 
     if (!review) {
-      return res
-        .status(200)
-        .json({ success: true, review: null, message: "Review not found" });
+      return res.status(200).json({ 
+        success: true, 
+        review: null, 
+        message: "Review not found" 
+      });
     }
 
-    return res.status(200).json({ success: true, review });
+    // 🔥 All fields including finalMaterialCost, finalWorkmanshipCost, finalTotalCost
+    // will automatically be included in the response since we're using .lean()
+    
+    return res.status(200).json({ 
+      success: true, 
+      count: 1,
+      reviews: [review] // 🔥 Return as array to match your ReviewResponse format in Flutter
+    });
   } catch (error) {
     next(error);
   }

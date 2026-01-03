@@ -208,7 +208,6 @@ export const vendorReplyOffer = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Offer not found" });
     }
 
-    // Only block if rejected OR if already mutually consented
     if (offer.status === "rejected") {
       return res.status(400).json({
         success: false,
@@ -216,7 +215,6 @@ export const vendorReplyOffer = async (req, res, next) => {
       });
     }
 
-    // Block if mutual consent already achieved
     if (offer.mutualConsentAchieved) {
       return res.status(400).json({
         success: false,
@@ -261,7 +259,6 @@ export const vendorReplyOffer = async (req, res, next) => {
       totalCost = materialCost + workmanshipCost;
     }
 
-    // 🆕 Calculate USD amounts for the chat
     const exchangeRate = offer.exchangeRate || 0;
     const isInternational = offer.isInternationalVendor;
     
@@ -275,14 +272,12 @@ export const vendorReplyOffer = async (req, res, next) => {
       ? Math.round(totalCost / exchangeRate * 100) / 100 
       : 0;
 
-    // Create chat entry with USD amounts
     const newChat = {
       senderType: "vendor",
       action,
       counterMaterialCost: materialCost,
       counterWorkmanshipCost: workmanshipCost,
       counterTotalCost: totalCost,
-      // 🆕 Add USD amounts
       counterMaterialCostUSD: materialCostUSD,
       counterWorkmanshipCostUSD: workmanshipCostUSD,
       counterTotalCostUSD: totalCostUSD,
@@ -323,14 +318,89 @@ export const vendorReplyOffer = async (req, res, next) => {
 
     await offer.save();
 
-    // [Rest of the sync logic remains the same...]
+    // 🔥 UPDATE REVIEW WHEN MUTUAL CONSENT IS ACHIEVED
+    if (offer.mutualConsentAchieved && offer.reviewId) {
+      console.log(`\n💰 MUTUAL CONSENT ACHIEVED - Updating Review ${offer.reviewId}`);
+      console.log(`   Negotiated Amount (NGN): ₦${totalCost}`);
+      
+      const review = await Review.findById(offer.reviewId);
+      
+      if (review) {
+        // Calculate tax and commission on the NEW negotiated amount
+        const subTotalCost = materialCost + workmanshipCost;
+        const tax = (20 / 100) * subTotalCost;
+        
+        const Commission = (await import('../../commission/model/commission.model.js')).default;
+        const feeDoc = await Commission.findOne();
+        const feePercentage = feeDoc ? Number(feeDoc.amount) : 0;
+        const commission = ((feePercentage / 100) * subTotalCost);
+        
+        const newTotalCost = subTotalCost + tax + commission;
+
+        let updateData = {
+          // Update the main costs with negotiated amounts + tax/commission
+          materialTotalCost: materialCost,
+          workmanshipTotalCost: workmanshipCost,
+          subTotalCost: subTotalCost,
+          tax: tax,
+          commission: commission,
+          totalCost: newTotalCost,
+          amountToPay: newTotalCost,
+          hasAcceptedOffer: true,
+          acceptedOfferId: offer._id,
+          
+          // 🔥 STORE THE FINAL NEGOTIATED AMOUNTS (before tax/commission)
+          finalMaterialCost: materialCost,
+          finalWorkmanshipCost: workmanshipCost,
+          finalTotalCost: subTotalCost, // This is BEFORE tax and commission
+        };
+
+        console.log(`   Material Cost: ₦${materialCost}`);
+        console.log(`   Workmanship Cost: ₦${workmanshipCost}`);
+        console.log(`   Subtotal (negotiated): ₦${subTotalCost}`);
+        console.log(`   Tax (20%): ₦${tax.toFixed(2)}`);
+        console.log(`   Commission (${feePercentage}%): ₦${commission.toFixed(2)}`);
+        console.log(`   New Total Cost (with tax/commission): ₦${newTotalCost.toFixed(2)}`);
+
+        // If international vendor, calculate USD amounts
+        if (offer.isInternationalVendor && exchangeRate > 0) {
+          const subTotalCostUSD = Math.round(subTotalCost / exchangeRate * 100) / 100;
+          const taxUSD = Math.round(tax / exchangeRate * 100) / 100;
+          const commissionUSD = Math.round(commission / exchangeRate * 100) / 100;
+          const totalCostUSD = Math.round(newTotalCost / exchangeRate * 100) / 100;
+
+          updateData.materialTotalCostUSD = materialCostUSD;
+          updateData.workmanshipTotalCostUSD = workmanshipCostUSD;
+          updateData.subTotalCostUSD = subTotalCostUSD;
+          updateData.totalCostUSD = totalCostUSD;
+          updateData.amountToPayUSD = totalCostUSD;
+          
+          // 🔥 STORE USD FINAL AMOUNTS (before tax/commission)
+          updateData.finalMaterialCostUSD = materialCostUSD;
+          updateData.finalWorkmanshipCostUSD = workmanshipCostUSD;
+          updateData.finalTotalCostUSD = subTotalCostUSD;
+
+          console.log(`   Negotiated Amount (USD): $${subTotalCostUSD}`);
+          console.log(`   Total with tax/commission (USD): $${totalCostUSD}`);
+          console.log(`   Exchange Rate: 1 USD = ₦${exchangeRate}`);
+        }
+
+        await Review.findByIdAndUpdate(
+          offer.reviewId,
+          { $set: updateData },
+          { new: true }
+        );
+
+        console.log(`✅ Review updated successfully with negotiated amounts`);
+      }
+    }
 
     return res.status(200).json({
       success: true,
       message:
         action === "accepted"
           ? (offer.mutualConsentAchieved
-              ? "Offer accepted successfully. Both parties have consented. You can now proceed to payment."
+              ? "Offer accepted successfully. Both parties have consented. Review has been updated with negotiated price."
               : "Offer accepted successfully. Waiting for buyer to confirm consent.")
           : action === "rejected"
           ? "Offer rejected successfully"
@@ -347,10 +417,9 @@ export const vendorReplyOffer = async (req, res, next) => {
 
 
 
-
 export const buyerReplyToOffer = async (req, res, next) => {
   try {
-    const { id } = req.user; // Buyer ID
+    const { id } = req.user;
     const buyer = await User.findById(id);
 
     if (!buyer) {
@@ -380,7 +449,6 @@ export const buyerReplyToOffer = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Offer not found" });
     }
 
-    // Only block if rejected OR if already mutually consented
     if (offer.status === "rejected") {
       return res.status(400).json({
         success: false,
@@ -388,7 +456,6 @@ export const buyerReplyToOffer = async (req, res, next) => {
       });
     }
 
-    // Block if mutual consent already achieved
     if (offer.mutualConsentAchieved) {
       return res.status(400).json({
         success: false,
@@ -396,7 +463,6 @@ export const buyerReplyToOffer = async (req, res, next) => {
       });
     }
 
-    // Ensure this buyer owns the offer
     if (String(offer.userId?._id) !== String(buyer._id)) {
       return res.status(403).json({
         success: false,
@@ -414,11 +480,9 @@ export const buyerReplyToOffer = async (req, res, next) => {
       });
     }
 
-    // Get the latest vendor offer from chats for acceptance
     let materialCost, workmanshipCost, totalCost;
 
     if (action === "accepted") {
-      // Find the last vendor counter offer to accept those values
       const latestVendorOffer = [...offer.chats]
         .reverse()
         .find(chat => chat.senderType === "vendor" && chat.action === "countered");
@@ -428,20 +492,17 @@ export const buyerReplyToOffer = async (req, res, next) => {
         workmanshipCost = latestVendorOffer.counterWorkmanshipCost || 0;
         totalCost = latestVendorOffer.counterTotalCost || (materialCost + workmanshipCost);
       } else {
-        // No vendor counter, use original offer values
         const originalOffer = offer.chats.find(chat => chat.senderType === "customer");
         materialCost = originalOffer?.counterMaterialCost || 0;
         workmanshipCost = originalOffer?.counterWorkmanshipCost || 0;
         totalCost = originalOffer?.counterTotalCost || (materialCost + workmanshipCost);
       }
     } else {
-      // For countered or rejected, use provided values
       materialCost = Number(counterMaterialCost) || 0;
       workmanshipCost = Number(counterWorkmanshipCost) || 0;
       totalCost = materialCost + workmanshipCost;
     }
 
-    // 🆕 Calculate USD amounts for the chat
     const exchangeRate = offer.exchangeRate || 0;
     const isInternational = offer.isInternationalVendor;
     
@@ -455,14 +516,12 @@ export const buyerReplyToOffer = async (req, res, next) => {
       ? Math.round(totalCost / exchangeRate * 100) / 100 
       : 0;
 
-    // Create new chat message with USD amounts
     const newChat = {
       senderType: "customer",
       action,
       counterMaterialCost: materialCost,
       counterWorkmanshipCost: workmanshipCost,
       counterTotalCost: totalCost,
-      // 🆕 Add USD amounts
       counterMaterialCostUSD: materialCostUSD,
       counterWorkmanshipCostUSD: workmanshipCostUSD,
       counterTotalCostUSD: totalCostUSD,
@@ -470,33 +529,26 @@ export const buyerReplyToOffer = async (req, res, next) => {
       timestamp: new Date(),
     };
 
-    // Push chat message
     offer.chats.push(newChat);
 
-    // Update consent and status based on action
     if (action === "accepted") {
-      // Buyer accepts the vendor's offer
       offer.buyerConsent = true;
       offer.status = "accepted";
 
-      // Store the agreed amounts
       offer.finalMaterialCost = materialCost;
       offer.finalWorkmanshipCost = workmanshipCost;
       offer.finalTotalCost = totalCost;
 
-      // Calculate USD amounts if international vendor
       if (offer.isInternationalVendor && offer.exchangeRate) {
         offer.finalMaterialCostUSD = materialCostUSD;
         offer.finalWorkmanshipCostUSD = workmanshipCostUSD;
         offer.finalTotalCostUSD = totalCostUSD;
       }
 
-      // Check if vendor already consented (mutual consent)
       if (offer.vendorConsent) {
         offer.mutualConsentAchieved = true;
       }
     } else if (action === "countered") {
-      // Reset consents when counter offer is made
       offer.vendorConsent = false;
       offer.buyerConsent = false;
       offer.mutualConsentAchieved = false;
@@ -510,72 +562,81 @@ export const buyerReplyToOffer = async (req, res, next) => {
 
     await offer.save();
 
-    // ✅ Sync with review ONLY when mutual consent is achieved
+    // 🔥 UPDATE REVIEW WHEN MUTUAL CONSENT IS ACHIEVED
     if (offer.mutualConsentAchieved && offer.reviewId) {
-      // Check if vendor is international to calculate USD amounts
-      const Vendor = (await import('../../vendor/model/vendor.model.js')).default;
-      const User = (await import('../../user/model/user.model.js')).default;
-
+      console.log(`\n💰 MUTUAL CONSENT ACHIEVED - Updating Review ${offer.reviewId}`);
+      console.log(`   Negotiated Amount (NGN): ₦${totalCost}`);
+      
       const review = await Review.findById(offer.reviewId);
-      const vendor = await Vendor.findById(review.vendorId);
-      const vendorUser = await User.findById(vendor.userId);
+      
+      if (review) {
+        // Calculate tax and commission on the NEW negotiated amount
+        const subTotalCost = materialCost + workmanshipCost;
+        const tax = (20 / 100) * subTotalCost;
+        
+        const Commission = (await import('../../commission/model/commission.model.js')).default;
+        const feeDoc = await Commission.findOne();
+        const feePercentage = feeDoc ? Number(feeDoc.amount) : 0;
+        const commission = ((feePercentage / 100) * subTotalCost);
+        
+        const newTotalCost = subTotalCost + tax + commission;
 
-      const vendorCountry = vendorUser?.country?.toUpperCase().trim() || '';
-      const isInternationalVendor = ['UNITED STATES', 'US', 'USA', 'UNITED KINGDOM', 'UK', 'GB'].includes(vendorCountry);
+        let updateData = {
+          // Update the main costs with negotiated amounts + tax/commission
+          materialTotalCost: materialCost,
+          workmanshipTotalCost: workmanshipCost,
+          subTotalCost: subTotalCost,
+          tax: tax,
+          commission: commission,
+          totalCost: newTotalCost,
+          amountToPay: newTotalCost,
+          hasAcceptedOffer: true,
+          acceptedOfferId: offer._id,
+          
+          // 🔥 STORE THE FINAL NEGOTIATED AMOUNTS (before tax/commission)
+          finalMaterialCost: materialCost,
+          finalWorkmanshipCost: workmanshipCost,
+          finalTotalCost: subTotalCost, // This is BEFORE tax and commission
+        };
 
-      let updateData = {
-        materialTotalCost: materialCost,
-        workmanshipTotalCost: workmanshipCost,
-        totalCost,
-        subTotalCost: totalCost,
-        amountToPay: totalCost,
-        hasAcceptedOffer: true,
-        acceptedOfferId: offer._id,
-        isInternationalVendor,
-      };
+        console.log(`   Material Cost: ₦${materialCost}`);
+        console.log(`   Workmanship Cost: ₦${workmanshipCost}`);
+        console.log(`   Subtotal (negotiated): ₦${subTotalCost}`);
+        console.log(`   Tax (20%): ₦${tax.toFixed(2)}`);
+        console.log(`   Commission (${feePercentage}%): ₦${commission.toFixed(2)}`);
+        console.log(`   New Total Cost (with tax/commission): ₦${newTotalCost.toFixed(2)}`);
 
-      // If international vendor, convert to USD
-      if (isInternationalVendor) {
-        try {
-          // Use the existing exchange rate from the review (already stored as 1 USD = X NGN)
-          let exchangeRate = review.exchangeRate || 0;
+        // If international vendor, calculate USD amounts
+        if (offer.isInternationalVendor && exchangeRate > 0) {
+          const subTotalCostUSD = Math.round(subTotalCost / exchangeRate * 100) / 100;
+          const taxUSD = Math.round(tax / exchangeRate * 100) / 100;
+          const commissionUSD = Math.round(commission / exchangeRate * 100) / 100;
+          const totalCostUSD = Math.round(newTotalCost / exchangeRate * 100) / 100;
 
-          // If no exchange rate in review, fetch it
-          if (exchangeRate === 0) {
-            const axios = (await import('axios')).default;
-            const apiKey = process.env.EXCHANGE_RATE_API_KEY;
-            const apiUrl = `https://v6.exchangerate-api.com/v6/${apiKey}/pair/USD/NGN`;
-            const conversionResponse = await axios.get(apiUrl);
+          updateData.materialTotalCostUSD = materialCostUSD;
+          updateData.workmanshipTotalCostUSD = workmanshipCostUSD;
+          updateData.subTotalCostUSD = subTotalCostUSD;
+          updateData.totalCostUSD = totalCostUSD;
+          updateData.amountToPayUSD = totalCostUSD;
+          
+          // 🔥 STORE USD FINAL AMOUNTS (before tax/commission)
+          updateData.finalMaterialCostUSD = materialCostUSD;
+          updateData.finalWorkmanshipCostUSD = workmanshipCostUSD;
+          updateData.finalTotalCostUSD = subTotalCostUSD;
 
-            if (conversionResponse?.data?.result === "success") {
-              exchangeRate = conversionResponse.data.conversion_rate; // e.g., 1 USD = 1438 NGN
-            } else {
-              exchangeRate = 1438; // fallback
-            }
-
-            console.log(`   ⚠️  Review had no exchange rate, fetched: 1 USD = ₦${exchangeRate}`);
-          }
-
-          // DO NOT overwrite the exchange rate - keep it as USD->NGN
-          // Convert NGN to USD by dividing by the rate
-          updateData.materialTotalCostUSD = Math.round(materialCost / exchangeRate * 100) / 100;
-          updateData.workmanshipTotalCostUSD = Math.round(workmanshipCost / exchangeRate * 100) / 100;
-          updateData.totalCostUSD = Math.round(totalCost / exchangeRate * 100) / 100;
-          updateData.subTotalCostUSD = Math.round(totalCost / exchangeRate * 100) / 100;
-          updateData.amountToPayUSD = Math.round(totalCost / exchangeRate * 100) / 100;
-
-          console.log(`💱 Converted to USD: ₦${totalCost} → $${updateData.totalCostUSD} (Rate: 1 USD = ₦${exchangeRate})`);
-        } catch (error) {
-          console.error('Currency conversion failed:', error.message);
+          console.log(`   Negotiated Amount (USD): $${subTotalCostUSD}`);
+          console.log(`   Total with tax/commission (USD): $${totalCostUSD}`);
+          console.log(`   Exchange Rate: 1 USD = ₦${exchangeRate}`);
         }
-      }
 
-      await Review.findByIdAndUpdate(
-        offer.reviewId,
-        { $set: updateData },
-        { new: true }
-      );
-      console.log(`✅ Review ${offer.reviewId} updated with mutually consented offer amounts`);
+        await Review.findByIdAndUpdate(
+          offer.reviewId,
+          { $set: updateData },
+          { new: true }
+        );
+
+        console.log(`✅ Review updated successfully with negotiated amounts`);
+      }
     }
 
     return res.status(200).json({
@@ -583,7 +644,7 @@ export const buyerReplyToOffer = async (req, res, next) => {
       message:
         action === "accepted"
           ? (offer.mutualConsentAchieved
-              ? "Offer accepted successfully. Both parties have consented. You can now proceed to payment."
+              ? "Offer accepted successfully. Both parties have consented. Review has been updated with negotiated price."
               : "Offer accepted successfully. Waiting for vendor to confirm consent.")
           : action === "rejected"
           ? "You rejected the vendor's offer successfully"
@@ -597,6 +658,7 @@ export const buyerReplyToOffer = async (req, res, next) => {
     next(error);
   }
 };
+
 
 
 

@@ -1,7 +1,6 @@
 import mongoose from "mongoose";
 
 
-
 const reviewSchema = new mongoose.Schema({
     userId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -68,6 +67,28 @@ const reviewSchema = new mongoose.Schema({
         type: Number,
         default: 0,
     },
+    
+    // 🔥 NEW: Final negotiated amounts (set when offer is accepted)
+    // These represent the amounts BEFORE tax and commission are applied
+    finalMaterialCost: {
+        type: Number,
+    },
+    finalWorkmanshipCost: {
+        type: Number,
+    },
+    finalTotalCost: {
+        type: Number,
+    },
+    finalMaterialCostUSD: {
+        type: Number,
+    },
+    finalWorkmanshipCostUSD: {
+        type: Number,
+    },
+    finalTotalCostUSD: {
+        type: Number,
+    },
+    
     exchangeRate: {
         type: Number,
         default: 0,
@@ -113,6 +134,5 @@ const reviewSchema = new mongoose.Schema({
         timestamps: true,
     }
 );
-
 
 export default mongoose.model("Review", reviewSchema);
