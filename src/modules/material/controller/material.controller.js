@@ -300,6 +300,13 @@ export const createPaymentOnline = async (req, res, next) => {
     const { amount, shipmentMethod, address, paymentStatus } = req.body;
     const { reviewId } = req.params;
 
+    if (!address || typeof address !== "string" || !address.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Delivery address is required for payment.",
+      });
+    }
+
     if (!reviewId || !mongoose.Types.ObjectId.isValid(reviewId)) {
       return res.status(400).json({ success: false, message: "Invalid review ID" });
     }
@@ -355,7 +362,7 @@ export const createPaymentOnline = async (req, res, next) => {
     }
 
     const pickupAddress = vendor.address;
-    const deliveryAddress = address || materialOwner.address;
+    const deliveryAddress = address.trim();
 
     // Geocode delivery address using OpenStreetMap Nominatim (free)
     const geocodeReceiverResponse = await axios.get(`https://nominatim.openstreetmap.org/search`, {
@@ -523,9 +530,15 @@ export const createPartPaymentOnline = async (req, res, next) => {
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-    const { amount } = req.body;
+    const { amount, address } = req.body;
     const { reviewId } = req.params;
     
+    if (!address || typeof address !== "string" || !address.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Delivery address is required for payment.",
+      });
+    }
 
     const review = await Review.findById(reviewId);
     if (!review) {
@@ -562,6 +575,7 @@ export const createPartPaymentOnline = async (req, res, next) => {
       totalAmount: review.totalCost,
       paymentMethod,
       paymentReference,
+      deliveryAddress: address.trim(),
       vendorId: vendor._id,
       materialId: material._id,
       reviewId,

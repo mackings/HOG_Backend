@@ -227,6 +227,13 @@ export const createStripePayment = async (req, res, next) => {
     const { amount, shipmentMethod, address, paymentStatus } = req.body;
     const { reviewId } = req.params;
 
+    if (!address || typeof address !== "string" || !address.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Delivery address is required for payment.",
+      });
+    }
+
     if (!mongoose.Types.ObjectId.isValid(reviewId)) {
       return res.status(400).json({ success: false, message: "Invalid review ID" });
     }
@@ -511,7 +518,7 @@ export const createStripePayment = async (req, res, next) => {
       console.log(`\n⚠️  Nigerian → Nigerian transaction should use Paystack, not Stripe!`);
     }
 
-    const deliveryAddress = address || materialOwner.address;
+    const deliveryAddress = address.trim();
     const paymentReference = crypto.randomBytes(8).toString("hex");
 
     // Store data for webhook

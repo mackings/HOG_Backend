@@ -1,0 +1,178 @@
+{
+  "generatedFrom": [
+    "src/modules/stripe/controller/stripe.controller.js",
+    "src/modules/material/controller/material.controller.js"
+  ],
+  "notes": [
+    "Delivery address is required for every payment (full or part).",
+    "Send a complete, human-readable address including country for best geocoding results."
+  ],
+  "frontendInstructions": [
+    "Always collect a delivery address before allowing payment.",
+    "Send the address in the request body as a non-empty string.",
+    "Use 'paymentStatus' to indicate 'part payment' or 'full payment'.",
+    "Stripe is typically used for USD/international payments; Paystack is used for NGN/local payments."
+  ],
+  "endpoints": [
+    {
+      "name": "Stripe - Create Payment",
+      "method": "POST",
+      "path": "/api/v1/stripe/make-payment/{reviewId}",
+      "headers": {
+        "Authorization": "Bearer <token>",
+        "Content-Type": "application/json"
+      },
+      "requestBody": {
+        "amount": 2500.0,
+        "shipmentMethod": "express",
+        "address": "123 Main Street, Lagos, Nigeria",
+        "paymentStatus": "part payment"
+      },
+      "requestBodyRules": [
+        "amount: required number, the amount the user wants to pay (USD).",
+        "shipmentMethod: required string, one of 'express', 'cargo', 'regular'.",
+        "address: required non-empty string, delivery destination.",
+        "paymentStatus: required string, either 'part payment' or 'full payment'."
+      ],
+      "successResponse": {
+        "success": true,
+        "message": "Stripe checkout created successfully.",
+        "data": {
+          "order": {
+            "_id": "67890abc12345",
+            "userId": "user123",
+            "vendorId": "vendor456",
+            "reviewId": "review789",
+            "totalAmount": 5000,
+            "amountPaid": 2500,
+            "paymentStatus": "part payment",
+            "paymentReference": "a1b2c3d4e5f6",
+            "paymentMethod": "Stripe",
+            "deliveryAddress": "123 Main Street, Lagos, Nigeria"
+          },
+          "checkoutUrl": "https://checkout.stripe.com/c/pay/cs_test_..."
+        }
+      },
+      "errorResponses": [
+        {
+          "status": 400,
+          "body": {
+            "success": false,
+            "message": "Delivery address is required for payment."
+          }
+        },
+        {
+          "status": 400,
+          "body": {
+            "success": false,
+            "message": "Invalid review ID"
+          }
+        },
+        {
+          "status": 404,
+          "body": {
+            "success": false,
+            "message": "User not found"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Paystack - Create Payment (Material)",
+      "method": "POST",
+      "path": "/api/v1/material/createPaymentOnline/{reviewId}",
+      "headers": {
+        "Authorization": "Bearer <token>",
+        "Content-Type": "application/json"
+      },
+      "requestBody": {
+        "amount": 250000,
+        "shipmentMethod": "express",
+        "address": "12 Adeola Odeku St, Victoria Island, Lagos, Nigeria",
+        "paymentStatus": "full payment"
+      },
+      "requestBodyRules": [
+        "amount: required number, the amount the user wants to pay (NGN).",
+        "shipmentMethod: required string, one of 'express', 'cargo', 'regular'.",
+        "address: required non-empty string, delivery destination.",
+        "paymentStatus: optional string, 'part payment' or 'full payment' (defaults to 'full payment')."
+      ],
+      "successResponse": {
+        "success": true,
+        "message": "Payment initialized successfully",
+        "authorizationUrl": "https://checkout.paystack.com/123abc",
+        "payment": {
+          "_id": "65e7b1234aa1",
+          "userId": "user123",
+          "vendorId": "vendor456",
+          "reviewId": "review789",
+          "totalAmount": 500000,
+          "amountPaid": 260000,
+          "paymentStatus": "full payment",
+          "paymentReference": "f6e5d4c3b2",
+          "paymentMethod": "Paystack",
+          "deliveryAddress": "12 Adeola Odeku St, Victoria Island, Lagos, Nigeria"
+        }
+      },
+      "errorResponses": [
+        {
+          "status": 400,
+          "body": {
+            "success": false,
+            "message": "Delivery address is required for payment."
+          }
+        },
+        {
+          "status": 400,
+          "body": {
+            "success": false,
+            "message": "Invalid shipment method. Choose Express, Cargo, or Regular."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Paystack - Create Part Payment (Material)",
+      "method": "POST",
+      "path": "/api/v1/material/createPartPaymentOnline/{reviewId}",
+      "headers": {
+        "Authorization": "Bearer <token>",
+        "Content-Type": "application/json"
+      },
+      "requestBody": {
+        "amount": 100000,
+        "address": "12 Adeola Odeku St, Victoria Island, Lagos, Nigeria"
+      },
+      "requestBodyRules": [
+        "amount: required number, the part payment amount (NGN).",
+        "address: required non-empty string, delivery destination."
+      ],
+      "successResponse": {
+        "success": true,
+        "message": "Payment initialized successfully",
+        "authorizationUrl": "https://checkout.paystack.com/xyz987",
+        "payment": {
+          "_id": "65e7b9999bb2",
+          "userId": "user123",
+          "vendorId": "vendor456",
+          "reviewId": "review789",
+          "totalAmount": 500000,
+          "amountPaid": 100000,
+          "paymentStatus": "part payment",
+          "paymentReference": "a1b2c3d4e5",
+          "paymentMethod": "Paystack",
+          "deliveryAddress": "12 Adeola Odeku St, Victoria Island, Lagos, Nigeria"
+        }
+      },
+      "errorResponses": [
+        {
+          "status": 400,
+          "body": {
+            "success": false,
+            "message": "Delivery address is required for payment."
+          }
+        }
+      ]
+    }
+  ]
+}
