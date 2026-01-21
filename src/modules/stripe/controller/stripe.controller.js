@@ -748,22 +748,36 @@ export const webhookPaymentSuccess = async (req, res) => {
         console.log(`   Vendor Email: ${vendorUser?.email}`);
         console.log(`   Current Wallet Balance: $${vendorUser?.wallet || 0}`);
 
+        const platformFeeNGN = (review.tax || 0) + (review.commission || 0);
+
         // Determine amount to credit based on vendor type
         let amountToCredit;
         let currencyLabel;
 
         if (isInternationalVendor) {
           // Credit USD amount
-          amountToCredit = order.amountPaidUSD || order.amountPaid;
+          const feeUSD = order.exchangeRate
+            ? Math.round((platformFeeNGN / order.exchangeRate) * 100) / 100
+            : 0;
+          const grossUSD = order.amountPaidUSD || order.amountPaid;
+          amountToCredit = order.paymentStatus === "full payment"
+            ? Math.max(0, grossUSD - feeUSD)
+            : grossUSD;
           currencyLabel = 'USD';
           console.log(`   Amount Paid (NGN): ₦${order.amountPaid}`);
-          console.log(`   Amount Paid (USD): $${amountToCredit}`);
+          console.log(`   Amount Paid (USD): $${grossUSD}`);
+          console.log(`   Platform Fee (USD): $${feeUSD}`);
+          console.log(`   Vendor Credit (USD): $${amountToCredit}`);
           console.log(`   Exchange Rate: ${order.exchangeRate}`);
         } else {
           // Credit NGN amount
-          amountToCredit = order.amountPaid;
+          amountToCredit = order.paymentStatus === "full payment"
+            ? Math.max(0, order.amountPaid - platformFeeNGN)
+            : order.amountPaid;
           currencyLabel = 'NGN';
           console.log(`   Amount Paid (NGN): ₦${amountToCredit}`);
+          console.log(`   Platform Fee (NGN): ₦${platformFeeNGN}`);
+          console.log(`   Vendor Credit (NGN): ₦${amountToCredit}`);
         }
 
         console.log(`   Amount to credit: ${currencyLabel === 'USD' ? '$' : '₦'}${amountToCredit}`);
@@ -881,6 +895,7 @@ export const webhookPaymentSuccess = async (req, res) => {
             { role: { $in: ["admin", "superAdmin"] } },
             {
               $inc: {
+                wallet: platformFeeNGN,
                 commission: review.commission,
                 tax: review.tax,
               },

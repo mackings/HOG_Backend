@@ -4,6 +4,98 @@ import Review from "../../review/model/review.model.js"
 import Vendor from "../../vendor/model/vendor.model.js"
 import mongoose from "mongoose";
 import Material from "../../material/model/material.model.js"
+import Commission from "../../commission/model/commission.model.js";
+
+const TAX_RATE = 0.2;
+const roundUpNGN = (value) => Math.ceil(Number(value) || 0);
+const roundUpUSD = (value) => Math.ceil((Number(value) || 0) * 100) / 100;
+
+const getCommissionRate = async () => {
+  const feeDoc = await Commission.findOne();
+  const feePercentage = feeDoc ? Number(feeDoc.amount) : 0;
+  return feePercentage / 100;
+};
+
+const netFromGross = (gross, totalRate) => gross / (1 + totalRate);
+const grossFromNet = (net, totalRate) => net * (1 + totalRate);
+
+const normalizeOfferFromChat = (chat, totalRate) => {
+  const materialRaw = roundUpNGN(chat?.counterMaterialCost || 0);
+  const workmanshipRaw = roundUpNGN(chat?.counterWorkmanshipCost || 0);
+  const totalRaw = roundUpNGN(chat?.counterTotalCost || (materialRaw + workmanshipRaw));
+  const isGross = chat?.action === "accepted";
+
+  const baseMaterial = isGross ? roundUpNGN(netFromGross(materialRaw, totalRate)) : materialRaw;
+  const baseWorkmanship = isGross ? roundUpNGN(netFromGross(workmanshipRaw, totalRate)) : workmanshipRaw;
+  const baseTotal = roundUpNGN(baseMaterial + baseWorkmanship);
+
+  const grossMaterial = isGross ? materialRaw : roundUpNGN(grossFromNet(baseMaterial, totalRate));
+  const grossWorkmanship = isGross ? workmanshipRaw : roundUpNGN(grossFromNet(baseWorkmanship, totalRate));
+  const grossTotal = isGross ? totalRaw : roundUpNGN(grossMaterial + grossWorkmanship);
+
+  return {
+    baseMaterial,
+    baseWorkmanship,
+    baseTotal,
+    grossMaterial,
+    grossWorkmanship,
+    grossTotal,
+  };
+};
+
+const transformOfferForViewer = (offer, viewerType, totalRate) => {
+  if (!offer || !offer.chats || !Array.isArray(offer.chats)) {
+    return offer;
+  }
+
+  const exchangeRate = offer.exchangeRate || 0;
+  const isInternational = offer.isInternationalVendor;
+
+  const toUSD = (ngnValue) =>
+    isInternational && exchangeRate > 0 ? roundUpUSD(ngnValue / exchangeRate) : 0;
+  const toGrossNGN = (netValue) => roundUpNGN(grossFromNet(netValue, totalRate));
+
+  const chats = offer.chats.map((chat) => {
+    const updated = { ...chat };
+    if (chat.action === "accepted") {
+      return updated;
+    }
+
+    const isSenderBuyer = chat.senderType === "customer";
+    const isViewerBuyer = viewerType === "buyer";
+
+    const shouldShowGross =
+      (isViewerBuyer && !isSenderBuyer) || (!isViewerBuyer && isSenderBuyer);
+
+    if (shouldShowGross) {
+      const grossMaterial = toGrossNGN(chat.counterMaterialCost || 0);
+      const grossWorkmanship = toGrossNGN(chat.counterWorkmanshipCost || 0);
+      const grossTotal = roundUpNGN(grossMaterial + grossWorkmanship);
+
+      updated.counterMaterialCost = grossMaterial;
+      updated.counterWorkmanshipCost = grossWorkmanship;
+      updated.counterTotalCost = grossTotal;
+      updated.counterMaterialCostUSD = toUSD(grossMaterial);
+      updated.counterWorkmanshipCostUSD = toUSD(grossWorkmanship);
+      updated.counterTotalCostUSD = toUSD(grossTotal);
+    } else {
+      const netMaterial = roundUpNGN(chat.counterMaterialCost || 0);
+      const netWorkmanship = roundUpNGN(chat.counterWorkmanshipCost || 0);
+      const netTotal = roundUpNGN(netMaterial + netWorkmanship);
+
+      updated.counterMaterialCost = netMaterial;
+      updated.counterWorkmanshipCost = netWorkmanship;
+      updated.counterTotalCost = netTotal;
+      updated.counterMaterialCostUSD = toUSD(netMaterial);
+      updated.counterWorkmanshipCostUSD = toUSD(netWorkmanship);
+      updated.counterTotalCostUSD = toUSD(netTotal);
+    }
+
+    return updated;
+  });
+
+  return { ...offer, chats };
+};
 
 
 
@@ -71,7 +163,12 @@ export const createMakeOffer = async (req, res, next) => {
       });
     }
 
-    const totalCost = materialCost + workmanshipCost;
+    const commissionRate = await getCommissionRate();
+    const totalRate = TAX_RATE + commissionRate;
+
+    const netMaterialCost = roundUpNGN(materialCost);
+    const netWorkmanshipCost = roundUpNGN(workmanshipCost);
+    const netTotalCost = roundUpNGN(netMaterialCost + netWorkmanshipCost);
 
     const { vendorId, materialId } = review;
     if (!vendorId || !materialId) {
@@ -83,13 +180,13 @@ export const createMakeOffer = async (req, res, next) => {
 
     // 🆕 Calculate USD amounts
     const materialCostUSD = isInternationalVendor && exchangeRate > 0 
-      ? Math.round(materialCost / exchangeRate * 100) / 100 
+      ? roundUpUSD(netMaterialCost / exchangeRate) 
       : 0;
     const workmanshipCostUSD = isInternationalVendor && exchangeRate > 0 
-      ? Math.round(workmanshipCost / exchangeRate * 100) / 100 
+      ? roundUpUSD(netWorkmanshipCost / exchangeRate) 
       : 0;
     const totalCostUSD = isInternationalVendor && exchangeRate > 0 
-      ? Math.round(totalCost / exchangeRate * 100) / 100 
+      ? roundUpUSD(netTotalCost / exchangeRate) 
       : 0;
 
     let offer = await MakeOffer.findOne({
@@ -106,9 +203,9 @@ export const createMakeOffer = async (req, res, next) => {
         offer._id,
         {
           $set: {
-            materialTotalCost: materialCost,
-            workmanshipTotalCost: workmanshipCost,
-            totalCost,
+            materialTotalCost: netMaterialCost,
+            workmanshipTotalCost: netWorkmanshipCost,
+            totalCost: netTotalCost,
             comment: comment || offer.comment,
             status: "pending",
           },
@@ -116,9 +213,9 @@ export const createMakeOffer = async (req, res, next) => {
             chats: {
               senderType: "customer",
               action: "pending",
-              counterMaterialCost: materialCost,
-              counterWorkmanshipCost: workmanshipCost,
-              counterTotalCost: totalCost,
+              counterMaterialCost: netMaterialCost,
+              counterWorkmanshipCost: netWorkmanshipCost,
+              counterTotalCost: netTotalCost,
               counterMaterialCostUSD: materialCostUSD,
               counterWorkmanshipCostUSD: workmanshipCostUSD,
               counterTotalCostUSD: totalCostUSD,
@@ -136,9 +233,9 @@ export const createMakeOffer = async (req, res, next) => {
         vendorId,
         materialId,
         reviewId: review._id,
-        materialTotalCost: materialCost,
-        workmanshipTotalCost: workmanshipCost,
-        totalCost,
+        materialTotalCost: netMaterialCost,
+        workmanshipTotalCost: netWorkmanshipCost,
+        totalCost: netTotalCost,
         comment,
         status: "incoming",
         isInternationalVendor,
@@ -149,9 +246,9 @@ export const createMakeOffer = async (req, res, next) => {
           {
             senderType: "customer",
             action: "incoming",
-            counterMaterialCost: materialCost,
-            counterWorkmanshipCost: workmanshipCost,
-            counterTotalCost: totalCost,
+            counterMaterialCost: netMaterialCost,
+            counterWorkmanshipCost: netWorkmanshipCost,
+            counterTotalCost: netTotalCost,
             // 🆕 Add USD amounts
             counterMaterialCostUSD: materialCostUSD,
             counterWorkmanshipCostUSD: workmanshipCostUSD,
@@ -170,12 +267,15 @@ export const createMakeOffer = async (req, res, next) => {
       });
     }
 
+    const offerData = offer?.toObject ? offer.toObject() : offer;
+    const viewOffer = transformOfferForViewer(offerData, "buyer", totalRate);
+
     return res.status(201).json({
       success: true,
       message: offer.isNew
         ? "Offer created successfully"
         : "Offer updated successfully",
-      data: offer,
+      data: viewOffer,
     });
   } catch (error) {
     next(error);
@@ -237,53 +337,93 @@ export const vendorReplyOffer = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid action type" });
     }
 
-    let materialCost, workmanshipCost, totalCost;
+    const commissionRate = await getCommissionRate();
+    const totalRate = TAX_RATE + commissionRate;
+
+    let baseMaterialCost, baseWorkmanshipCost, baseTotalCost;
 
     if (action === "accepted") {
       const latestCustomerOffer = [...offer.chats]
         .reverse()
-        .find(chat => chat.senderType === "customer" && (chat.action === "countered" || chat.action === "incoming"));
+        .find(chat => chat.senderType === "customer");
 
       if (latestCustomerOffer) {
-        materialCost = latestCustomerOffer.counterMaterialCost || 0;
-        workmanshipCost = latestCustomerOffer.counterWorkmanshipCost || 0;
-        totalCost = latestCustomerOffer.counterTotalCost || (materialCost + workmanshipCost);
+        const normalized = normalizeOfferFromChat(latestCustomerOffer, totalRate);
+        baseMaterialCost = normalized.baseMaterial;
+        baseWorkmanshipCost = normalized.baseWorkmanship;
+        baseTotalCost = normalized.baseTotal;
       } else {
-        materialCost = Number(counterMaterialCost) || 0;
-        workmanshipCost = Number(counterWorkmanshipCost) || 0;
-        totalCost = materialCost + workmanshipCost;
+        baseMaterialCost = roundUpNGN(Number(counterMaterialCost) || 0);
+        baseWorkmanshipCost = roundUpNGN(Number(counterWorkmanshipCost) || 0);
+        baseTotalCost = roundUpNGN(baseMaterialCost + baseWorkmanshipCost);
       }
     } else {
-      materialCost = Number(counterMaterialCost) || 0;
-      workmanshipCost = Number(counterWorkmanshipCost) || 0;
-      totalCost = materialCost + workmanshipCost;
+      baseMaterialCost = roundUpNGN(Number(counterMaterialCost) || 0);
+      baseWorkmanshipCost = roundUpNGN(Number(counterWorkmanshipCost) || 0);
+      baseTotalCost = roundUpNGN(baseMaterialCost + baseWorkmanshipCost);
     }
 
     const exchangeRate = offer.exchangeRate || 0;
     const isInternational = offer.isInternationalVendor;
-    
-    const materialCostUSD = isInternational && exchangeRate > 0 
-      ? Math.round(materialCost / exchangeRate * 100) / 100 
+
+    const baseMaterialCostUSD = isInternational && exchangeRate > 0 
+      ? roundUpUSD(baseMaterialCost / exchangeRate) 
       : 0;
-    const workmanshipCostUSD = isInternational && exchangeRate > 0 
-      ? Math.round(workmanshipCost / exchangeRate * 100) / 100 
+    const baseWorkmanshipCostUSD = isInternational && exchangeRate > 0 
+      ? roundUpUSD(baseWorkmanshipCost / exchangeRate) 
       : 0;
-    const totalCostUSD = isInternational && exchangeRate > 0 
-      ? Math.round(totalCost / exchangeRate * 100) / 100 
+    const baseTotalCostUSD = isInternational && exchangeRate > 0 
+      ? roundUpUSD(baseTotalCost / exchangeRate) 
       : 0;
+
+    let acceptedGrossMaterial = 0;
+    let acceptedGrossWorkmanship = 0;
+    let acceptedGrossTotal = 0;
+    let acceptedGrossMaterialUSD = 0;
+    let acceptedGrossWorkmanshipUSD = 0;
+    let acceptedGrossTotalUSD = 0;
 
     const newChat = {
       senderType: "vendor",
       action,
-      counterMaterialCost: materialCost,
-      counterWorkmanshipCost: workmanshipCost,
-      counterTotalCost: totalCost,
-      counterMaterialCostUSD: materialCostUSD,
-      counterWorkmanshipCostUSD: workmanshipCostUSD,
-      counterTotalCostUSD: totalCostUSD,
+      counterMaterialCost: baseMaterialCost,
+      counterWorkmanshipCost: baseWorkmanshipCost,
+      counterTotalCost: baseTotalCost,
+      counterMaterialCostUSD: baseMaterialCostUSD,
+      counterWorkmanshipCostUSD: baseWorkmanshipCostUSD,
+      counterTotalCostUSD: baseTotalCostUSD,
       comment: comment || "",
       timestamp: new Date(),
     };
+
+    if (action === "accepted") {
+      const latestCustomerOffer = [...offer.chats]
+        .reverse()
+        .find(chat => chat.senderType === "customer");
+      const normalized = latestCustomerOffer
+        ? normalizeOfferFromChat(latestCustomerOffer, totalRate)
+        : { grossMaterial: roundUpNGN(grossFromNet(baseMaterialCost, totalRate)), grossWorkmanship: roundUpNGN(grossFromNet(baseWorkmanshipCost, totalRate)), grossTotal: roundUpNGN(grossFromNet(baseMaterialCost, totalRate) + grossFromNet(baseWorkmanshipCost, totalRate)) };
+
+      acceptedGrossMaterial = normalized.grossMaterial;
+      acceptedGrossWorkmanship = normalized.grossWorkmanship;
+      acceptedGrossTotal = normalized.grossTotal;
+      acceptedGrossMaterialUSD = isInternational && exchangeRate > 0
+        ? roundUpUSD(acceptedGrossMaterial / exchangeRate)
+        : 0;
+      acceptedGrossWorkmanshipUSD = isInternational && exchangeRate > 0
+        ? roundUpUSD(acceptedGrossWorkmanship / exchangeRate)
+        : 0;
+      acceptedGrossTotalUSD = isInternational && exchangeRate > 0
+        ? roundUpUSD(acceptedGrossTotal / exchangeRate)
+        : 0;
+
+      newChat.counterMaterialCost = acceptedGrossMaterial;
+      newChat.counterWorkmanshipCost = acceptedGrossWorkmanship;
+      newChat.counterTotalCost = acceptedGrossTotal;
+      newChat.counterMaterialCostUSD = acceptedGrossMaterialUSD;
+      newChat.counterWorkmanshipCostUSD = acceptedGrossWorkmanshipUSD;
+      newChat.counterTotalCostUSD = acceptedGrossTotalUSD;
+    }
 
     offer.chats.push(newChat);
 
@@ -291,14 +431,14 @@ export const vendorReplyOffer = async (req, res, next) => {
       offer.vendorConsent = true;
       offer.status = "accepted";
 
-      offer.finalMaterialCost = materialCost;
-      offer.finalWorkmanshipCost = workmanshipCost;
-      offer.finalTotalCost = totalCost;
+      offer.finalMaterialCost = baseMaterialCost;
+      offer.finalWorkmanshipCost = baseWorkmanshipCost;
+      offer.finalTotalCost = baseTotalCost;
 
       if (offer.isInternationalVendor && offer.exchangeRate) {
-        offer.finalMaterialCostUSD = materialCostUSD;
-        offer.finalWorkmanshipCostUSD = workmanshipCostUSD;
-        offer.finalTotalCostUSD = totalCostUSD;
+        offer.finalMaterialCostUSD = baseMaterialCostUSD;
+        offer.finalWorkmanshipCostUSD = baseWorkmanshipCostUSD;
+        offer.finalTotalCostUSD = baseTotalCostUSD;
       }
 
       if (offer.buyerConsent) {
@@ -321,13 +461,13 @@ export const vendorReplyOffer = async (req, res, next) => {
     // 🔥 UPDATE REVIEW WHEN MUTUAL CONSENT IS ACHIEVED
     if (offer.mutualConsentAchieved && offer.reviewId) {
       console.log(`\n💰 MUTUAL CONSENT ACHIEVED - Updating Review ${offer.reviewId}`);
-      console.log(`   Negotiated Amount (NGN): ₦${totalCost}`);
+      console.log(`   Negotiated Amount (NGN): ₦${baseTotalCost}`);
       
       const review = await Review.findById(offer.reviewId);
       
       if (review) {
         // Calculate tax and commission on the NEW negotiated amount
-        const subTotalCost = materialCost + workmanshipCost;
+        const subTotalCost = baseMaterialCost + baseWorkmanshipCost;
         const tax = (20 / 100) * subTotalCost;
         
         const Commission = (await import('../../commission/model/commission.model.js')).default;
@@ -335,12 +475,13 @@ export const vendorReplyOffer = async (req, res, next) => {
         const feePercentage = feeDoc ? Number(feeDoc.amount) : 0;
         const commission = ((feePercentage / 100) * subTotalCost);
         
-        const newTotalCost = subTotalCost + tax + commission;
+        const computedTotalCost = subTotalCost + tax + commission;
+        const newTotalCost = acceptedGrossTotal || computedTotalCost;
 
         let updateData = {
           // Update the main costs with negotiated amounts + tax/commission
-          materialTotalCost: materialCost,
-          workmanshipTotalCost: workmanshipCost,
+          materialTotalCost: baseMaterialCost,
+          workmanshipTotalCost: baseWorkmanshipCost,
           subTotalCost: subTotalCost,
           tax: tax,
           commission: commission,
@@ -350,13 +491,13 @@ export const vendorReplyOffer = async (req, res, next) => {
           acceptedOfferId: offer._id,
           
           // 🔥 STORE THE FINAL NEGOTIATED AMOUNTS (before tax/commission)
-          finalMaterialCost: materialCost,
-          finalWorkmanshipCost: workmanshipCost,
-          finalTotalCost: subTotalCost, // This is BEFORE tax and commission
+          finalMaterialCost: baseMaterialCost,
+          finalWorkmanshipCost: baseWorkmanshipCost,
+          finalTotalCost: newTotalCost,
         };
 
-        console.log(`   Material Cost: ₦${materialCost}`);
-        console.log(`   Workmanship Cost: ₦${workmanshipCost}`);
+        console.log(`   Material Cost: ₦${baseMaterialCost}`);
+        console.log(`   Workmanship Cost: ₦${baseWorkmanshipCost}`);
         console.log(`   Subtotal (negotiated): ₦${subTotalCost}`);
         console.log(`   Tax (20%): ₦${tax.toFixed(2)}`);
         console.log(`   Commission (${feePercentage}%): ₦${commission.toFixed(2)}`);
@@ -367,18 +508,18 @@ export const vendorReplyOffer = async (req, res, next) => {
           const subTotalCostUSD = Math.round(subTotalCost / exchangeRate * 100) / 100;
           const taxUSD = Math.round(tax / exchangeRate * 100) / 100;
           const commissionUSD = Math.round(commission / exchangeRate * 100) / 100;
-          const totalCostUSD = Math.round(newTotalCost / exchangeRate * 100) / 100;
+          const totalCostUSD = acceptedGrossTotalUSD || Math.round(newTotalCost / exchangeRate * 100) / 100;
 
-          updateData.materialTotalCostUSD = materialCostUSD;
-          updateData.workmanshipTotalCostUSD = workmanshipCostUSD;
+          updateData.materialTotalCostUSD = baseMaterialCostUSD;
+          updateData.workmanshipTotalCostUSD = baseWorkmanshipCostUSD;
           updateData.subTotalCostUSD = subTotalCostUSD;
           updateData.totalCostUSD = totalCostUSD;
           updateData.amountToPayUSD = totalCostUSD;
           
           // 🔥 STORE USD FINAL AMOUNTS (before tax/commission)
-          updateData.finalMaterialCostUSD = materialCostUSD;
-          updateData.finalWorkmanshipCostUSD = workmanshipCostUSD;
-          updateData.finalTotalCostUSD = subTotalCostUSD;
+          updateData.finalMaterialCostUSD = baseMaterialCostUSD;
+          updateData.finalWorkmanshipCostUSD = baseWorkmanshipCostUSD;
+          updateData.finalTotalCostUSD = totalCostUSD;
 
           console.log(`   Negotiated Amount (USD): $${subTotalCostUSD}`);
           console.log(`   Total with tax/commission (USD): $${totalCostUSD}`);
@@ -395,6 +536,9 @@ export const vendorReplyOffer = async (req, res, next) => {
       }
     }
 
+    const offerData = offer?.toObject ? offer.toObject() : offer;
+    const viewOffer = transformOfferForViewer(offerData, "vendor", totalRate);
+
     return res.status(200).json({
       success: true,
       message:
@@ -405,7 +549,7 @@ export const vendorReplyOffer = async (req, res, next) => {
           : action === "rejected"
           ? "Offer rejected successfully"
           : "Counter offer sent successfully",
-      data: offer,
+      data: viewOffer,
       mutualConsentAchieved: offer.mutualConsentAchieved,
       buyerConsent: offer.buyerConsent,
       vendorConsent: offer.vendorConsent,
@@ -480,54 +624,101 @@ export const buyerReplyToOffer = async (req, res, next) => {
       });
     }
 
-    let materialCost, workmanshipCost, totalCost;
+    const commissionRate = await getCommissionRate();
+    const totalRate = TAX_RATE + commissionRate;
+
+    let baseMaterialCost, baseWorkmanshipCost, baseTotalCost;
 
     if (action === "accepted") {
       const latestVendorOffer = [...offer.chats]
         .reverse()
-        .find(chat => chat.senderType === "vendor" && chat.action === "countered");
+        .find(chat => chat.senderType === "vendor");
 
       if (latestVendorOffer) {
-        materialCost = latestVendorOffer.counterMaterialCost || 0;
-        workmanshipCost = latestVendorOffer.counterWorkmanshipCost || 0;
-        totalCost = latestVendorOffer.counterTotalCost || (materialCost + workmanshipCost);
+        const normalized = normalizeOfferFromChat(latestVendorOffer, totalRate);
+        baseMaterialCost = normalized.baseMaterial;
+        baseWorkmanshipCost = normalized.baseWorkmanship;
+        baseTotalCost = normalized.baseTotal;
       } else {
         const originalOffer = offer.chats.find(chat => chat.senderType === "customer");
-        materialCost = originalOffer?.counterMaterialCost || 0;
-        workmanshipCost = originalOffer?.counterWorkmanshipCost || 0;
-        totalCost = originalOffer?.counterTotalCost || (materialCost + workmanshipCost);
+        if (originalOffer) {
+          const normalized = normalizeOfferFromChat(originalOffer, totalRate);
+          baseMaterialCost = normalized.baseMaterial;
+          baseWorkmanshipCost = normalized.baseWorkmanship;
+          baseTotalCost = normalized.baseTotal;
+        } else {
+          baseMaterialCost = roundUpNGN(Number(counterMaterialCost) || 0);
+          baseWorkmanshipCost = roundUpNGN(Number(counterWorkmanshipCost) || 0);
+          baseTotalCost = roundUpNGN(baseMaterialCost + baseWorkmanshipCost);
+        }
       }
     } else {
-      materialCost = Number(counterMaterialCost) || 0;
-      workmanshipCost = Number(counterWorkmanshipCost) || 0;
-      totalCost = materialCost + workmanshipCost;
+      baseMaterialCost = roundUpNGN(Number(counterMaterialCost) || 0);
+      baseWorkmanshipCost = roundUpNGN(Number(counterWorkmanshipCost) || 0);
+      baseTotalCost = roundUpNGN(baseMaterialCost + baseWorkmanshipCost);
     }
 
     const exchangeRate = offer.exchangeRate || 0;
     const isInternational = offer.isInternationalVendor;
-    
-    const materialCostUSD = isInternational && exchangeRate > 0 
-      ? Math.round(materialCost / exchangeRate * 100) / 100 
+
+    const baseMaterialCostUSD = isInternational && exchangeRate > 0 
+      ? roundUpUSD(baseMaterialCost / exchangeRate) 
       : 0;
-    const workmanshipCostUSD = isInternational && exchangeRate > 0 
-      ? Math.round(workmanshipCost / exchangeRate * 100) / 100 
+    const baseWorkmanshipCostUSD = isInternational && exchangeRate > 0 
+      ? roundUpUSD(baseWorkmanshipCost / exchangeRate) 
       : 0;
-    const totalCostUSD = isInternational && exchangeRate > 0 
-      ? Math.round(totalCost / exchangeRate * 100) / 100 
+    const baseTotalCostUSD = isInternational && exchangeRate > 0 
+      ? roundUpUSD(baseTotalCost / exchangeRate) 
       : 0;
+
+    let acceptedGrossMaterial = 0;
+    let acceptedGrossWorkmanship = 0;
+    let acceptedGrossTotal = 0;
+    let acceptedGrossMaterialUSD = 0;
+    let acceptedGrossWorkmanshipUSD = 0;
+    let acceptedGrossTotalUSD = 0;
 
     const newChat = {
       senderType: "customer",
       action,
-      counterMaterialCost: materialCost,
-      counterWorkmanshipCost: workmanshipCost,
-      counterTotalCost: totalCost,
-      counterMaterialCostUSD: materialCostUSD,
-      counterWorkmanshipCostUSD: workmanshipCostUSD,
-      counterTotalCostUSD: totalCostUSD,
+      counterMaterialCost: baseMaterialCost,
+      counterWorkmanshipCost: baseWorkmanshipCost,
+      counterTotalCost: baseTotalCost,
+      counterMaterialCostUSD: baseMaterialCostUSD,
+      counterWorkmanshipCostUSD: baseWorkmanshipCostUSD,
+      counterTotalCostUSD: baseTotalCostUSD,
       comment: comment || "",
       timestamp: new Date(),
     };
+
+    if (action === "accepted") {
+      const latestVendorOffer = [...offer.chats]
+        .reverse()
+        .find(chat => chat.senderType === "vendor");
+      const normalized = latestVendorOffer
+        ? normalizeOfferFromChat(latestVendorOffer, totalRate)
+        : { grossMaterial: roundUpNGN(grossFromNet(baseMaterialCost, totalRate)), grossWorkmanship: roundUpNGN(grossFromNet(baseWorkmanshipCost, totalRate)), grossTotal: roundUpNGN(grossFromNet(baseMaterialCost, totalRate) + grossFromNet(baseWorkmanshipCost, totalRate)) };
+
+      acceptedGrossMaterial = normalized.grossMaterial;
+      acceptedGrossWorkmanship = normalized.grossWorkmanship;
+      acceptedGrossTotal = normalized.grossTotal;
+      acceptedGrossMaterialUSD = isInternational && exchangeRate > 0
+        ? roundUpUSD(acceptedGrossMaterial / exchangeRate)
+        : 0;
+      acceptedGrossWorkmanshipUSD = isInternational && exchangeRate > 0
+        ? roundUpUSD(acceptedGrossWorkmanship / exchangeRate)
+        : 0;
+      acceptedGrossTotalUSD = isInternational && exchangeRate > 0
+        ? roundUpUSD(acceptedGrossTotal / exchangeRate)
+        : 0;
+
+      newChat.counterMaterialCost = acceptedGrossMaterial;
+      newChat.counterWorkmanshipCost = acceptedGrossWorkmanship;
+      newChat.counterTotalCost = acceptedGrossTotal;
+      newChat.counterMaterialCostUSD = acceptedGrossMaterialUSD;
+      newChat.counterWorkmanshipCostUSD = acceptedGrossWorkmanshipUSD;
+      newChat.counterTotalCostUSD = acceptedGrossTotalUSD;
+    }
 
     offer.chats.push(newChat);
 
@@ -535,14 +726,14 @@ export const buyerReplyToOffer = async (req, res, next) => {
       offer.buyerConsent = true;
       offer.status = "accepted";
 
-      offer.finalMaterialCost = materialCost;
-      offer.finalWorkmanshipCost = workmanshipCost;
-      offer.finalTotalCost = totalCost;
+      offer.finalMaterialCost = baseMaterialCost;
+      offer.finalWorkmanshipCost = baseWorkmanshipCost;
+      offer.finalTotalCost = baseTotalCost;
 
       if (offer.isInternationalVendor && offer.exchangeRate) {
-        offer.finalMaterialCostUSD = materialCostUSD;
-        offer.finalWorkmanshipCostUSD = workmanshipCostUSD;
-        offer.finalTotalCostUSD = totalCostUSD;
+        offer.finalMaterialCostUSD = baseMaterialCostUSD;
+        offer.finalWorkmanshipCostUSD = baseWorkmanshipCostUSD;
+        offer.finalTotalCostUSD = baseTotalCostUSD;
       }
 
       if (offer.vendorConsent) {
@@ -565,13 +756,13 @@ export const buyerReplyToOffer = async (req, res, next) => {
     // 🔥 UPDATE REVIEW WHEN MUTUAL CONSENT IS ACHIEVED
     if (offer.mutualConsentAchieved && offer.reviewId) {
       console.log(`\n💰 MUTUAL CONSENT ACHIEVED - Updating Review ${offer.reviewId}`);
-      console.log(`   Negotiated Amount (NGN): ₦${totalCost}`);
+      console.log(`   Negotiated Amount (NGN): ₦${baseTotalCost}`);
       
       const review = await Review.findById(offer.reviewId);
       
       if (review) {
         // Calculate tax and commission on the NEW negotiated amount
-        const subTotalCost = materialCost + workmanshipCost;
+        const subTotalCost = baseMaterialCost + baseWorkmanshipCost;
         const tax = (20 / 100) * subTotalCost;
         
         const Commission = (await import('../../commission/model/commission.model.js')).default;
@@ -579,12 +770,13 @@ export const buyerReplyToOffer = async (req, res, next) => {
         const feePercentage = feeDoc ? Number(feeDoc.amount) : 0;
         const commission = ((feePercentage / 100) * subTotalCost);
         
-        const newTotalCost = subTotalCost + tax + commission;
+        const computedTotalCost = subTotalCost + tax + commission;
+        const newTotalCost = acceptedGrossTotal || computedTotalCost;
 
         let updateData = {
           // Update the main costs with negotiated amounts + tax/commission
-          materialTotalCost: materialCost,
-          workmanshipTotalCost: workmanshipCost,
+          materialTotalCost: baseMaterialCost,
+          workmanshipTotalCost: baseWorkmanshipCost,
           subTotalCost: subTotalCost,
           tax: tax,
           commission: commission,
@@ -594,13 +786,13 @@ export const buyerReplyToOffer = async (req, res, next) => {
           acceptedOfferId: offer._id,
           
           // 🔥 STORE THE FINAL NEGOTIATED AMOUNTS (before tax/commission)
-          finalMaterialCost: materialCost,
-          finalWorkmanshipCost: workmanshipCost,
-          finalTotalCost: subTotalCost, // This is BEFORE tax and commission
+          finalMaterialCost: baseMaterialCost,
+          finalWorkmanshipCost: baseWorkmanshipCost,
+          finalTotalCost: newTotalCost,
         };
 
-        console.log(`   Material Cost: ₦${materialCost}`);
-        console.log(`   Workmanship Cost: ₦${workmanshipCost}`);
+        console.log(`   Material Cost: ₦${baseMaterialCost}`);
+        console.log(`   Workmanship Cost: ₦${baseWorkmanshipCost}`);
         console.log(`   Subtotal (negotiated): ₦${subTotalCost}`);
         console.log(`   Tax (20%): ₦${tax.toFixed(2)}`);
         console.log(`   Commission (${feePercentage}%): ₦${commission.toFixed(2)}`);
@@ -611,18 +803,18 @@ export const buyerReplyToOffer = async (req, res, next) => {
           const subTotalCostUSD = Math.round(subTotalCost / exchangeRate * 100) / 100;
           const taxUSD = Math.round(tax / exchangeRate * 100) / 100;
           const commissionUSD = Math.round(commission / exchangeRate * 100) / 100;
-          const totalCostUSD = Math.round(newTotalCost / exchangeRate * 100) / 100;
+          const totalCostUSD = acceptedGrossTotalUSD || Math.round(newTotalCost / exchangeRate * 100) / 100;
 
-          updateData.materialTotalCostUSD = materialCostUSD;
-          updateData.workmanshipTotalCostUSD = workmanshipCostUSD;
+          updateData.materialTotalCostUSD = baseMaterialCostUSD;
+          updateData.workmanshipTotalCostUSD = baseWorkmanshipCostUSD;
           updateData.subTotalCostUSD = subTotalCostUSD;
           updateData.totalCostUSD = totalCostUSD;
           updateData.amountToPayUSD = totalCostUSD;
           
           // 🔥 STORE USD FINAL AMOUNTS (before tax/commission)
-          updateData.finalMaterialCostUSD = materialCostUSD;
-          updateData.finalWorkmanshipCostUSD = workmanshipCostUSD;
-          updateData.finalTotalCostUSD = subTotalCostUSD;
+          updateData.finalMaterialCostUSD = baseMaterialCostUSD;
+          updateData.finalWorkmanshipCostUSD = baseWorkmanshipCostUSD;
+          updateData.finalTotalCostUSD = totalCostUSD;
 
           console.log(`   Negotiated Amount (USD): $${subTotalCostUSD}`);
           console.log(`   Total with tax/commission (USD): $${totalCostUSD}`);
@@ -639,6 +831,9 @@ export const buyerReplyToOffer = async (req, res, next) => {
       }
     }
 
+    const offerData = offer?.toObject ? offer.toObject() : offer;
+    const viewOffer = transformOfferForViewer(offerData, "buyer", totalRate);
+
     return res.status(200).json({
       success: true,
       message:
@@ -649,7 +844,7 @@ export const buyerReplyToOffer = async (req, res, next) => {
           : action === "rejected"
           ? "You rejected the vendor's offer successfully"
           : "Counter offer sent successfully",
-      data: offer,
+      data: viewOffer,
       mutualConsentAchieved: offer.mutualConsentAchieved,
       buyerConsent: offer.buyerConsent,
       vendorConsent: offer.vendorConsent,
@@ -714,13 +909,27 @@ export const getAllMakeOffers = async (req, res, next) => {
       });
     }
 
+    const commissionRate = await getCommissionRate();
+    const totalRate = TAX_RATE + commissionRate;
+
     // 🧩 Include chat summary (optional)
     const offersWithChatSummary = makeOffers.map((offer) => {
-      const chats = offer.chats || [];
+      const viewerType =
+        String(offer.userId?._id) === String(user._id)
+          ? "buyer"
+          : vendor && String(offer.vendorId?._id) === String(vendor._id)
+          ? "vendor"
+          : null;
+
+      const viewOffer = viewerType
+        ? transformOfferForViewer(offer, viewerType, totalRate)
+        : offer;
+
+      const chats = viewOffer.chats || [];
       const latestChat = chats.length > 0 ? chats[chats.length - 1] : null;
 
       return {
-        ...offer,
+        ...viewOffer,
         chatSummary: {
           totalMessages: chats.length,
           latestMessage: latestChat,
@@ -822,19 +1031,33 @@ export const getMakeOfferById = async (req, res, next) => {
       );
     }
 
+    const commissionRate = await getCommissionRate();
+    const totalRate = TAX_RATE + commissionRate;
+
+    const viewerType =
+      String(offer.userId?._id) === String(user._id)
+        ? "buyer"
+        : vendor && String(offer.vendorId?._id) === String(vendor._id)
+        ? "vendor"
+        : null;
+
+    const viewOffer = viewerType
+      ? transformOfferForViewer(offer, viewerType, totalRate)
+      : offer;
+
     // 🧩 Optional chat summary
     const latestChat =
-      offer.chats && offer.chats.length > 0
-        ? offer.chats[offer.chats.length - 1]
+      viewOffer.chats && viewOffer.chats.length > 0
+        ? viewOffer.chats[viewOffer.chats.length - 1]
         : null;
 
     return res.status(200).json({
       success: true,
       message: "Offer retrieved successfully",
       data: {
-        ...offer,
+        ...viewOffer,
         chatSummary: {
-          totalMessages: offer.chats?.length || 0,
+          totalMessages: viewOffer.chats?.length || 0,
           latestMessage: latestChat,
         },
       },
@@ -843,4 +1066,3 @@ export const getMakeOfferById = async (req, res, next) => {
     next(error);
   }
 };
-

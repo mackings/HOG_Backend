@@ -754,10 +754,15 @@ export const orderWebhook = async (req, res, next) => {
           ? 0
           : Math.max(0, review.totalCost - newAmountPaid);
 
-        // Credit vendor wallet
+        const platformFee = (review.tax || 0) + (review.commission || 0);
+        const vendorCredit = order.paymentStatus === "full payment"
+          ? Math.max(0, deltaPaid - platformFee)
+          : deltaPaid;
+
+        // Credit vendor wallet (net on full payment)
         await User.findByIdAndUpdate(
           vendor.userId,
-          { $inc: { wallet: deltaPaid } },
+          { $inc: { wallet: vendorCredit } },
           { new: true }
         );
 
@@ -780,6 +785,7 @@ export const orderWebhook = async (req, res, next) => {
             { role: { $in: ["admin", "superAdmin"] } },
             {
               $inc: {
+                wallet: platformFee,
                 commission: review.commission,
                 tax: review.tax
               }

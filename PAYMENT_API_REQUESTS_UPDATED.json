@@ -174,5 +174,340 @@
         }
       ]
     }
-  ]
+  ],
+  "offers": {
+    "pricing_rules": [
+      "Tax rate is fixed at 20% of subtotal; commission percentage comes from /api/v1/fee/getCommission.",
+      "Buyer inputs (create offer or buyer reply) are gross totals including tax+commission; stored chat values are net for the vendor view.",
+      "Vendor inputs (vendor reply) are net totals (tailor share); stored chat values are gross for the buyer view.",
+      "Rounding: NGN values round up to whole Naira; USD values round up to 2 decimals.",
+      "On mutual consent, the review totals are recalculated from net values so payment totals remain gross."
+    ],
+    "api_calls": [
+      {
+        "name": "Get all offers",
+        "method": "GET",
+        "path": "/makeOffer/getAllMakeOffers",
+        "auth": "Bearer token",
+        "used_in": "lib/App/Home/Views/Offers/Views/OfferHome.dart",
+        "response_model": "MakeOffer[] (lib/App/Home/Views/Offers/Model/offerThread.dart)"
+      },
+      {
+        "name": "Create offer (buyer)",
+        "method": "POST",
+        "path": "/makeOffer/createMakeOffer/:reviewId",
+        "auth": "Bearer token",
+        "request_body": {
+          "comment": "string",
+          "materialTotalCost": "string (number, gross total for buyer)",
+          "workmanshipTotalCost": "string (number, gross total for buyer)"
+        },
+        "response_model": "MakeOfferResponse (success/message/data)"
+      },
+      {
+        "name": "Reply offer (vendor)",
+        "method": "POST",
+        "path": "/makeOffer/vendorReplyOffer/:offerId",
+        "auth": "Bearer token",
+        "request_body": {
+          "comment": "string",
+          "counterMaterialCost": "string (number, net vendor amount)",
+          "counterWorkmanshipCost": "string (number, net vendor amount)",
+          "action": "countered | accepted | rejected"
+        },
+        "response_model": "generic JSON map"
+      },
+      {
+        "name": "Reply offer (buyer)",
+        "method": "POST",
+        "path": "/makeOffer/buyerReplyToOffer/:offerId",
+        "auth": "Bearer token",
+        "request_body": {
+          "comment": "string",
+          "counterMaterialCost": "string (number, gross buyer amount)",
+          "counterWorkmanshipCost": "string (number, gross buyer amount)",
+          "action": "countered | accepted | rejected"
+        },
+        "response_model": "generic JSON map"
+      },
+      {
+        "name": "Get offer by id (with chat)",
+        "method": "GET",
+        "path": "/makeOffer/getMakeOfferById/:offerId",
+        "auth": "Bearer token",
+        "response_model": "MakeOfferResponse (success/message/data)"
+      }
+    ],
+    "models": {
+      "MakeOffer": {
+        "_id": "string",
+        "userId": "User",
+        "vendorId": "Vendor",
+        "materialId": "MaterialItem",
+        "reviewId": "Review",
+        "status": "string",
+        "buyerConsent": "bool",
+        "vendorConsent": "bool",
+        "mutualConsentAchieved": "bool",
+        "finalMaterialCost": "double",
+        "finalWorkmanshipCost": "double",
+        "finalTotalCost": "double",
+        "finalMaterialCostUSD": "double",
+        "finalWorkmanshipCostUSD": "double",
+        "finalTotalCostUSD": "double",
+        "isInternationalVendor": "bool",
+        "exchangeRate": "double",
+        "buyerCountry": "string",
+        "vendorCountry": "string",
+        "chats": "OfferChat[]",
+        "createdAt": "ISO string",
+        "updatedAt": "ISO string"
+      },
+      "OfferChat": {
+        "_id": "string",
+        "senderType": "customer | vendor",
+        "action": "incoming | countered | accepted | rejected",
+        "counterMaterialCost": "double (amount shown to receiver)",
+        "counterWorkmanshipCost": "double (amount shown to receiver)",
+        "counterTotalCost": "double (amount shown to receiver)",
+        "counterMaterialCostUSD": "double (amount shown to receiver)",
+        "counterWorkmanshipCostUSD": "double (amount shown to receiver)",
+        "counterTotalCostUSD": "double (amount shown to receiver)",
+        "comment": "string",
+        "timestamp": "ISO string"
+      },
+      "OfferThread": {
+        "_id": "string",
+        "userId": "User",
+        "vendorId": "Vendor",
+        "materialId": "MaterialItem",
+        "reviewId": "Review",
+        "status": "string",
+        "chats": "OfferChat[]",
+        "createdAt": "ISO string",
+        "updatedAt": "ISO string",
+        "chatSummary": {
+          "totalMessages": "int",
+          "latestMessage": "OfferChat"
+        }
+      },
+      "User": {
+        "_id": "string",
+        "fullName": "string",
+        "email": "string",
+        "role": "string"
+      },
+      "Vendor": {
+        "_id": "string",
+        "userId": "User",
+        "businessName": "string"
+      },
+      "MaterialItem": {
+        "_id": "string",
+        "clothMaterial": "string",
+        "attireType": "string",
+        "color": "string",
+        "brand": "string",
+        "sampleImage": "string[]"
+      },
+      "Review (offer context)": {
+        "_id": "string",
+        "comment": "string",
+        "materialTotalCost": "double",
+        "workmanshipTotalCost": "double",
+        "totalCost": "double",
+        "status": "string"
+      }
+    },
+    "response_samples": {
+      "getAllMakeOffers_item": {
+        "_id": "offer_123",
+        "userId": { "_id": "user_1", "fullName": "Ada Obi", "email": "ada@x.com", "role": "user" },
+        "vendorId": { "_id": "vendor_1", "businessName": "StitchPro", "userId": { "_id": "u2", "fullName": "Tailor T", "email": "t@x.com", "role": "tailor" } },
+        "materialId": { "_id": "mat_1", "clothMaterial": "Ankara", "attireType": "Dress", "color": "Red", "brand": "Custom", "sampleImage": ["https://..."] },
+        "reviewId": { "_id": "rev_1", "comment": "Please make it slim fit", "materialTotalCost": 12000, "workmanshipTotalCost": 8000, "totalCost": 20000, "status": "quote" },
+        "status": "incoming",
+        "buyerConsent": false,
+        "vendorConsent": false,
+        "mutualConsentAchieved": false,
+        "finalMaterialCost": 0,
+        "finalWorkmanshipCost": 0,
+        "finalTotalCost": 0,
+        "finalMaterialCostUSD": 0,
+        "finalWorkmanshipCostUSD": 0,
+        "finalTotalCostUSD": 0,
+        "isInternationalVendor": false,
+        "exchangeRate": 0,
+        "buyerCountry": "Nigeria",
+        "vendorCountry": "Nigeria",
+        "chats": [],
+        "createdAt": "2024-01-01T12:00:00.000Z",
+        "updatedAt": "2024-01-01T12:00:00.000Z"
+      },
+      "getMakeOfferById": {
+        "success": true,
+        "message": "Offer fetched",
+        "data": {
+          "_id": "offer_123",
+          "chats": [
+            {
+              "_id": "chat_1",
+              "senderType": "customer",
+              "action": "incoming",
+              "counterMaterialCost": 12000,
+              "counterWorkmanshipCost": 8000,
+              "counterTotalCost": 20000,
+              "counterMaterialCostUSD": 0,
+              "counterWorkmanshipCostUSD": 0,
+              "counterTotalCostUSD": 0,
+              "comment": "Initial offer",
+              "timestamp": "2024-01-01T12:05:00.000Z"
+            }
+          ]
+        }
+      }
+    },
+    "ui_display": {
+      "Offer list (OfferHome)": [
+        "counterparty name (buyer or vendor)",
+        "status badge (New/Active/Pending/Ready/Declined)",
+        "latest chat action/comment",
+        "total cost (NGN or USD if international + user country is non-Nigeria, already includes tax+commission for buyer view)",
+        "consent indicators (buyer/vendor/both agreed)",
+        "created/updated timestamp",
+        "chat count"
+      ],
+      "Offer detail / chat": [
+        "thread messages with action labels",
+        "NGN + USD counter amounts (if international)",
+        "comments",
+        "timestamp",
+        "action buttons: accept / reject / counter"
+      ]
+    }
+  },
+  "reviews": {
+    "api_calls": [
+      {
+        "name": "Get materials pending review",
+        "method": "GET",
+        "path": "/review/getAllMaterialsForReview",
+        "auth": "Bearer token",
+        "used_in": "lib/App/Home/Views/Orders/OrderHistory.dart",
+        "response_model": "MaterialReviewResponse (lib/App/Home/Model/historymodel.dart)"
+      },
+      {
+        "name": "Get reviews for a material",
+        "method": "GET",
+        "path": "/review/getReviewsForMaterialById/:materialId",
+        "auth": "Bearer token",
+        "used_in": "lib/App/Home/Views/Orders/quote.dart",
+        "response_model": "ReviewResponse (lib/App/Home/Model/reviewModel.dart)"
+      }
+    ],
+    "models": {
+      "ReviewResponse": {
+        "success": "bool",
+        "count": "int",
+        "reviews": "Review[]"
+      },
+      "Review": {
+        "_id": "string",
+        "userId": "ReviewUser",
+        "vendorId": "string",
+        "materialId": "string",
+        "materialTotalCost": "double",
+        "workmanshipTotalCost": "double",
+        "totalCost": "double",
+        "amountPaid": "double",
+        "amountToPay": "double",
+        "materialTotalCostUSD": "double",
+        "workmanshipTotalCostUSD": "double",
+        "totalCostUSD": "double",
+        "amountPaidUSD": "double",
+        "amountToPayUSD": "double",
+        "finalMaterialCost": "double?",
+        "finalWorkmanshipCost": "double?",
+        "finalTotalCost": "double?",
+        "finalMaterialCostUSD": "double?",
+        "finalWorkmanshipCostUSD": "double?",
+        "finalTotalCostUSD": "double?",
+        "exchangeRate": "double",
+        "isInternationalVendor": "bool",
+        "deliveryDate": "ISO string",
+        "reminderDate": "ISO string",
+        "comment": "string",
+        "status": "quote | part payment | full payment",
+        "hasAcceptedOffer": "bool",
+        "acceptedOfferId": "string?",
+        "createdAt": "ISO string",
+        "updatedAt": "ISO string"
+      },
+      "ReviewUser": {
+        "_id": "string",
+        "fullName": "string",
+        "email": "string",
+        "address": "string?",
+        "phoneNumber": "string?",
+        "country": "string?"
+      }
+    },
+    "response_samples": {
+      "getReviewsForMaterialById": {
+        "success": true,
+        "count": 1,
+        "reviews": [
+          {
+            "_id": "rev_1",
+            "userId": { "_id": "user_1", "fullName": "Ada Obi", "email": "ada@x.com" },
+            "vendorId": "vendor_1",
+            "materialId": "mat_1",
+            "materialTotalCost": 12000,
+            "workmanshipTotalCost": 8000,
+            "totalCost": 20000,
+            "amountPaid": 0,
+            "amountToPay": 20000,
+            "materialTotalCostUSD": 0,
+            "workmanshipTotalCostUSD": 0,
+            "totalCostUSD": 0,
+            "amountPaidUSD": 0,
+            "amountToPayUSD": 0,
+            "finalMaterialCost": null,
+            "finalWorkmanshipCost": null,
+            "finalTotalCost": null,
+            "finalMaterialCostUSD": null,
+            "finalWorkmanshipCostUSD": null,
+            "finalTotalCostUSD": null,
+            "exchangeRate": 0,
+            "isInternationalVendor": false,
+            "deliveryDate": "2024-01-20T00:00:00.000Z",
+            "reminderDate": "2024-01-15T00:00:00.000Z",
+            "comment": "Please make it slim fit",
+            "status": "quote",
+            "hasAcceptedOffer": false,
+            "acceptedOfferId": null,
+            "createdAt": "2024-01-01T12:00:00.000Z",
+            "updatedAt": "2024-01-01T12:00:00.000Z"
+          }
+        ]
+      }
+    },
+    "ui_display": {
+      "QuotationCard (lib/components/Orders/quotationcard.dart)": [
+        "user fullName (avatar initial + name)",
+        "deliveryDate + reminderDate",
+        "comment",
+        "total cost (NGN, or final negotiated if offer accepted)",
+        "USD info + exchangeRate if international vendor",
+        "payment status (quote/part payment/full payment)",
+        "amountPaid + amountToPay",
+        "action buttons: Hire Designer / Make Offer / Pay balance / Pay in full"
+      ],
+      "Quote list (lib/App/Home/Views/Orders/quote.dart)": [
+        "list of Review cards",
+        "make offer CTA per review",
+        "refresh after payment and offer actions"
+      ]
+    }
+  }
 }
