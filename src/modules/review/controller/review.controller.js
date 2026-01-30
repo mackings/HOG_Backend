@@ -5,8 +5,10 @@ import Category from '../../category/model/category.model.js';
 import Transactions from '../../transaction/model/transaction.model.js';
 import Review from '../../review/model/review.model.js';
 import mongoose from "mongoose";
-import Commission from '../../commission/model/commission.model.js';
 import { sendReviewUpdateEmail } from "../../../utils/emailService.utils.js";
+
+const TAX_RATE = 0; // Tax disabled: commission-only pricing
+const QUOTE_COMMISSION_RATE = 0.1; // 10% added on initial quotation
 
 
 
@@ -134,25 +136,22 @@ export const createReview = async (req, res, next) => {
       console.log(`   ℹ️  Exchange rate stored for payment conversion`);
     }
 
-    const tax = 20 / 100 * subTotalCost;
-
-    const feeDoc = await Commission.findOne();
-    const feePercentage = feeDoc ? Number(feeDoc.amount) : 0;
-
-    const grossAmount = Number(subTotalCost).toFixed(0);
-    const fee = ((feePercentage / 100) * grossAmount).toFixed(0);
-    const totalCost = Number(grossAmount) + Number(tax) + Number(fee);
+    const tax = 0;
+    const commission = Math.round(subTotalCost * QUOTE_COMMISSION_RATE);
+    const totalCost = Number(subTotalCost) + Number(tax) + Number(commission);
 
     // Calculate USD total if conversion happened
     if (isInternationalTailor && isNigerianBuyer && exchangeRate > 0) {
-      const taxUSD = 20 / 100 * subTotalCostUSD;
+      const taxUSD = 0;
       const grossAmountUSD = Number(subTotalCostUSD).toFixed(2);
-      const feeUSD = ((feePercentage / 100) * grossAmountUSD).toFixed(2);
-      totalCostUSD = Number(grossAmountUSD) + Number(taxUSD) + Number(feeUSD);
+      const commissionUSD = (QUOTE_COMMISSION_RATE * grossAmountUSD).toFixed(2);
+      totalCostUSD = Number(grossAmountUSD) + Number(taxUSD) + Number(commissionUSD);
       totalCostUSD = Math.round(totalCostUSD * 100) / 100;
       console.log(`   Total Cost (USD): $${totalCostUSD}`);
       console.log(`   Total Cost (NGN): ₦${totalCost}`);
     }
+    console.log(`   Quote Commission (10%): ₦${commission}`);
+    console.log(`   Note: An extra 10% commission is added when both parties agree to an offer.`);
 
     // check if review exists
     let review = await Review.findOne({
@@ -168,7 +167,7 @@ export const createReview = async (req, res, next) => {
       totalCost,
       tax,
       subTotalCost,
-      commission: fee,
+      commission,
       deliveryDate,
       reminderDate,
       comment,
@@ -425,15 +424,9 @@ export const updateReview = async (req, res, next) => {
     } = req.body;
 
     const subTotalCost = Number(materialTotalCost) + Number(workmanshipTotalCost);
-    const tax = 20 / 100 * subTotalCost;
-
-    const feeDoc = await Commission.findOne();
-    const feePercentage = feeDoc ? Number(feeDoc.amount) : 0;
-
-    const grossAmount = Number(subTotalCost).toFixed(0);
-    const fee = ((feePercentage / 100) * grossAmount).toFixed(0);
-    // const netAmount = (Number(grossAmount) - Number(fee)).toFixed(0)
-    const totalCost = Number(grossAmount) + Number(tax) + Number(fee);
+    const tax = 0;
+    const commission = Math.round(subTotalCost * QUOTE_COMMISSION_RATE);
+    const totalCost = Number(subTotalCost) + Number(tax) + Number(commission);
 
     // Update numeric fields safely
     if (materialTotalCost !== undefined) {
@@ -449,12 +442,13 @@ export const updateReview = async (req, res, next) => {
       review.subTotalCost = Number(subTotalCost) || 0;
     }
 
-    if(fee !== undefined) {
-      review.fee = Number(fee) || 0;
+    if(commission !== undefined) {
+      review.commission = Number(commission) || 0;
     }
     if(totalCost !== undefined) {
       review.totalCost = Number(totalCost) || 0;
     }
+    console.log(`   Quote Commission (10%): ₦${commission}`);
 
     // Always recompute total
     // review.totalCost =
@@ -705,7 +699,3 @@ export const updateReviewStatus = async (req, res, next) => {
     next(error);
   }
 };
-
-
-
-

@@ -251,7 +251,8 @@
         }
       },
       "amountDisplay": {
-        "ifMutualConsent": "Show finalTotalCost",
+        "ifMutualConsentBuyer": "Show review.userPayableTotal (or review.totalCost)",
+        "ifMutualConsentVendor": "Show review.vendorBaseTotal (or offer.finalTotalCost)",
         "ifNegotiating": "Show latest chat's counterTotalCost",
         "format": "₦75,000"
       }
@@ -329,7 +330,8 @@
         "show": "if mutualConsentAchieved === true",
         "backgroundColor": "#10B981",
         "textColor": "white",
-        "message": "🎉 Both parties agreed! Final amount: ₦{finalTotalCost}",
+        "messageBuyer": "🎉 Both parties agreed! Payable: ₦{review.userPayableTotal}",
+        "messageVendor": "🎉 Both parties agreed! Agreed price: ₦{review.vendorBaseTotal}",
         "actionButton": {
           "label": "Proceed to Payment",
           "action": "Navigate to payment screen"
@@ -347,7 +349,7 @@
         },
         {
           "condition": "Offer exists AND mutualConsentAchieved === true",
-          "label": "Pay ₦{offer.finalTotalCost}",
+          "label": "Pay ₦{review.userPayableTotal}",
           "enabled": true
         }
       ],
@@ -371,7 +373,7 @@
 
   "flutterCodeExample": {
     "description": "Example Flutter code for checking payment eligibility",
-    "dart": "bool canProceedToPayment(MakeOffer? offer, Review review) {\n  // No negotiation - can always pay\n  if (offer == null || !review.hasAcceptedOffer) {\n    return true;\n  }\n  \n  // Negotiation exists - must have mutual consent\n  return offer.mutualConsentAchieved == true;\n}\n\nWidget buildPaymentButton(MakeOffer? offer, Review review) {\n  final canPay = canProceedToPayment(offer, review);\n  \n  return ElevatedButton(\n    onPressed: canPay ? () => proceedToPayment() : null,\n    child: Text(\n      canPay \n        ? 'Pay ${formatCurrency(getFinalAmount(offer, review))}'\n        : 'Waiting for Agreement'\n    ),\n  );\n}\n\ndouble getFinalAmount(MakeOffer? offer, Review review) {\n  if (offer?.mutualConsentAchieved == true) {\n    return offer!.finalTotalCost;\n  }\n  return review.totalCost;\n}"
+    "dart": "bool canProceedToPayment(MakeOffer? offer, Review review) {\n  // No negotiation - can always pay\n  if (offer == null || !review.hasAcceptedOffer) {\n    return true;\n  }\n  \n  // Negotiation exists - must have mutual consent\n  return offer.mutualConsentAchieved == true;\n}\n\nWidget buildPaymentButton(MakeOffer? offer, Review review) {\n  final canPay = canProceedToPayment(offer, review);\n  \n  return ElevatedButton(\n    onPressed: canPay ? () => proceedToPayment() : null,\n    child: Text(\n      canPay \n        ? 'Pay ${formatCurrency(getFinalAmountForBuyer(offer, review))}'\n        : 'Waiting for Agreement'\n    ),\n  );\n}\n\ndouble getFinalAmountForBuyer(MakeOffer? offer, Review review) {\n  if (offer?.mutualConsentAchieved == true) {\n    return review.userPayableTotal ?? review.totalCost;\n  }\n  return review.totalCost;\n}\n\ndouble getFinalAmountForVendor(MakeOffer? offer, Review review) {\n  if (offer?.mutualConsentAchieved == true) {\n    return review.vendorBaseTotal ?? offer?.finalTotalCost ?? review.totalCost;\n  }\n  return review.totalCost;\n}"
   },
 
   "keyFieldsSummary": {
@@ -380,7 +382,7 @@
       "mutualConsentAchieved - Show 'Ready' badge if true",
       "buyerConsent - Show buyer checkmark",
       "vendorConsent - Show vendor checkmark",
-      "finalTotalCost - Show amount if mutual consent",
+      "review.userPayableTotal (buyer) / review.vendorBaseTotal (vendor) - Show amount if mutual consent",
       "chats[last].counterTotalCost - Show latest negotiated amount",
       "createdAt - Show relative time"
     ],
@@ -397,7 +399,7 @@
     ],
     "forPaymentValidation": [
       "mutualConsentAchieved - MUST be true if offer exists",
-      "finalTotalCost - Use this amount if mutual consent",
+      "review.userPayableTotal - Use this amount for buyer payment if mutual consent",
       "review.totalCost - Use this if no negotiation"
     ]
   },

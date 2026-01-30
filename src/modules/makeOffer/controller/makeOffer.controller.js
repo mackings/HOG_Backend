@@ -4,17 +4,12 @@ import Review from "../../review/model/review.model.js"
 import Vendor from "../../vendor/model/vendor.model.js"
 import mongoose from "mongoose";
 import Material from "../../material/model/material.model.js"
-import Commission from "../../commission/model/commission.model.js";
-
-const TAX_RATE = 0.2;
+const TAX_RATE = 0; // Tax disabled: commission-only pricing
+const QUOTE_COMMISSION_RATE = 0.1; // 10% on quotation
+const FINAL_EXTRA_COMMISSION_RATE = 0.1; // extra 10% added on agreement
+const FINAL_COMMISSION_RATE = QUOTE_COMMISSION_RATE + FINAL_EXTRA_COMMISSION_RATE;
 const roundUpNGN = (value) => Math.ceil(Number(value) || 0);
 const roundUpUSD = (value) => Math.ceil((Number(value) || 0) * 100) / 100;
-
-const getCommissionRate = async () => {
-  const feeDoc = await Commission.findOne();
-  const feePercentage = feeDoc ? Number(feeDoc.amount) : 0;
-  return feePercentage / 100;
-};
 
 const netFromGross = (gross, totalRate) => gross / (1 + totalRate);
 const grossFromNet = (net, totalRate) => net * (1 + totalRate);
@@ -163,8 +158,8 @@ export const createMakeOffer = async (req, res, next) => {
       });
     }
 
-    const commissionRate = await getCommissionRate();
-    const totalRate = TAX_RATE + commissionRate;
+    const displayRate = 0; // show exact offer values (no added commission in chat)
+    const totalRate = displayRate;
 
     const netMaterialCost = roundUpNGN(materialCost);
     const netWorkmanshipCost = roundUpNGN(workmanshipCost);
@@ -189,76 +184,51 @@ export const createMakeOffer = async (req, res, next) => {
       ? roundUpUSD(netTotalCost / exchangeRate) 
       : 0;
 
-    let offer = await MakeOffer.findOne({
+    const existingOffer = await MakeOffer.findOne({
       userId: user._id,
       vendorId,
       materialId,
       reviewId: review._id,
-      status: "pending",
     });
 
-    if (offer) {
-      // 🔄 Update existing offer with USD amounts
-      offer = await MakeOffer.findByIdAndUpdate(
-        offer._id,
-        {
-          $set: {
-            materialTotalCost: netMaterialCost,
-            workmanshipTotalCost: netWorkmanshipCost,
-            totalCost: netTotalCost,
-            comment: comment || offer.comment,
-            status: "pending",
-          },
-          $push: {
-            chats: {
-              senderType: "customer",
-              action: "pending",
-              counterMaterialCost: netMaterialCost,
-              counterWorkmanshipCost: netWorkmanshipCost,
-              counterTotalCost: netTotalCost,
-              counterMaterialCostUSD: materialCostUSD,
-              counterWorkmanshipCostUSD: workmanshipCostUSD,
-              counterTotalCostUSD: totalCostUSD,
-              comment: comment || "Updated the offer terms",
-              timestamp: new Date(),
-            },
-          },
-        },
-        { new: true }
-      );
-    } else {
-      // 🆕 Create new offer with USD amounts in chat
-      offer = await MakeOffer.create({
-        userId: user._id,
-        vendorId,
-        materialId,
-        reviewId: review._id,
-        materialTotalCost: netMaterialCost,
-        workmanshipTotalCost: netWorkmanshipCost,
-        totalCost: netTotalCost,
-        comment,
-        status: "incoming",
-        isInternationalVendor,
-        exchangeRate,
-        buyerCountry,
-        vendorCountry,
-        chats: [
-          {
-            senderType: "customer",
-            action: "incoming",
-            counterMaterialCost: netMaterialCost,
-            counterWorkmanshipCost: netWorkmanshipCost,
-            counterTotalCost: netTotalCost,
-            // 🆕 Add USD amounts
-            counterMaterialCostUSD: materialCostUSD,
-            counterWorkmanshipCostUSD: workmanshipCostUSD,
-            counterTotalCostUSD: totalCostUSD,
-            comment: comment || "Sent a new offer",
-            timestamp: new Date(),
-          },
-        ],
+    if (existingOffer) {
+      return res.status(400).json({
+        success: false,
+        message: "You have already made an offer for this material.",
       });
     }
+
+    // 🆕 Create new offer with USD amounts in chat
+    const offer = await MakeOffer.create({
+      userId: user._id,
+      vendorId,
+      materialId,
+      reviewId: review._id,
+      materialTotalCost: netMaterialCost,
+      workmanshipTotalCost: netWorkmanshipCost,
+      totalCost: netTotalCost,
+      comment,
+      status: "incoming",
+      isInternationalVendor,
+      exchangeRate,
+      buyerCountry,
+      vendorCountry,
+      chats: [
+        {
+          senderType: "customer",
+          action: "incoming",
+          counterMaterialCost: netMaterialCost,
+          counterWorkmanshipCost: netWorkmanshipCost,
+          counterTotalCost: netTotalCost,
+          // 🆕 Add USD amounts
+          counterMaterialCostUSD: materialCostUSD,
+          counterWorkmanshipCostUSD: workmanshipCostUSD,
+          counterTotalCostUSD: totalCostUSD,
+          comment: comment || "Sent a new offer",
+          timestamp: new Date(),
+        },
+      ],
+    });
 
     if (!offer) {
       return res.status(500).json({
@@ -337,8 +307,8 @@ export const vendorReplyOffer = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid action type" });
     }
 
-    const commissionRate = await getCommissionRate();
-    const totalRate = TAX_RATE + commissionRate;
+    const displayRate = 0; // show exact offer values (no added commission in chat)
+    const totalRate = displayRate;
 
     let baseMaterialCost, baseWorkmanshipCost, baseTotalCost;
 
@@ -468,15 +438,13 @@ export const vendorReplyOffer = async (req, res, next) => {
       if (review) {
         // Calculate tax and commission on the NEW negotiated amount
         const subTotalCost = baseMaterialCost + baseWorkmanshipCost;
-        const tax = (20 / 100) * subTotalCost;
-        
-        const Commission = (await import('../../commission/model/commission.model.js')).default;
-        const feeDoc = await Commission.findOne();
-        const feePercentage = feeDoc ? Number(feeDoc.amount) : 0;
-        const commission = ((feePercentage / 100) * subTotalCost);
+        const tax = 0;
+        const quoteCommission = QUOTE_COMMISSION_RATE * subTotalCost;
+        const extraCommission = FINAL_EXTRA_COMMISSION_RATE * subTotalCost;
+        const commission = quoteCommission + extraCommission;
         
         const computedTotalCost = subTotalCost + tax + commission;
-        const newTotalCost = acceptedGrossTotal || computedTotalCost;
+        const newTotalCost = computedTotalCost;
 
         let updateData = {
           // Update the main costs with negotiated amounts + tax/commission
@@ -490,39 +458,48 @@ export const vendorReplyOffer = async (req, res, next) => {
           hasAcceptedOffer: true,
           acceptedOfferId: offer._id,
           
-          // 🔥 STORE THE FINAL NEGOTIATED AMOUNTS (before tax/commission)
+          // 🔥 STORE THE FINAL NEGOTIATED AMOUNTS (vendor base, before commission)
           finalMaterialCost: baseMaterialCost,
           finalWorkmanshipCost: baseWorkmanshipCost,
-          finalTotalCost: newTotalCost,
+          finalTotalCost: baseTotalCost,
+          // Expose both vendor base and user payable totals for the frontend
+          vendorBaseTotal: baseTotalCost,
+          userPayableTotal: newTotalCost,
         };
 
         console.log(`   Material Cost: ₦${baseMaterialCost}`);
         console.log(`   Workmanship Cost: ₦${baseWorkmanshipCost}`);
         console.log(`   Subtotal (negotiated): ₦${subTotalCost}`);
-        console.log(`   Tax (20%): ₦${tax.toFixed(2)}`);
-        console.log(`   Commission (${feePercentage}%): ₦${commission.toFixed(2)}`);
-        console.log(`   New Total Cost (with tax/commission): ₦${newTotalCost.toFixed(2)}`);
+        console.log(`   Tax (0%): ₦${tax.toFixed(2)}`);
+        console.log(`   Quote Commission (10%): ₦${quoteCommission.toFixed(2)}`);
+        console.log(`   Extra Commission on Agreement (10%): ₦${extraCommission.toFixed(2)}`);
+        console.log(`   Total Commission (20%): ₦${commission.toFixed(2)}`);
+        console.log(`   Final Payable = Base + Quote 10% + Extra 10% (Tax 0%)`);
+        console.log(`   User Payable (NGN): ₦${newTotalCost.toFixed(2)}`);
 
         // If international vendor, calculate USD amounts
         if (offer.isInternationalVendor && exchangeRate > 0) {
           const subTotalCostUSD = Math.round(subTotalCost / exchangeRate * 100) / 100;
-          const taxUSD = Math.round(tax / exchangeRate * 100) / 100;
+          const taxUSD = 0;
           const commissionUSD = Math.round(commission / exchangeRate * 100) / 100;
-          const totalCostUSD = acceptedGrossTotalUSD || Math.round(newTotalCost / exchangeRate * 100) / 100;
+          const totalCostUSD = Math.round(newTotalCost / exchangeRate * 100) / 100;
 
           updateData.materialTotalCostUSD = baseMaterialCostUSD;
           updateData.workmanshipTotalCostUSD = baseWorkmanshipCostUSD;
           updateData.subTotalCostUSD = subTotalCostUSD;
-          updateData.totalCostUSD = totalCostUSD;
-          updateData.amountToPayUSD = totalCostUSD;
+          // Keep vendor USD at agreed base amount (user pays NGN + 10%)
+          updateData.totalCostUSD = baseTotalCostUSD;
+          updateData.amountToPayUSD = baseTotalCostUSD;
           
-          // 🔥 STORE USD FINAL AMOUNTS (before tax/commission)
+          // 🔥 STORE USD FINAL AMOUNTS (vendor base, before commission)
           updateData.finalMaterialCostUSD = baseMaterialCostUSD;
           updateData.finalWorkmanshipCostUSD = baseWorkmanshipCostUSD;
-          updateData.finalTotalCostUSD = totalCostUSD;
+          updateData.finalTotalCostUSD = baseTotalCostUSD;
+          updateData.vendorBaseTotalUSD = baseTotalCostUSD;
+          updateData.userPayableTotalUSD = totalCostUSD;
 
           console.log(`   Negotiated Amount (USD): $${subTotalCostUSD}`);
-          console.log(`   Total with tax/commission (USD): $${totalCostUSD}`);
+          console.log(`   Vendor Base (USD): $${baseTotalCostUSD}`);
           console.log(`   Exchange Rate: 1 USD = ₦${exchangeRate}`);
         }
 
@@ -624,8 +601,8 @@ export const buyerReplyToOffer = async (req, res, next) => {
       });
     }
 
-    const commissionRate = await getCommissionRate();
-    const totalRate = TAX_RATE + commissionRate;
+    const displayRate = 0; // show exact offer values (no added commission in chat)
+    const totalRate = displayRate;
 
     let baseMaterialCost, baseWorkmanshipCost, baseTotalCost;
 
@@ -763,15 +740,13 @@ export const buyerReplyToOffer = async (req, res, next) => {
       if (review) {
         // Calculate tax and commission on the NEW negotiated amount
         const subTotalCost = baseMaterialCost + baseWorkmanshipCost;
-        const tax = (20 / 100) * subTotalCost;
-        
-        const Commission = (await import('../../commission/model/commission.model.js')).default;
-        const feeDoc = await Commission.findOne();
-        const feePercentage = feeDoc ? Number(feeDoc.amount) : 0;
-        const commission = ((feePercentage / 100) * subTotalCost);
+        const tax = 0;
+        const quoteCommission = QUOTE_COMMISSION_RATE * subTotalCost;
+        const extraCommission = FINAL_EXTRA_COMMISSION_RATE * subTotalCost;
+        const commission = quoteCommission + extraCommission;
         
         const computedTotalCost = subTotalCost + tax + commission;
-        const newTotalCost = acceptedGrossTotal || computedTotalCost;
+        const newTotalCost = computedTotalCost;
 
         let updateData = {
           // Update the main costs with negotiated amounts + tax/commission
@@ -785,39 +760,48 @@ export const buyerReplyToOffer = async (req, res, next) => {
           hasAcceptedOffer: true,
           acceptedOfferId: offer._id,
           
-          // 🔥 STORE THE FINAL NEGOTIATED AMOUNTS (before tax/commission)
+          // 🔥 STORE THE FINAL NEGOTIATED AMOUNTS (vendor base, before commission)
           finalMaterialCost: baseMaterialCost,
           finalWorkmanshipCost: baseWorkmanshipCost,
-          finalTotalCost: newTotalCost,
+          finalTotalCost: baseTotalCost,
+          // Expose both vendor base and user payable totals for the frontend
+          vendorBaseTotal: baseTotalCost,
+          userPayableTotal: newTotalCost,
         };
 
         console.log(`   Material Cost: ₦${baseMaterialCost}`);
         console.log(`   Workmanship Cost: ₦${baseWorkmanshipCost}`);
         console.log(`   Subtotal (negotiated): ₦${subTotalCost}`);
-        console.log(`   Tax (20%): ₦${tax.toFixed(2)}`);
-        console.log(`   Commission (${feePercentage}%): ₦${commission.toFixed(2)}`);
-        console.log(`   New Total Cost (with tax/commission): ₦${newTotalCost.toFixed(2)}`);
+        console.log(`   Tax (0%): ₦${tax.toFixed(2)}`);
+        console.log(`   Quote Commission (10%): ₦${quoteCommission.toFixed(2)}`);
+        console.log(`   Extra Commission on Agreement (10%): ₦${extraCommission.toFixed(2)}`);
+        console.log(`   Total Commission (20%): ₦${commission.toFixed(2)}`);
+        console.log(`   Final Payable = Base + Quote 10% + Extra 10% (Tax 0%)`);
+        console.log(`   User Payable (NGN): ₦${newTotalCost.toFixed(2)}`);
 
         // If international vendor, calculate USD amounts
         if (offer.isInternationalVendor && exchangeRate > 0) {
           const subTotalCostUSD = Math.round(subTotalCost / exchangeRate * 100) / 100;
-          const taxUSD = Math.round(tax / exchangeRate * 100) / 100;
+          const taxUSD = 0;
           const commissionUSD = Math.round(commission / exchangeRate * 100) / 100;
-          const totalCostUSD = acceptedGrossTotalUSD || Math.round(newTotalCost / exchangeRate * 100) / 100;
+          const totalCostUSD = Math.round(newTotalCost / exchangeRate * 100) / 100;
 
           updateData.materialTotalCostUSD = baseMaterialCostUSD;
           updateData.workmanshipTotalCostUSD = baseWorkmanshipCostUSD;
           updateData.subTotalCostUSD = subTotalCostUSD;
-          updateData.totalCostUSD = totalCostUSD;
-          updateData.amountToPayUSD = totalCostUSD;
+          // Keep vendor USD at agreed base amount (user pays NGN + 10%)
+          updateData.totalCostUSD = baseTotalCostUSD;
+          updateData.amountToPayUSD = baseTotalCostUSD;
           
-          // 🔥 STORE USD FINAL AMOUNTS (before tax/commission)
+          // 🔥 STORE USD FINAL AMOUNTS (vendor base, before commission)
           updateData.finalMaterialCostUSD = baseMaterialCostUSD;
           updateData.finalWorkmanshipCostUSD = baseWorkmanshipCostUSD;
-          updateData.finalTotalCostUSD = totalCostUSD;
+          updateData.finalTotalCostUSD = baseTotalCostUSD;
+          updateData.vendorBaseTotalUSD = baseTotalCostUSD;
+          updateData.userPayableTotalUSD = totalCostUSD;
 
           console.log(`   Negotiated Amount (USD): $${subTotalCostUSD}`);
-          console.log(`   Total with tax/commission (USD): $${totalCostUSD}`);
+          console.log(`   Vendor Base (USD): $${baseTotalCostUSD}`);
           console.log(`   Exchange Rate: 1 USD = ₦${exchangeRate}`);
         }
 
@@ -909,8 +893,8 @@ export const getAllMakeOffers = async (req, res, next) => {
       });
     }
 
-    const commissionRate = await getCommissionRate();
-    const totalRate = TAX_RATE + commissionRate;
+    const displayRate = 0; // show exact offer values (no added commission in chat)
+    const totalRate = displayRate;
 
     // 🧩 Include chat summary (optional)
     const offersWithChatSummary = makeOffers.map((offer) => {
@@ -1031,8 +1015,8 @@ export const getMakeOfferById = async (req, res, next) => {
       );
     }
 
-    const commissionRate = await getCommissionRate();
-    const totalRate = TAX_RATE + commissionRate;
+    const displayRate = 0; // show exact offer values (no added commission in chat)
+    const totalRate = displayRate;
 
     const viewerType =
       String(offer.userId?._id) === String(user._id)

@@ -3,14 +3,54 @@ import User from '../../user/model/user.model.js';
 import axios from 'axios';
 import mongoose from 'mongoose';
 import Review from '../../review/model/review.model.js';
-import Material from '../../material/model/material.model.js';
-import { expressCalculateCost, cargoCalculateCost, regularCalculateCost } from '../../../utils/shipmentCalcu.distance.js';
+import Vendor from '../../vendor/model/vendor.model.js';
+import { expressCalculateCost, cargoCalculateCost, regularCalculateCost, resolveDeliveryCurrency } from '../../../utils/shipmentCalcu.distance.js';
+
+const normalizeAddressForGeocode = (rawAddress, country) => {
+  let addr = String(rawAddress || "").trim();
+  addr = addr.replace(/[\r\n]+/g, ", ");
+  addr = addr.replace(/\s*,\s*/g, ", ");
+  addr = addr.replace(/\s+/g, " ");
+  addr = addr.replace(/[.,]+$/g, "");
+
+  const countryValue = String(country || "").trim();
+  if (countryValue && !addr.toLowerCase().includes(countryValue.toLowerCase())) {
+    addr = `${addr}, ${countryValue}`;
+  }
+  return addr;
+};
+
+const geocodeWithOpenCage = async (address) => {
+  const openCageKey = process.env.OPENCAGE_KEY;
+  if (!openCageKey) {
+    throw new Error("OPENCAGE_KEY is not set");
+  }
+
+  const response = await axios.get(`https://api.opencagedata.com/geocode/v1/json`, {
+    params: {
+      key: openCageKey,
+      q: address,
+      limit: 1,
+      no_annotations: 1,
+    },
+  });
+
+  const geometry = response.data?.results?.[0]?.geometry;
+  if (!geometry || geometry.lat == null || geometry.lng == null) {
+    return null;
+  }
+
+  return {
+    latitude: parseFloat(geometry.lat),
+    longitude: parseFloat(geometry.lng),
+  };
+};
 
 
 
 export const createDeliveryRate = async (req, res, next) => {
     try {
-        const { amount, deliveryType } = req.body;
+        const { amount, deliveryType, currency } = req.body;
 
         if (!amount) {
             return res.status(400).json({ message: 'Amount is required' });
@@ -20,15 +60,16 @@ export const createDeliveryRate = async (req, res, next) => {
             return res.status(400).json({ message: 'Delivery type is required' });
         }
 
-        const existingRate = await DeliveryRate.findOne({ deliveryType });
+        const currencyValue = (currency || "NGN").toUpperCase();
+        const existingRate = await DeliveryRate.findOne({ deliveryType, currency: currencyValue });
         if (existingRate) {
             return res.status(400).json({
                 success: false,
-                message: `A delivery rate already exists for '${deliveryType}'. You can update it instead.`,
+                message: `A delivery rate already exists for '${deliveryType}' (${currencyValue}). You can update it instead.`,
             });
         }
 
-        const deliveryRate = await DeliveryRate.create({ amount, deliveryType });
+        const deliveryRate = await DeliveryRate.create({ amount, deliveryType, currency: currencyValue });
 
         return res.status(201).json({
             success: true,
@@ -55,8 +96,10 @@ export const getDeliveryRates = async (req, res, next) => {
 export const updateDeliveryRate = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { amount } = req.body;
-        const deliveryRate = await DeliveryRate.findByIdAndUpdate(id, { amount }, { new: true });
+        const { amount, currency } = req.body;
+        const updates = { amount };
+        if (currency) updates.currency = currency.toUpperCase();
+        const deliveryRate = await DeliveryRate.findByIdAndUpdate(id, updates, { new: true });
         if (!deliveryRate) {
             return res.status(404).json({ success: false, message: 'Delivery rate not found' });
         }
@@ -105,17 +148,19 @@ export const deliveryCost = async (req, res, next) => {
         .json({ success: false, message: "Review not found" });
     }
 
-    // Fetch the associated material
-    const material = await Material.findById(review.materialId);
-    if (!material) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Material not found" });
+    // Fetch vendor + buyer for addresses
+    const vendor = await Vendor.findById(review.vendorId).populate("userId");
+    if (!vendor) {
+      return res.status(404).json({ success: false, message: "Vendor not found" });
+    }
+    const buyer = await User.findById(review.userId);
+    if (!buyer) {
+      return res.status(404).json({ success: false, message: "Buyer not found" });
     }
 
-    // Determine pickup and delivery addresses
-    const pickupAddress = user.address;
-    const deliveryAddress = address || material.userId.address;
+    // Determine pickup (vendor) and delivery (buyer) addresses
+    const pickupAddress = vendor.address || vendor.userId?.address;
+    const deliveryAddress = address || buyer.address;
 
     if (!pickupAddress || !deliveryAddress) {
       return res.status(400).json({
@@ -124,49 +169,26 @@ export const deliveryCost = async (req, res, next) => {
       });
     }
 
-    // Geocode delivery and pickup addresses using OpenStreetMap Nominatim (free)
-    const [deliveryGeo, pickupGeo] = await Promise.all([
-      axios.get(`https://nominatim.openstreetmap.org/search`, {
-        params: {
-          q: deliveryAddress,
-          format: 'json',
-          limit: 1
-        },
-        headers: {
-          'User-Agent': 'HOG-Fashion-App/1.0'
-        }
-      }),
-      axios.get(`https://nominatim.openstreetmap.org/search`, {
-        params: {
-          q: pickupAddress,
-          format: 'json',
-          limit: 1
-        },
-        headers: {
-          'User-Agent': 'HOG-Fashion-App/1.0'
-        }
-      }),
+    // Use buyer-provided delivery address as-is (no country append)
+    const deliveryAddressNormalized = normalizeAddressForGeocode(deliveryAddress);
+    const pickupAddressNormalized = normalizeAddressForGeocode(pickupAddress, vendor.userId?.country || vendor.country);
+    const deliveryCurrency = resolveDeliveryCurrency(buyer.country, vendor.userId?.country || vendor.country);
+
+    const [deliveryLocation, senderLocation] = await Promise.all([
+      geocodeWithOpenCage(deliveryAddressNormalized),
+      geocodeWithOpenCage(pickupAddressNormalized),
     ]);
 
-    const deliveryData = deliveryGeo.data;
-    const pickupData = pickupGeo.data;
-
-    if (!deliveryData.length || !pickupData.length) {
+    if (!deliveryLocation || !senderLocation) {
       return res.status(400).json({
         success: false,
         message: "Invalid pickup or delivery address provided.",
+        error: {
+          pickupAddress: pickupAddressNormalized,
+          deliveryAddress: deliveryAddressNormalized,
+        },
       });
     }
-
-    const deliveryLocation = {
-      latitude: parseFloat(deliveryData[0].lat),
-      longitude: parseFloat(deliveryData[0].lon),
-    };
-
-    const senderLocation = {
-      latitude: parseFloat(pickupData[0].lat),
-      longitude: parseFloat(pickupData[0].lon),
-    };
 
     // Shipment cost calculation
     const numberOfPackages = 1;
@@ -179,13 +201,13 @@ export const deliveryCost = async (req, res, next) => {
 
     switch (method) {
     case "express":
-        shipmentCost = await expressCalculateCost(deliveryLocation, senderLocation, numberOfPackages);
+        shipmentCost = await expressCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency);
         break;
     case "cargo":
-        shipmentCost = await cargoCalculateCost(deliveryLocation, senderLocation, numberOfPackages);
+        shipmentCost = await cargoCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency);
         break;
     case "regular":
-        shipmentCost = await regularCalculateCost(deliveryLocation, senderLocation, numberOfPackages);
+        shipmentCost = await regularCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency);
         break;
     default:
         return res.status(400).json({
@@ -199,6 +221,7 @@ export const deliveryCost = async (req, res, next) => {
       success: true,
       message: "Delivery cost calculated successfully",
       cost,
+      currency: deliveryCurrency,
     });
   } catch (error) {
     next(error);

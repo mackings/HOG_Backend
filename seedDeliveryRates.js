@@ -9,15 +9,33 @@ dotenv.config();
 const deliveryRates = [
   {
     deliveryType: "Regular",
-    amount: 1000, // ₦1,000 base cost (standard/economy shipping)
+    amount: 1000,
+    currency: "NGN",
   },
   {
     deliveryType: "Express",
-    amount: 2500, // ₦2,500 base cost (fast delivery)
+    amount: 2500,
+    currency: "NGN",
   },
   {
     deliveryType: "Cargo",
-    amount: 1500, // ₦1,500 base cost (bulk/heavy items)
+    amount: 1500,
+    currency: "NGN",
+  },
+  {
+    deliveryType: "Regular",
+    amount: 1,
+    currency: "USD",
+  },
+  {
+    deliveryType: "Express",
+    amount: 2,
+    currency: "USD",
+  },
+  {
+    deliveryType: "Cargo",
+    amount: 1.5,
+    currency: "USD",
   }
 ];
 
@@ -85,18 +103,16 @@ const seedDeliveryRates = async () => {
     console.log('\n📋 Delivery Rates Added:');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     result.forEach((rate) => {
-      console.log(`  ${rate.deliveryType.padEnd(10)} → ₦${rate.amount.toLocaleString()} base cost`);
+    console.log(`  ${rate.deliveryType.padEnd(10)} → ${rate.currency} ${rate.amount.toLocaleString()} per km`);
       console.log(`                ID: ${rate._id}`);
     });
 
     console.log('\n💡 How delivery cost is calculated:');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('Total Cost = (Base Cost + Weight + Volume + (Distance × 10)) × Number of Packages');
+    console.log('Total Cost = (Rate Per KM × Distance KM) × Number of Packages');
     console.log('');
-    console.log('Examples:');
-    console.log('  Regular (10km):  ₦1,000 + 5 + 5 + (10 × 10) = ₦1,110');
-    console.log('  Express (10km):  ₦2,500 + 5 + 5 + (10 × 10) = ₦2,610');
-    console.log('  Cargo (10km):    ₦1,500 + 5 + 5 + (10 × 10) = ₦1,610');
+    console.log('Example (10km, 1 package):');
+    console.log('  Regular: rate × 10km');
 
     console.log('\n🎉 Database seeding completed successfully!');
 

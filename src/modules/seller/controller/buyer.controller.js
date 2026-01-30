@@ -4,11 +4,52 @@ import Listing from '../model/seller.model.js';
 import Transaction from '../../transaction/model/transaction.model.js';
 import InitializedOrder from '../../material/model/InitializedOrder.model.js';
 import { sendDeliveryEmail } from "../../../utils/emailService.utils.js";
-import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance.js";
+import { cargoCalculateCost, expressCalculateCost, regularCalculateCost, resolveDeliveryCurrency } from "../../../utils/shipmentCalcu.distance.js";
 import axios from "axios";
 import crypto from "crypto"
 import Tracking from "../../tracking/model/tracking.model.js";
 import Fee from "../model/fee.model.js";
+
+const normalizeAddressForGeocode = (rawAddress, country) => {
+  let address = String(rawAddress || "").trim();
+  address = address.replace(/[\r\n]+/g, ", ");
+  address = address.replace(/\s*,\s*/g, ", ");
+  address = address.replace(/\s+/g, " ");
+  address = address.replace(/[.,]+$/g, "");
+
+  const countryValue = String(country || "").trim();
+  if (countryValue && !address.toLowerCase().includes(countryValue.toLowerCase())) {
+    address = `${address}, ${countryValue}`;
+  }
+
+  return address;
+};
+
+const geocodeWithOpenCage = async (address) => {
+  const openCageKey = process.env.OPENCAGE_KEY;
+  if (!openCageKey) {
+    throw new Error("OPENCAGE_KEY is not set");
+  }
+
+  const response = await axios.get(`https://api.opencagedata.com/geocode/v1/json`, {
+    params: {
+      key: openCageKey,
+      q: address,
+      limit: 1,
+      no_annotations: 1,
+    },
+  });
+
+  const geometry = response.data?.results?.[0]?.geometry;
+  if (!geometry || geometry.lat == null || geometry.lng == null) {
+    return null;
+  }
+
+  return {
+    latitude: parseFloat(geometry.lat),
+    longitude: parseFloat(geometry.lng),
+  };
+};
 
 
 export const getAlSellerListings = async (req, res, next) => {
@@ -146,64 +187,32 @@ export const purchaseListing = async (req, res, next) => {
         const pickupAddress = listingOwner.address;
         const deliveryAddress = user.address || address;
 
-        // Geocode delivery address using OpenStreetMap Nominatim (free)
-        const geocodeReceiverResponse = await axios.get(`https://nominatim.openstreetmap.org/search`, {
-            params: {
-                q: deliveryAddress,
-                format: 'json',
-                limit: 1
-            },
-            headers: {
-                'User-Agent': 'HOG-Fashion-App/1.0'
-            }
-        });
+        const deliveryAddressNormalized = normalizeAddressForGeocode(deliveryAddress, user.country);
+        const pickupAddressNormalized = normalizeAddressForGeocode(pickupAddress, listingOwner.country);
 
-        const Location = geocodeReceiverResponse.data;
-        if (!Location.length) {
+        const [deliveryLocation, senderLocation] = await Promise.all([
+            geocodeWithOpenCage(deliveryAddressNormalized),
+            geocodeWithOpenCage(pickupAddressNormalized),
+        ]);
+
+        if (!deliveryLocation || !senderLocation) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid deliveryAddress provided',
-                error: `Geocoding failed for deliveryAddress: ${deliveryAddress}`
+                message: 'Invalid pickup or delivery address provided',
+                error: {
+                  pickupAddress: pickupAddressNormalized,
+                  deliveryAddress: deliveryAddressNormalized,
+                },
             });
         }
-
-        const deliveryLocation = {
-            latitude: parseFloat(Location[0].lat),
-            longitude: parseFloat(Location[0].lon)
-        };
-
-        // Geocode sender address using OpenStreetMap Nominatim (free)
-        const geocodeSenderResponse = await axios.get(`https://nominatim.openstreetmap.org/search`, {
-            params: {
-                q: pickupAddress,
-                format: 'json',
-                limit: 1
-            },
-            headers: {
-                'User-Agent': 'HOG-Fashion-App/1.0'
-            }
-        });
-
-        const senderAddress = geocodeSenderResponse.data;
-        if (!senderAddress.length) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid pickupAddress provided',
-                error: `Geocoding failed for pickupAddress: ${pickupAddress}`
-            });
-        }
-
-        const senderLocation = {
-            latitude: parseFloat(senderAddress[0].lat),
-            longitude: parseFloat(senderAddress[0].lon)
-        };
     
         // Shipment costs
         const numberOfPackages = 1;
+        const deliveryCurrency = resolveDeliveryCurrency(user.country, listingOwner.country);
         const shipmentCosts = {
-            Express: expressCalculateCost(deliveryLocation, senderLocation, numberOfPackages),
-            Cargo: cargoCalculateCost(deliveryLocation, senderLocation, numberOfPackages),
-            Regular: regularCalculateCost(deliveryLocation, senderLocation, numberOfPackages),
+            Express: expressCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency),
+            Cargo: cargoCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency),
+            Regular: regularCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency),
         };
     
         const shipmentCost = shipmentCosts[shipmentMethod];
@@ -317,30 +326,24 @@ export const purchaseMultipleListings = async (req, res, next) => {
     const pickupAddress = listingOwner.address;
     const deliveryAddress = address || user.address;
 
-    // 🧭 Geocode using OpenStreetMap Nominatim (free)
-    const geocode = async (addr) => {
-      const response = await axios.get(`https://nominatim.openstreetmap.org/search`, {
-        params: {
-          q: addr,
-          format: 'json',
-          limit: 1
-        },
-        headers: {
-          'User-Agent': 'HOG-Fashion-App/1.0'
-        }
-      });
-      const data = response.data;
-      if (!data.length) throw new Error(`Invalid address: ${addr}`);
-      return {
-        latitude: parseFloat(data[0].lat),
-        longitude: parseFloat(data[0].lon)
-      };
-    };
+    const deliveryAddressNormalized = normalizeAddressForGeocode(deliveryAddress, user.country);
+    const pickupAddressNormalized = normalizeAddressForGeocode(pickupAddress, listingOwner.country);
 
     const [deliveryLocation, senderLocation] = await Promise.all([
-      geocode(deliveryAddress),
-      geocode(pickupAddress),
+      geocodeWithOpenCage(deliveryAddressNormalized),
+      geocodeWithOpenCage(pickupAddressNormalized),
     ]);
+
+    if (!deliveryLocation || !senderLocation) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid pickup or delivery address provided",
+        error: {
+          pickupAddress: pickupAddressNormalized,
+          deliveryAddress: deliveryAddressNormalized,
+        },
+      });
+    }
 
     // 🚚 Shipment cost
     const numPackages = listings.length;
@@ -348,16 +351,17 @@ export const purchaseMultipleListings = async (req, res, next) => {
     if (!method)
       return res.status(400).json({ success: false, message: "shipmentMethod is required" });
 
+    const deliveryCurrency = resolveDeliveryCurrency(user.country, listingOwner.country);
     let shipmentCost;
     switch (method) {
       case "express":
-        shipmentCost = await expressCalculateCost(deliveryLocation, senderLocation, numPackages);
+        shipmentCost = await expressCalculateCost(deliveryLocation, senderLocation, numPackages, deliveryCurrency);
         break;
       case "cargo":
-        shipmentCost = await cargoCalculateCost(deliveryLocation, senderLocation, numPackages);
+        shipmentCost = await cargoCalculateCost(deliveryLocation, senderLocation, numPackages, deliveryCurrency);
         break;
       case "regular":
-        shipmentCost = await regularCalculateCost(deliveryLocation, senderLocation, numPackages);
+        shipmentCost = await regularCalculateCost(deliveryLocation, senderLocation, numPackages, deliveryCurrency);
         break;
       default:
         return res.status(400).json({ success: false, message: "Invalid shipment method" });
@@ -575,5 +579,3 @@ export const acceptOrder = async (req, res, next) => {
     next(error);
   }
 };
-
-

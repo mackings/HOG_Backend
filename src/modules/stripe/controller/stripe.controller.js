@@ -5,13 +5,14 @@ import Category from '../../category/model/category.model.js';
 import InitializedOrder from '../../material/model/InitializedOrder.model.js';
 import Transactions from '../../transaction/model/transaction.model.js';
 import { sendTransactionEmail, sendSubscriptionEmail, sendTransactionListingEmail, sendPayoutNotificationEmail, sendPaymentReceivedEmail } from '../../../utils/emailService.utils.js';
-import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance.js";
+import { cargoCalculateCost, expressCalculateCost, regularCalculateCost, resolveDeliveryCurrency } from "../../../utils/shipmentCalcu.distance.js";
 import axios from "axios";
 import crypto from "crypto"
 import mongoose from "mongoose";
 import Review from '../../review/model/review.model.js';
 import Tracking from '../../tracking/model/tracking.model.js';
 import Stripe from 'stripe';
+import StripePayoutRetry from '../model/stripePayoutRetry.model.js';
 
 
 
@@ -19,6 +20,47 @@ import Stripe from 'stripe';
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" })
   : null;
+
+const normalizeAddressForGeocode = (rawAddress, country) => {
+  let address = String(rawAddress || "").trim();
+  address = address.replace(/[\r\n]+/g, ", ");
+  address = address.replace(/\s*,\s*/g, ", ");
+  address = address.replace(/\s+/g, " ");
+  address = address.replace(/[.,]+$/g, "");
+
+  const countryValue = String(country || "").trim();
+  if (countryValue && !address.toLowerCase().includes(countryValue.toLowerCase())) {
+    address = `${address}, ${countryValue}`;
+  }
+
+  return address;
+};
+
+const geocodeWithOpenCage = async (address) => {
+  const openCageKey = process.env.OPENCAGE_KEY;
+  if (!openCageKey) {
+    throw new Error("OPENCAGE_KEY is not set");
+  }
+
+  const response = await axios.get(`https://api.opencagedata.com/geocode/v1/json`, {
+    params: {
+      key: openCageKey,
+      q: address,
+      limit: 1,
+      no_annotations: 1,
+    },
+  });
+
+  const geometry = response.data?.results?.[0]?.geometry;
+  if (!geometry || geometry.lat == null || geometry.lng == null) {
+    return null;
+  }
+
+  return {
+    latitude: parseFloat(geometry.lat),
+    longitude: parseFloat(geometry.lng),
+  };
+};
 
 
 export const createUserAccount = async (req, res, next) => {
@@ -322,16 +364,43 @@ export const createStripePayment = async (req, res, next) => {
         return res.status(400).json({ success: false, message: "Invalid shipment method. Choose Express, Cargo, or Regular" });
     }
 
-    const DeliveryRate = (await import('../../deliveryRate/model/deliveryRate.model.js')).default;
-    const deliveryRate = await DeliveryRate.findOne({ deliveryType });
-    if (!deliveryRate) {
+    const pickupAddressNormalized = normalizeAddressForGeocode(vendor.address, vendorCountry);
+    const deliveryAddressNormalized = normalizeAddressForGeocode(address, buyerCountry);
+
+    const [deliveryLocation, senderLocation] = await Promise.all([
+      geocodeWithOpenCage(deliveryAddressNormalized),
+      geocodeWithOpenCage(pickupAddressNormalized),
+    ]);
+
+    if (!deliveryLocation || !senderLocation) {
       return res.status(400).json({
         success: false,
-        message: `Delivery rate not found for ${deliveryType}. Please contact support.`
+        message: "Invalid pickup or delivery address provided.",
+        error: {
+          pickupAddress: pickupAddressNormalized,
+          deliveryAddress: deliveryAddressNormalized,
+        },
       });
     }
 
-    const deliveryFeeNGN = Number(deliveryRate.amount);
+    const deliveryCurrency = resolveDeliveryCurrency(buyerCountry, vendorCountry);
+    const numberOfPackages = 1;
+    let shipmentCost;
+    switch (method) {
+      case "express":
+        shipmentCost = await expressCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency);
+        break;
+      case "cargo":
+        shipmentCost = await cargoCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency);
+        break;
+      case "regular":
+        shipmentCost = await regularCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency);
+        break;
+      default:
+        return res.status(400).json({ success: false, message: "Invalid shipment method. Choose Express, Cargo, or Regular" });
+    }
+
+    const deliveryFeeNGN = deliveryCurrency === "NGN" ? Number(shipmentCost) : 0;
 
     // BACKEND HANDLES ALL CURRENCY LOGIC
     let productCostNGN = 0;
@@ -481,15 +550,9 @@ export const createStripePayment = async (req, res, next) => {
     // Calculate delivery fee and total based on who is international
     if (isInternationalBuyer || isInternationalVendor) {
       // If either party is international, we're using Stripe (USD)
-
-      if (isInternationalBuyer && !isInternationalVendor) {
-        // International buyer → Nigerian vendor: delivery fee in USD
-        deliveryFeeUSD = Math.round(deliveryFeeNGN / exchangeRate * 100) / 100;
-      } else if (!isInternationalBuyer && isInternationalVendor) {
-        // Nigerian buyer → International vendor: delivery fee in USD
-        deliveryFeeUSD = Math.round(deliveryFeeNGN / exchangeRate * 100) / 100;
+      if (deliveryCurrency === "USD") {
+        deliveryFeeUSD = Math.round(Number(shipmentCost) * 100) / 100;
       } else {
-        // International → International: delivery fee in USD (fixed)
         deliveryFeeUSD = Math.round(deliveryFeeNGN / exchangeRate * 100) / 100;
       }
 
@@ -567,19 +630,40 @@ export const createStripePayment = async (req, res, next) => {
     const amountInCents = Math.round(totalCostUSD * 100);
     console.log(`   Stripe Charge: ${amountInCents} cents ($${(amountInCents / 100).toFixed(2)})\n`);
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      line_items: [{
+    const lineItems = [
+      {
         price_data: {
           currency: "USD",
-          product_data: { name: `OrderId-${paymentReference}` },
-          unit_amount: amountInCents,
+          product_data: { name: "Tailoring Service" },
+          unit_amount: Math.round(productCostUSD * 100),
         },
         quantity: 1,
-      }],
+      },
+    ];
+
+    if (deliveryFeeUSD > 0) {
+      lineItems.push({
+        price_data: {
+          currency: "USD",
+          product_data: { name: `Delivery Fee (${deliveryType})` },
+          unit_amount: Math.round(deliveryFeeUSD * 100),
+        },
+        quantity: 1,
+      });
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      line_items: lineItems,
       success_url: `https://hog-fashion.vercel.app/Success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `https://hog-fashion.vercel.app/cancel`,
-      metadata: { reference: paymentReference },
+      metadata: {
+        reference: paymentReference,
+        productCostUSD: productCostUSD.toFixed(2),
+        deliveryFeeUSD: deliveryFeeUSD.toFixed(2),
+        totalCostUSD: totalCostUSD.toFixed(2),
+        deliveryType,
+      },
     });
 
     return res.status(201).json({
@@ -588,6 +672,13 @@ export const createStripePayment = async (req, res, next) => {
       data: {
         order,
         checkoutUrl: session.url,
+        breakdown: {
+          currency: "USD",
+          productCost: Number(productCostUSD.toFixed(2)),
+          deliveryFee: Number(deliveryFeeUSD.toFixed(2)),
+          total: Number(totalCostUSD.toFixed(2)),
+          deliveryType,
+        },
       },
     });
 
@@ -814,8 +905,31 @@ export const webhookPaymentSuccess = async (req, res) => {
 
             console.log(`✅ Stripe Transfer successful to vendor: ${vendor.businessName}`);
           } catch (stripeError) {
-            console.error("❌ Stripe transfer failed:", stripeError.message);
-            console.log("⚠️  Wallet credited but Stripe transfer failed - vendor can withdraw manually");
+          console.error("❌ Stripe transfer failed:", stripeError.message);
+          console.log("⚠️  Wallet credited but Stripe transfer failed - queued for retry");
+
+          const nextAttemptAt = new Date(Date.now() + 5 * 60 * 1000);
+          await StripePayoutRetry.findOneAndUpdate(
+            { paymentReference: order.paymentReference },
+            {
+              $setOnInsert: {
+                vendorId: vendor._id,
+                vendorUserId: vendor.userId,
+                orderId: order._id,
+                reviewId: order.reviewId,
+                paymentReference: order.paymentReference,
+                stripeAccountId: vendorUser.stripeId,
+                amount: amountToCredit,
+                currency: "usd",
+              },
+              $set: {
+                status: "retry",
+                nextAttemptAt,
+                lastError: stripeError.message || "Stripe transfer failed",
+              },
+            },
+            { upsert: true, new: true }
+          );
           }
         } else {
           console.log(`ℹ️  No Stripe connected account found - wallet credited only`);

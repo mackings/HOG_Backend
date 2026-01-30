@@ -5,12 +5,73 @@ import Category from '../../category/model/category.model.js';
 import InitializedOrder from '../../material/model/InitializedOrder.model.js';
 import Transactions from '../../transaction/model/transaction.model.js';
 import { sendTransactionEmail, sendSubscriptionEmail, sendTransactionListingEmail } from '../../../utils/emailService.utils.js';
-import { cargoCalculateCost, expressCalculateCost, regularCalculateCost } from "../../../utils/shipmentCalcu.distance.js";
+import { cargoCalculateCost, expressCalculateCost, regularCalculateCost, resolveDeliveryCurrency } from "../../../utils/shipmentCalcu.distance.js";
 import axios from "axios";
 import crypto from "crypto"
 import mongoose from "mongoose";
 import Review from '../../review/model/review.model.js';
 import Tracking from '../../tracking/model/tracking.model.js';
+
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const normalizeAddressForGeocode = (rawAddress, country) => {
+  let address = String(rawAddress || "").trim();
+  address = address.replace(/[\r\n]+/g, ", ");
+  address = address.replace(/\b(no\.?)\s+/gi, "Number ");
+  // Add a comma after "state" when followed by more text.
+  address = address.replace(/\bstate\b(?!\s*,|\s*$)/gi, "State,");
+  address = address.replace(/\s*,\s*/g, ", ");
+  address = address.replace(/\s+/g, " ");
+  address = address.replace(/[.,]+$/g, "");
+
+  const countryValue = String(country || "").trim();
+  if (countryValue) {
+    const countryRegex = new RegExp(`\\b${escapeRegex(countryValue)}\\b`, "i");
+    if (!countryRegex.test(address)) {
+      address = `${address}, ${countryValue}`;
+    } else {
+      // Ensure country is separated by a comma for better geocoding.
+      const countryAtEnd = new RegExp(`\\s+${escapeRegex(countryValue)}\\s*$`, "i");
+      address = address.replace(countryAtEnd, `, ${countryValue}`);
+    }
+  }
+
+  const parts = address
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  return parts.join(", ");
+};
+
+const geocodeWithFallback = async (address) => {
+  // OpenCage primary (requires OPENCAGE_KEY)
+  const openCageKey = process.env.OPENCAGE_KEY;
+  if (!openCageKey) return null;
+
+  try {
+    const openCageResponse = await axios.get(`https://api.opencagedata.com/geocode/v1/json`, {
+      params: {
+        key: openCageKey,
+        q: address,
+        limit: 1,
+        no_annotations: 1,
+      },
+    });
+    const result = openCageResponse.data?.results?.[0]?.geometry;
+    if (result?.lat != null && result?.lng != null) {
+      return {
+        latitude: parseFloat(result.lat),
+        longitude: parseFloat(result.lng),
+      };
+    }
+  } catch (error) {
+    return null;
+  }
+
+  return null;
+};
 
 
 
@@ -361,60 +422,28 @@ export const createPaymentOnline = async (req, res, next) => {
       });
     }
 
-    const pickupAddress = vendor.address;
-    const deliveryAddress = address.trim();
+    const vendorUser = await User.findById(vendor.userId);
+    const pickupAddress = normalizeAddressForGeocode(vendor.address, vendorUser?.country || user.country);
+    const deliveryAddress = normalizeAddressForGeocode(address, user.country);
+    const deliveryCurrency = resolveDeliveryCurrency(user.country, vendorUser?.country || vendor.country);
 
-    // Geocode delivery address using OpenStreetMap Nominatim (free)
-    const geocodeReceiverResponse = await axios.get(`https://nominatim.openstreetmap.org/search`, {
-        params: {
-            q: deliveryAddress,
-            format: 'json',
-            limit: 1
-        },
-        headers: {
-            'User-Agent': 'HOG-Fashion-App/1.0'
-        }
-    });
-
-    const Location = geocodeReceiverResponse.data;
-    if (!Location.length) {
-        return res.status(400).json({
-            success: false,
-            message: 'Invalid deliveryAddress provided',
-            error: `Geocoding failed for deliveryAddress: ${deliveryAddress}`
-        });
+    const deliveryLocation = await geocodeWithFallback(deliveryAddress);
+    if (!deliveryLocation) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid deliveryAddress provided",
+        error: `Geocoding failed for deliveryAddress: ${deliveryAddress}`,
+      });
     }
 
-    const deliveryLocation = {
-        latitude: parseFloat(Location[0].lat),
-        longitude: parseFloat(Location[0].lon)
-    };
-
-    // Geocode sender address using OpenStreetMap Nominatim (free)
-    const geocodeSenderResponse = await axios.get(`https://nominatim.openstreetmap.org/search`, {
-        params: {
-            q: pickupAddress,
-            format: 'json',
-            limit: 1
-        },
-        headers: {
-            'User-Agent': 'HOG-Fashion-App/1.0'
-        }
-    });
-
-    const senderAddress = geocodeSenderResponse.data;
-    if (!senderAddress.length) {
-        return res.status(400).json({
-            success: false,
-            message: 'Invalid pickupAddress provided',
-            error: `Geocoding failed for pickupAddress: ${pickupAddress}`
-        });
+    const senderLocation = await geocodeWithFallback(pickupAddress);
+    if (!senderLocation) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid pickupAddress provided",
+        error: `Geocoding failed for pickupAddress: ${pickupAddress}`,
+      });
     }
-
-    const senderLocation = {
-        latitude: parseFloat(senderAddress[0].lat),
-        longitude: parseFloat(senderAddress[0].lon)
-    };
 
     // Shipment costs
     const numberOfPackages = 1;
@@ -427,13 +456,13 @@ export const createPaymentOnline = async (req, res, next) => {
 
     switch (method) {
     case "express":
-        shipmentCost = await expressCalculateCost(deliveryLocation, senderLocation, numberOfPackages);
+        shipmentCost = await expressCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency);
         break;
     case "cargo":
-        shipmentCost = await cargoCalculateCost(deliveryLocation, senderLocation, numberOfPackages);
+        shipmentCost = await cargoCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency);
         break;
     case "regular":
-        shipmentCost = await regularCalculateCost(deliveryLocation, senderLocation, numberOfPackages);
+        shipmentCost = await regularCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency);
         break;
     default:
         return res.status(400).json({
@@ -490,6 +519,13 @@ export const createPaymentOnline = async (req, res, next) => {
         currency: userCurrency,
         reference: paymentReference,
         callback_url: `${process.env.FRONTEND_URL}/payment-success`,
+        metadata: {
+          custom_fields: [
+            { display_name: "Product Amount", variable_name: "product_amount", value: cost },
+            { display_name: `Delivery Fee (${method})`, variable_name: "delivery_fee", value: shipping },
+            { display_name: "Total", variable_name: "total_amount", value: totalCost },
+          ],
+        },
       },
       {
         headers: {
@@ -506,6 +542,13 @@ export const createPaymentOnline = async (req, res, next) => {
         message: "Payment initialized successfully",
         authorizationUrl: paystackResponse.data.data.authorization_url,
         payment: order,
+        breakdown: {
+          currency: userCurrency,
+          productCost: cost,
+          deliveryFee: shipping,
+          total: totalCost,
+          deliveryMethod: method,
+        },
       });
     }
 
@@ -602,6 +645,12 @@ export const createPartPaymentOnline = async (req, res, next) => {
             currency: userCurrency,
             reference: order.paymentReference,
             callback_url: `${process.env.FRONTEND_URL}/payment-success`,
+            metadata: {
+              custom_fields: [
+                { display_name: "Part Payment Amount", variable_name: "part_payment_amount", value: order.amountPaid },
+                { display_name: "Delivery Fee", variable_name: "delivery_fee", value: 0 },
+              ],
+            },
         },
         {
             headers: {
@@ -616,7 +665,14 @@ export const createPartPaymentOnline = async (req, res, next) => {
         success: true,
         message: "Payment initialized successfully",
         authorizationUrl: paystackResponse.data.data.authorization_url,
-        payment: order
+        payment: order,
+        breakdown: {
+          currency: userCurrency,
+          productCost: order.amountPaid,
+          deliveryFee: 0,
+          total: order.amountPaid,
+          deliveryMethod: "part payment",
+        },
       });  
     }else {
       await InitializedOrder.findByIdAndDelete(order._id);  

@@ -1,4 +1,33 @@
 import DeliveryRate from '../../src/modules/deliveryRate/model/deliveryRate.model.js';
+
+const normalizeCountry = (value) => String(value || "").trim().toLowerCase();
+const isNigeria = (value) => {
+  const normalized = normalizeCountry(value);
+  return normalized === "nigeria" || normalized === "ng";
+};
+
+export const resolveDeliveryCurrency = (buyerCountry, vendorCountry) => {
+  if (isNigeria(buyerCountry) && isNigeria(vendorCountry)) {
+    return "NGN";
+  }
+  return "USD";
+};
+
+const getDeliveryRate = async (deliveryType, currency) => {
+  if (currency) {
+    const byCurrency = await DeliveryRate.findOne({ deliveryType, currency });
+    if (byCurrency) return byCurrency;
+  }
+
+  // Backward-compatible fallback for legacy records without currency.
+  if (!currency || currency === "NGN") {
+    const legacy = await DeliveryRate.findOne({ deliveryType });
+    if (legacy) return legacy;
+  }
+
+  throw new Error(`Delivery rate not found for ${deliveryType} (${currency || "NGN"})`);
+};
+
 const haversineDistance = (senderLocation, deliveryLocation) => {
   const toRad = (value) => (value * Math.PI) / 180;
 
@@ -27,75 +56,37 @@ export const expressCalculateCost = async (
   deliveryLocation,
   senderLocation,
   numberOfPackages,
-  
+  currency = "NGN",
 ) => {
-   const deliveryRate = await DeliveryRate.findOne({ deliveryType: 'Express' });
-   if (!deliveryRate) {
-    throw new Error('Delivery rate not found, please set up delivery rates.');
-  }
-  const baseCost = deliveryRate.amount; // Base cost per package
-  const weightMultiplier = 5; // Cost multiplier per kg
-  const volumeMultiplier = 5; // Cost multiplier per cubic unit of volume
-  const distanceMultiplier = 10; // Cost multiplier per km for express shipping
+  const deliveryRate = await getDeliveryRate("Express", currency);
+  const ratePerKm = Number(deliveryRate.amount);
+  const distance = haversineDistance(senderLocation, deliveryLocation);
 
-    const distance = haversineDistance(senderLocation, deliveryLocation ); // Calculate distance between locations
-
-  const totalCost =
-    (baseCost +
-      weightMultiplier +
-      volumeMultiplier +
-      distanceMultiplier * distance) *
-    numberOfPackages;
-  return totalCost;
+  return ratePerKm * distance * numberOfPackages;
 };
 
 export const cargoCalculateCost = async (
   deliveryLocation,
   senderLocation,
   numberOfPackages,
+  currency = "NGN",
 ) => {
-  const deliveryRate = await DeliveryRate.findOne({ deliveryType: 'Cargo' });
-   if (!deliveryRate) {
-    throw new Error('Delivery rate not found, please set up delivery rates for Cargo.');
-  }
-  const baseCost = deliveryRate.amount; // Lower base cost for cargo shipping
-  const weightMultiplier = 5; // Lower weight multiplier for cargo
-  const volumeMultiplier = 5; // Lower volume multiplier for cargo shipments
-  const distanceMultiplier = 10; // Lower distance multiplier for cargo
+  const deliveryRate = await getDeliveryRate("Cargo", currency);
+  const ratePerKm = Number(deliveryRate.amount);
+  const distance = haversineDistance(senderLocation, deliveryLocation);
 
-  const distance = haversineDistance(senderLocation,  deliveryLocation); // Calculate distance between locations
-
-  const totalCost =
-    (baseCost +
-      weightMultiplier +
-      volumeMultiplier +
-      distanceMultiplier * distance) *
-    numberOfPackages;
-  return totalCost;
+  return ratePerKm * distance * numberOfPackages;
 };
 
 export const regularCalculateCost = async (
   deliveryLocation,
   senderLocation,
   numberOfPackages,
+  currency = "NGN",
 ) => {
-  const deliveryRate = await DeliveryRate.findOne({ deliveryType: 'Regular' });
-   if (!deliveryRate) {
-    throw new Error('Delivery rate not found, please set up delivery rates for Regular.');
-  }
-  const baseCost = deliveryRate.amount; // Lower base cost for cargo shipping
-  const weightMultiplier = 5; // Lower weight multiplier for cargo
-  const volumeMultiplier = 5; // Lower volume multiplier for cargo shipments
-  const distanceMultiplier = 10; // Lower distance multiplier for cargo
+  const deliveryRate = await getDeliveryRate("Regular", currency);
+  const ratePerKm = Number(deliveryRate.amount);
+  const distance = haversineDistance(senderLocation, deliveryLocation);
 
-  const distance = haversineDistance(senderLocation,  deliveryLocation); // Calculate distance between locations
-
-  const totalCost =
-    (baseCost +
-      weightMultiplier +
-      volumeMultiplier +
-      distanceMultiplier * distance) *
-    numberOfPackages;
-  return totalCost;
+  return ratePerKm * distance * numberOfPackages;
 };
-

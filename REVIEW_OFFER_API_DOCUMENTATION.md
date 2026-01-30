@@ -54,13 +54,16 @@ Customers must negotiate and accept an offer before making payment for a review.
   materialTotalCost: Number,
   workmanshipTotalCost: Number,
   subTotalCost: Number,
-  totalCost: Number,
+  totalCost: Number, // User payable total (base + extra 10% on agreement)
   tax: Number,
-  commission: Number,
+  commission: Number, // 10% added to user payable on agreement
 
   // Payment tracking
   amountPaid: Number (default: 0),
-  amountToPay: Number (default: 0),
+  amountToPay: Number (default: 0), // User payable remaining amount
+  // New fields added on agreement
+  vendorBaseTotal: Number, // Agreed base amount for vendor
+  userPayableTotal: Number, // Agreed base + 10% for user payment
 
   // Dates
   deliveryDate: Date,
@@ -115,6 +118,10 @@ acceptedOfferId: ObjectId  // Reference to the accepted offer
 **Payment Rule:**
 - If `hasAcceptedOffer === false` → Payment is **BLOCKED**
 - If `acceptedOfferId` exists → Payment is **ALLOWED**
+
+**Amount Rule on Agreement:**
+- Vendor keeps **agreed base amount** (`vendorBaseTotal`)
+- User pays **base + 10%** (`userPayableTotal` / `totalCost`)
 
 ---
 
@@ -605,7 +612,8 @@ GET /api/v1/makeOffer/getMakeOfferById/{offerId}
 8. Review updated:
    - hasAcceptedOffer = true
    - acceptedOfferId = offer._id
-   - totalCost updated with agreed amounts
+   - vendorBaseTotal updated with agreed base amount
+   - userPayableTotal/totalCost updated with agreed base + 10%
          ↓
 9. Customer can now make payment
          ↓
@@ -670,7 +678,7 @@ class ReviewCard extends StatelessWidget {
       child: Column(
         children: [
           // Review details
-          Text('Total Cost: ₦${review.totalCost}'),
+          Text('Total Cost: ₦${review.totalCost}'), // user payable
           Text('Amount Paid: ₦${review.amountPaid}'),
           Text('Remaining: ₦${review.amountToPay}'),
 

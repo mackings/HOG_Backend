@@ -7,35 +7,58 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto"
 import axios from "axios";
 
+const normalizeUserRole = (role) => {
+  const value = String(role || "").trim().toLowerCase();
+  if (!value) return "user";
+  if (value === "buyer") return "user";
+  if (value === "vendor") return "tailor";
+  return value;
+};
+
+const logAuthResponse = (label, status, payload) => {
+  try {
+    console.log(`[AUTH] ${label} -> ${status}`, payload);
+  } catch (error) {
+    console.log(`[AUTH] ${label} -> ${status}`);
+  }
+};
 
 
 export const register = async (req, res, next) => {
     try {
         const { fullName, email, password, phoneNumber, role, address, country } = req.body;
         if (!fullName || !email || !password || !phoneNumber || !role || !address || !country) {
-            return res.status(400).json({ message: "Your full name, email, password, phone number, role, address and country are required" });
+            const payload = { message: "Your full name, email, password, phone number, role, address and country are required" };
+            logAuthResponse("register", 400, payload);
+            return res.status(400).json(payload);
         }
         const existingUser = await User.findOne({ email });
         if (existingUser) {
-            return res.status(409).json({ message: "User already exists, please login or use forgot password" });
+            const payload = { message: "User already exists, please login or use forgot password" };
+            logAuthResponse("register", 409, payload);
+            return res.status(409).json(payload);
         }
         const hashedPassword = await bcrypt.hash(password, 10);
         const otp = crypto.randomInt(1000, 9999);
+        const normalizedRole = normalizeUserRole(role);
         const token = await Token.create({
            fullName, 
            email, 
            password: hashedPassword, 
            phoneNumber, 
            token: otp,
-           role,
+           role: normalizedRole,
            country,
            address,
            expiresAt: new Date(Date.now() + 15 * 60 * 1000)
           });
 
         await sendVerifyTokenEmail(token);
-        return res.status(201).json({ message: "Email Verification Token Sent" });
+        const payload = { message: "Email Verification Token Sent" };
+        logAuthResponse("register", 201, payload);
+        return res.status(201).json(payload);
     } catch (error) {
+        console.error("[AUTH] register error", error);
         next(error);
     }
 };
@@ -43,22 +66,29 @@ export const register = async (req, res, next) => {
 
 export const verifyToken = async (req, res, next) => {
   try {
-    const { token } = req.query;
+    const token = (req.body?.token ?? req.query?.token ?? "").toString().trim();
 
     if (!token) {
-      return res.status(400).json({ message: "Token is required" });
+      const payload = { message: "Token is required" };
+      logAuthResponse("verifyToken", 400, payload);
+      return res.status(400).json(payload);
     }
 
     const existingToken = await Token.findOne({ token });
     if (!existingToken) {
-      return res.status(400).json({ message: "Invalid or expired token" });
+      const payload = { message: "Invalid or expired token" };
+      logAuthResponse("verifyToken", 400, payload);
+      return res.status(400).json(payload);
     }
 
     const { fullName, email, password, phoneNumber, role, address, country } = existingToken;
+    const normalizedRole = normalizeUserRole(role);
 
     const alreadyExists = await User.findOne({ email });
     if (alreadyExists) {
-      return res.status(409).json({ message: "User with this email already exists" });
+      const payload = { message: "User with this email already exists" };
+      logAuthResponse("verifyToken", 409, payload);
+      return res.status(409).json(payload);
     }
 
     const newUser = await User.create({
@@ -67,15 +97,19 @@ export const verifyToken = async (req, res, next) => {
       password,
       isVerified: true,
       phoneNumber,
-      role,
+      role: normalizedRole,
       address,
       country,
     });
 
+    const nameParts = String(fullName || "").trim().split(/\s+/).filter(Boolean);
+    const firstName = nameParts[0] || "User";
+    const lastName = nameParts.slice(1).join(" ") || "User";
+
     const paystackCustomerParams = {
         email: email,
-        first_name: fullName.split(' ')[0],
-        last_name: fullName.split(' ')[1] || '',
+        first_name: firstName,
+        last_name: lastName,
         phone: phoneNumber
       };
   
@@ -88,9 +122,11 @@ export const verifyToken = async (req, res, next) => {
     
     const customer = customerResponse.data.data;
 
+    const paystackSecret = process.env.PAYSTACK_MAIN_KEY || "";
+    const isTestKey = paystackSecret.startsWith("sk_test");
     const paystackWalletParams = {
       customer: customer.id,
-      preferred_bank: "wema-bank",
+      preferred_bank: isTestKey ? "test-bank" : "wema-bank",
     };
     const walletResponse = await axios.post('https://api.paystack.co/dedicated_account', paystackWalletParams, {
       headers: {
@@ -115,12 +151,15 @@ export const verifyToken = async (req, res, next) => {
 
     newUser.password = undefined;
 
-    return res.status(200).json({
+    const payload = {
       message: "Email verified successfully",
       user: newUser,
-    });
+    };
+    logAuthResponse("verifyToken", 200, { message: payload.message, userId: newUser?._id });
+    return res.status(200).json(payload);
 
   } catch (error) {
+      console.error("[AUTH] verifyToken error", error);
       next(error)
   }
 };
@@ -132,23 +171,34 @@ export const login = async (req, res, next) => {
         const { email, password } = req.body;
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            const payload = { message: "User not found" };
+            logAuthResponse("login", 404, payload);
+            return res.status(404).json(payload);
         }
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
-            return res.status(401).json({ message: "Invalid credentials" });
+            const payload = { message: "Invalid credentials" };
+            logAuthResponse("login", 401, payload);
+            return res.status(401).json(payload);
         }
         if (!user.isVerified) {
-            return res.status(401).json({ message: "Please verify your email" });
+            const payload = { message: "Please verify your email" };
+            logAuthResponse("login", 401, payload);
+            return res.status(401).json(payload);
         }
         if (user.isBlocked) {
-            return res.status(401).json({ message: "Your have been blocked, kindly contact admin" });
+            const payload = { message: "Your have been blocked, kindly contact admin" };
+            logAuthResponse("login", 401, payload);
+            return res.status(401).json(payload);
         }
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "24h" });
         const userWithoutPassword = { ...user.toObject() };
         delete userWithoutPassword.password;
-        return res.status(200).json({ message: "Login successful", token, user: userWithoutPassword });
+        const payload = { message: "Login successful", token, user: userWithoutPassword };
+        logAuthResponse("login", 200, { message: payload.message, userId: user?._id });
+        return res.status(200).json(payload);
     } catch (error) {
+        console.error("[AUTH] login error", error);
         next(error);
     }
 };
@@ -161,7 +211,9 @@ export const forgotPassword = async (req, res, next) => {
 
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      const payload = { message: "User not found" };
+      logAuthResponse("forgotPassword", 404, payload);
+      return res.status(404).json(payload);
     }
 
     const token = crypto.randomInt(1000, 9999);;
@@ -177,8 +229,11 @@ export const forgotPassword = async (req, res, next) => {
 
     await sendResetPasswordEmail(newToken);
 
-    return res.status(200).json({ message: "Password reset token sent to your email" });
+    const payload = { message: "Password reset token sent to your email" };
+    logAuthResponse("forgotPassword", 200, payload);
+    return res.status(200).json(payload);
   } catch (error) {
+    console.error("[AUTH] forgotPassword error", error);
     next(error);
   }
 };
@@ -189,16 +244,23 @@ export const resetPassword = async (req, res, next) => {
     const { token, password } = req.body;
     const resetToken = await Token.findOne({ token });
     if (!resetToken) {
-      return res.status(400).json({ message: "Invalid or expired token" });
+      const payload = { message: "Invalid or expired token" };
+      logAuthResponse("resetPassword", 400, payload);
+      return res.status(400).json(payload);
     }
     const user = await User.findOne({ email: resetToken.email });
     if (!user) {
-        return res.status(404).json({ message: "User not found" });
+        const payload = { message: "User not found" };
+        logAuthResponse("resetPassword", 404, payload);
+        return res.status(404).json(payload);
     }
     const hashedPassword = await bcrypt.hash(password, 10);
     await User.findByIdAndUpdate({ _id: user._id }, { password: hashedPassword });
-    return res.status(200).json({ message: "Password reset successful" });
+    const payload = { message: "Password reset successful" };
+    logAuthResponse("resetPassword", 200, payload);
+    return res.status(200).json(payload);
     } catch (error) {
+    console.error("[AUTH] resetPassword error", error);
     next(error); 
   }
 };
