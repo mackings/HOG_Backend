@@ -25,7 +25,30 @@ const storage = multer.diskStorage({
 });
 
 export const imageUpload = multer({ storage }).array("images", 10);
+const normalizeImageUrls = (value) => {
+  if (!value) return null;
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed.filter(Boolean);
+    } catch (error) {
+      // Fall through for a single URL string.
+    }
+    return [trimmed];
+  }
+  return null;
+};
+
 export const imageKitUpload = async (req, res, next) => {
+  const bodyUrls = normalizeImageUrls(req.body?.imageUrls || req.body?.imageUrl);
+  if (bodyUrls && (!req.files || req.files.length === 0)) {
+    req.imageUrls = bodyUrls;
+    return next();
+  }
+
   if (!req.files || req.files.length === 0) {
     return res.status(400).json({ message: "No images provided" });
   }

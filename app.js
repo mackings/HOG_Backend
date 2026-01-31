@@ -27,6 +27,7 @@ import { rapydWebhook } from './src/modules/rapyd/controller/rapyd.controller.js
 import { webhookPaymentSuccess } from './src/modules/stripe/controller/stripe.controller.js';
 import feeRouter from './src/modules/commission/routes/commission.routes.js'
 import conversionRouter from './src/modules/conversion/routes/conversion.routes.js';
+import imagekitRouter from './src/modules/imagekit/routes/imagekit.routes.js';
 
 
 
@@ -75,6 +76,7 @@ app.use('/api/v1/stripe', stripeRouter);
 app.use('/api/v1/rapyd', rapydRouter);
 app.use('/api/v1/fee', feeRouter);
 app.use('/api/v1/conversion', conversionRouter);
+app.use('/api/v1/imagekit', imagekitRouter);
 
 app.use((req, res) => {
   res.status(404).json({ message: "Endpoint not found. please, check the url and try again." });
@@ -85,4 +87,3 @@ app.use(errorMiddleware);
 
 
 export default app;
-

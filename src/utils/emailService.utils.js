@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import axios from "axios";
 import { sendVerifyTokenEmailTemplate, sendResetPasswordEmailTemplate, sendBankTransferEmailTemplate,
   sendTransactionEmailTemplate, sendSubscriptionEmailTemplate, sendReviewUpdateEmailTemplate,
   sendTransactionListingEmailTemplate, sendApprovalEmailTemplate, sendRejectionEmailTemplate, sendDeliveryEmailTemplate,
@@ -21,13 +22,64 @@ const createTransporter = () => {
   });
 };
 
+const buildRecipientList = (to) => {
+  if (Array.isArray(to)) return to.filter(Boolean).map((email) => ({ Email: email }));
+  if (typeof to === "string") return [{ Email: to }];
+  return [];
+};
+
+const getMailjetFrom = () => {
+  const email = process.env.MAILJET_FROM_EMAIL || process.env.SMTP_USER;
+  const name = process.env.MAILJET_FROM_NAME || process.env.SMTP_FROM || "Hulex";
+  return email ? { Email: email, Name: name } : null;
+};
+
+const sendWithMailjet = async ({ to, subject, htmlContent }) => {
+  const apiKey = process.env.MAILJET_API_KEY;
+  const apiSecret = process.env.MAILJET_API_SECRET;
+  const from = getMailjetFrom();
+  const recipients = buildRecipientList(to);
+
+  if (!apiKey || !apiSecret || !from || recipients.length === 0) {
+    throw new Error("Mailjet credentials or sender/recipients missing");
+  }
+
+  const payload = {
+    Messages: [
+      {
+        From: from,
+        To: recipients,
+        Subject: subject,
+        HTMLPart: htmlContent,
+      },
+    ],
+  };
+
+  const response = await axios.post("https://api.mailjet.com/v3.1/send", payload, {
+    auth: { username: apiKey, password: apiSecret },
+  });
+
+  const messageId = response.data?.Messages?.[0]?.To?.[0]?.MessageID;
+  return { success: true, messageId };
+};
+
 export const sendEmail = async ({ to, subject, htmlContent, attachments = [] }) => {
   try {
     if (!to) throw new Error("Recipient email address is required");
     if (!subject) throw new Error("Email subject is required");
     if (!htmlContent) throw new Error("Email content is required");
 
-    // Check if SMTP is configured
+    if (attachments && attachments.length > 0 && process.env.MAILJET_API_KEY) {
+      console.warn("⚠️ Mailjet API selected; attachments are ignored unless explicitly mapped.");
+    }
+
+    if (process.env.MAILJET_API_KEY && process.env.MAILJET_API_SECRET) {
+      const result = await sendWithMailjet({ to, subject, htmlContent });
+      console.log(`✅ Email sent via Mailjet to ${Array.isArray(to) ? to.join(", ") : to}`);
+      return result;
+    }
+
+    // Fallback to SMTP if Mailjet isn't configured
     if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
       console.warn("⚠️ SMTP not configured. Email not sent:", { to, subject });
       return { success: false, error: "SMTP credentials not configured" };

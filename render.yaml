@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: hog-backend
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
