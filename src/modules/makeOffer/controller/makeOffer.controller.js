@@ -14,6 +14,12 @@ const roundUpUSD = (value) => Math.ceil((Number(value) || 0) * 100) / 100;
 const netFromGross = (gross, totalRate) => gross / (1 + totalRate);
 const grossFromNet = (net, totalRate) => net * (1 + totalRate);
 
+const normalizeCountry = (value) => (value || "").toUpperCase().trim();
+const INTERNATIONAL_COUNTRIES = new Set(["UNITED STATES", "US", "USA", "UNITED KINGDOM", "UK", "GB"]);
+const NIGERIAN_COUNTRIES = new Set(["NIGERIA", "NG", "NIGERIAN"]);
+const isInternationalCountry = (country) => INTERNATIONAL_COUNTRIES.has(normalizeCountry(country));
+const isNigerianCountry = (country) => NIGERIAN_COUNTRIES.has(normalizeCountry(country));
+
 const normalizeOfferFromChat = (chat, totalRate) => {
   const materialRaw = roundUpNGN(chat?.counterMaterialCost || 0);
   const workmanshipRaw = roundUpNGN(chat?.counterWorkmanshipCost || 0);
@@ -311,6 +317,27 @@ export const vendorReplyOffer = async (req, res, next) => {
     const totalRate = displayRate;
 
     let baseMaterialCost, baseWorkmanshipCost, baseTotalCost;
+    let baseMaterialCostUSD = 0;
+    let baseWorkmanshipCostUSD = 0;
+    let baseTotalCostUSD = 0;
+    let usedInputForBase = false;
+
+    const exchangeRate = offer.exchangeRate || 0;
+    const isInternational = offer.isInternationalVendor;
+    const buyerCountry = offer.buyerCountry || "";
+    const vendorCountry = offer.vendorCountry || "";
+    const shouldConvertUsdToNgn =
+      isInternationalCountry(vendorCountry) && isNigerianCountry(buyerCountry);
+
+    const inputMaterial = Number(counterMaterialCost) || 0;
+    const inputWorkmanship = Number(counterWorkmanshipCost) || 0;
+
+    if (shouldConvertUsdToNgn && exchangeRate <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Exchange rate not available for this international offer.",
+      });
+    }
 
     if (action === "accepted") {
       const latestCustomerOffer = [...offer.chats]
@@ -323,28 +350,41 @@ export const vendorReplyOffer = async (req, res, next) => {
         baseWorkmanshipCost = normalized.baseWorkmanship;
         baseTotalCost = normalized.baseTotal;
       } else {
-        baseMaterialCost = roundUpNGN(Number(counterMaterialCost) || 0);
-        baseWorkmanshipCost = roundUpNGN(Number(counterWorkmanshipCost) || 0);
+        usedInputForBase = true;
+        baseMaterialCost = shouldConvertUsdToNgn
+          ? roundUpNGN(inputMaterial * exchangeRate)
+          : roundUpNGN(inputMaterial);
+        baseWorkmanshipCost = shouldConvertUsdToNgn
+          ? roundUpNGN(inputWorkmanship * exchangeRate)
+          : roundUpNGN(inputWorkmanship);
         baseTotalCost = roundUpNGN(baseMaterialCost + baseWorkmanshipCost);
       }
     } else {
-      baseMaterialCost = roundUpNGN(Number(counterMaterialCost) || 0);
-      baseWorkmanshipCost = roundUpNGN(Number(counterWorkmanshipCost) || 0);
+      usedInputForBase = true;
+      baseMaterialCost = shouldConvertUsdToNgn
+        ? roundUpNGN(inputMaterial * exchangeRate)
+        : roundUpNGN(inputMaterial);
+      baseWorkmanshipCost = shouldConvertUsdToNgn
+        ? roundUpNGN(inputWorkmanship * exchangeRate)
+        : roundUpNGN(inputWorkmanship);
       baseTotalCost = roundUpNGN(baseMaterialCost + baseWorkmanshipCost);
     }
 
-    const exchangeRate = offer.exchangeRate || 0;
-    const isInternational = offer.isInternationalVendor;
-
-    const baseMaterialCostUSD = isInternational && exchangeRate > 0 
-      ? roundUpUSD(baseMaterialCost / exchangeRate) 
-      : 0;
-    const baseWorkmanshipCostUSD = isInternational && exchangeRate > 0 
-      ? roundUpUSD(baseWorkmanshipCost / exchangeRate) 
-      : 0;
-    const baseTotalCostUSD = isInternational && exchangeRate > 0 
-      ? roundUpUSD(baseTotalCost / exchangeRate) 
-      : 0;
+    if (shouldConvertUsdToNgn && usedInputForBase) {
+      baseMaterialCostUSD = roundUpUSD(inputMaterial);
+      baseWorkmanshipCostUSD = roundUpUSD(inputWorkmanship);
+      baseTotalCostUSD = roundUpUSD(inputMaterial + inputWorkmanship);
+    } else {
+      baseMaterialCostUSD = isInternational && exchangeRate > 0
+        ? roundUpUSD(baseMaterialCost / exchangeRate)
+        : 0;
+      baseWorkmanshipCostUSD = isInternational && exchangeRate > 0
+        ? roundUpUSD(baseWorkmanshipCost / exchangeRate)
+        : 0;
+      baseTotalCostUSD = isInternational && exchangeRate > 0
+        ? roundUpUSD(baseTotalCost / exchangeRate)
+        : 0;
+    }
 
     let acceptedGrossMaterial = 0;
     let acceptedGrossWorkmanship = 0;
