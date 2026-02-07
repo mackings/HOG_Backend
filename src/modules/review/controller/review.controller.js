@@ -7,8 +7,7 @@ import Review from '../../review/model/review.model.js';
 import mongoose from "mongoose";
 import { sendReviewUpdateEmail } from "../../../utils/emailService.utils.js";
 
-const TAX_RATE = 0; // Tax disabled: commission-only pricing
-const QUOTE_COMMISSION_RATE = 0.1; // 10% added on initial quotation
+const TAX_RATE = 0.1; // 10% quotation tax added on initial quotation
 
 
 
@@ -136,22 +135,22 @@ export const createReview = async (req, res, next) => {
       console.log(`   ℹ️  Exchange rate stored for payment conversion`);
     }
 
-    const tax = 0;
-    const commission = Math.round(subTotalCost * QUOTE_COMMISSION_RATE);
+    const tax = Math.round(subTotalCost * TAX_RATE);
+    const commission = 0;
     const totalCost = Number(subTotalCost) + Number(tax) + Number(commission);
 
     // Calculate USD total if conversion happened
     if (isInternationalTailor && isNigerianBuyer && exchangeRate > 0) {
-      const taxUSD = 0;
+      const taxUSD = (TAX_RATE * Number(subTotalCostUSD)).toFixed(2);
       const grossAmountUSD = Number(subTotalCostUSD).toFixed(2);
-      const commissionUSD = (QUOTE_COMMISSION_RATE * grossAmountUSD).toFixed(2);
+      const commissionUSD = 0;
       totalCostUSD = Number(grossAmountUSD) + Number(taxUSD) + Number(commissionUSD);
       totalCostUSD = Math.round(totalCostUSD * 100) / 100;
       console.log(`   Total Cost (USD): $${totalCostUSD}`);
       console.log(`   Total Cost (NGN): ₦${totalCost}`);
     }
-    console.log(`   Quote Commission (10%): ₦${commission}`);
-    console.log(`   Note: An extra 10% commission is added when both parties agree to an offer.`);
+    console.log(`   Quotation Tax (10%): ₦${tax}`);
+    console.log(`   Note: An extra 10% VAT is added when both parties agree to an offer.`);
 
     // check if review exists
     let review = await Review.findOne({
@@ -424,8 +423,8 @@ export const updateReview = async (req, res, next) => {
     } = req.body;
 
     const subTotalCost = Number(materialTotalCost) + Number(workmanshipTotalCost);
-    const tax = 0;
-    const commission = Math.round(subTotalCost * QUOTE_COMMISSION_RATE);
+    const tax = Math.round(subTotalCost * TAX_RATE);
+    const commission = 0;
     const totalCost = Number(subTotalCost) + Number(tax) + Number(commission);
 
     // Update numeric fields safely
@@ -448,7 +447,7 @@ export const updateReview = async (req, res, next) => {
     if(totalCost !== undefined) {
       review.totalCost = Number(totalCost) || 0;
     }
-    console.log(`   Quote Commission (10%): ₦${commission}`);
+    console.log(`   Quotation Tax (10%): ₦${tax}`);
 
     // Always recompute total
     // review.totalCost =

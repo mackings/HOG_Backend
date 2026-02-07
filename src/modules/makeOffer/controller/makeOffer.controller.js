@@ -4,10 +4,8 @@ import Review from "../../review/model/review.model.js"
 import Vendor from "../../vendor/model/vendor.model.js"
 import mongoose from "mongoose";
 import Material from "../../material/model/material.model.js"
-const TAX_RATE = 0; // Tax disabled: commission-only pricing
-const QUOTE_COMMISSION_RATE = 0.1; // 10% on quotation
-const FINAL_EXTRA_COMMISSION_RATE = 0.1; // extra 10% added on agreement
-const FINAL_COMMISSION_RATE = QUOTE_COMMISSION_RATE + FINAL_EXTRA_COMMISSION_RATE;
+const QUOTATION_TAX_RATE = 0.1; // 10% quotation tax
+const VAT_RATE = 0.1; // 10% VAT added on mutual agreement
 const roundUpNGN = (value) => Math.ceil(Number(value) || 0);
 const roundUpUSD = (value) => Math.ceil((Number(value) || 0) * 100) / 100;
 
@@ -476,13 +474,12 @@ export const vendorReplyOffer = async (req, res, next) => {
       const review = await Review.findById(offer.reviewId);
       
       if (review) {
-        // Calculate tax and commission on the NEW negotiated amount
+        // Calculate quotation tax and VAT on the NEW negotiated amount
         const subTotalCost = baseMaterialCost + baseWorkmanshipCost;
-        const tax = 0;
-        const extraCommissionRate = FINAL_EXTRA_COMMISSION_RATE;
-        const quoteCommission = QUOTE_COMMISSION_RATE * subTotalCost;
-        const extraCommission = extraCommissionRate * subTotalCost;
-        const commission = quoteCommission + extraCommission;
+        const quotationTax = QUOTATION_TAX_RATE * subTotalCost;
+        const vat = VAT_RATE * subTotalCost;
+        const tax = quotationTax;
+        const commission = vat;
         
         const computedTotalCost = subTotalCost + tax + commission;
         const newTotalCost = computedTotalCost;
@@ -511,17 +508,15 @@ export const vendorReplyOffer = async (req, res, next) => {
         console.log(`   Material Cost: ₦${baseMaterialCost}`);
         console.log(`   Workmanship Cost: ₦${baseWorkmanshipCost}`);
         console.log(`   Subtotal (negotiated): ₦${subTotalCost}`);
-        console.log(`   Tax (0%): ₦${tax.toFixed(2)}`);
-        console.log(`   Quote Commission (10%): ₦${quoteCommission.toFixed(2)}`);
-        console.log(`   Extra Commission on Agreement (${(extraCommissionRate * 100).toFixed(0)}%): ₦${extraCommission.toFixed(2)}`);
-        console.log(`   Total Commission (${((QUOTE_COMMISSION_RATE + extraCommissionRate) * 100).toFixed(0)}%): ₦${commission.toFixed(2)}`);
-        console.log(`   Final Payable = Base + Quote 10% + Extra ${(extraCommissionRate * 100).toFixed(0)}% (Tax 0%)`);
+        console.log(`   Quotation Tax (10%): ₦${quotationTax.toFixed(2)}`);
+        console.log(`   VAT on Agreement (10%): ₦${vat.toFixed(2)}`);
+        console.log(`   Final Payable = Base + Quotation Tax 10% + VAT 10%`);
         console.log(`   User Payable (NGN): ₦${newTotalCost.toFixed(2)}`);
 
         // If international vendor, calculate USD amounts
         if (offer.isInternationalVendor && exchangeRate > 0) {
           const subTotalCostUSD = Math.round(subTotalCost / exchangeRate * 100) / 100;
-          const taxUSD = 0;
+          const taxUSD = Math.round(tax / exchangeRate * 100) / 100;
           const commissionUSD = Math.round(commission / exchangeRate * 100) / 100;
           const totalCostUSD = Math.round(newTotalCost / exchangeRate * 100) / 100;
 
@@ -779,13 +774,12 @@ export const buyerReplyToOffer = async (req, res, next) => {
       const review = await Review.findById(offer.reviewId);
       
       if (review) {
-        // Calculate tax and commission on the NEW negotiated amount
+        // Calculate quotation tax and VAT on the NEW negotiated amount
         const subTotalCost = baseMaterialCost + baseWorkmanshipCost;
-        const tax = 0;
-        const extraCommissionRate = FINAL_EXTRA_COMMISSION_RATE;
-        const quoteCommission = QUOTE_COMMISSION_RATE * subTotalCost;
-        const extraCommission = extraCommissionRate * subTotalCost;
-        const commission = quoteCommission + extraCommission;
+        const quotationTax = QUOTATION_TAX_RATE * subTotalCost;
+        const vat = VAT_RATE * subTotalCost;
+        const tax = quotationTax;
+        const commission = vat;
         
         const computedTotalCost = subTotalCost + tax + commission;
         const newTotalCost = computedTotalCost;
@@ -814,17 +808,15 @@ export const buyerReplyToOffer = async (req, res, next) => {
         console.log(`   Material Cost: ₦${baseMaterialCost}`);
         console.log(`   Workmanship Cost: ₦${baseWorkmanshipCost}`);
         console.log(`   Subtotal (negotiated): ₦${subTotalCost}`);
-        console.log(`   Tax (0%): ₦${tax.toFixed(2)}`);
-        console.log(`   Quote Commission (10%): ₦${quoteCommission.toFixed(2)}`);
-        console.log(`   Extra Commission on Agreement (${(extraCommissionRate * 100).toFixed(0)}%): ₦${extraCommission.toFixed(2)}`);
-        console.log(`   Total Commission (${((QUOTE_COMMISSION_RATE + extraCommissionRate) * 100).toFixed(0)}%): ₦${commission.toFixed(2)}`);
-        console.log(`   Final Payable = Base + Quote 10% + Extra ${(extraCommissionRate * 100).toFixed(0)}% (Tax 0%)`);
+        console.log(`   Quotation Tax (10%): ₦${quotationTax.toFixed(2)}`);
+        console.log(`   VAT on Agreement (10%): ₦${vat.toFixed(2)}`);
+        console.log(`   Final Payable = Base + Quotation Tax 10% + VAT 10%`);
         console.log(`   User Payable (NGN): ₦${newTotalCost.toFixed(2)}`);
 
         // If international vendor, calculate USD amounts
         if (offer.isInternationalVendor && exchangeRate > 0) {
           const subTotalCostUSD = Math.round(subTotalCost / exchangeRate * 100) / 100;
-          const taxUSD = 0;
+          const taxUSD = Math.round(tax / exchangeRate * 100) / 100;
           const commissionUSD = Math.round(commission / exchangeRate * 100) / 100;
           const totalCostUSD = Math.round(newTotalCost / exchangeRate * 100) / 100;
 
