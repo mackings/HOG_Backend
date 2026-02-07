@@ -1,111 +1,253 @@
-import User from '../../user/model/user.model.js';
-import InitializedOrder from '../../material/model/InitializedOrder.model.js';
+import User from "../../user/model/user.model.js";
+import InitializedOrder from "../../material/model/InitializedOrder.model.js";
 import axios from "axios";
-import crypto from "crypto"
-import Plan from '../model/plan.model.js';
+import crypto from "crypto";
+import mongoose from "mongoose";
+import Stripe from "stripe";
+import Plan from "../model/plan.model.js";
 
-export const subscriptionPayments = async (req, res, next) => {
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" })
+  : null;
+
+const PLAN_NAME_MAP = {
+  standard: "Standard",
+  premium: "Premium",
+  enterprise: "Enterprise",
+};
+const ALLOWED_DURATIONS = new Set(["monthly", "quarterly", "yearly"]);
+const NIGERIAN_COUNTRIES = new Set(["nigeria", "ng", "nigerian"]);
+const isNigerianCountry = (country) =>
+  NIGERIAN_COUNTRIES.has(String(country || "").trim().toLowerCase());
+
+const normalizePlanName = (value) => {
+  const key = String(value || "").trim().toLowerCase();
+  return PLAN_NAME_MAP[key] || null;
+};
+
+const normalizeDuration = (value) => String(value || "").trim().toLowerCase();
+
+const calculateSubscriptionDates = (duration) => {
+  const startDate = new Date();
+  const endDate = new Date(startDate);
+
+  if (duration === "monthly") endDate.setMonth(endDate.getMonth() + 1);
+  if (duration === "quarterly") endDate.setMonth(endDate.getMonth() + 3);
+  if (duration === "yearly") endDate.setFullYear(endDate.getFullYear() + 1);
+
+  return { startDate, endDate };
+};
+
+const fetchUsdNgnRate = async () => {
+  const fallbackRate = Number(process.env.DEFAULT_USD_NGN_RATE) || 1500;
+  const apiKey = process.env.EXCHANGE_RATE_API_KEY;
+
+  if (!apiKey) return fallbackRate;
+
   try {
-    const { id } = req.user;
-    const { plan, amount, billTerm } = req.body;
-
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    const apiUrl = `https://v6.exchangerate-api.com/v6/${apiKey}/pair/USD/NGN`;
+    const response = await axios.get(apiUrl);
+    if (response?.data?.result === "success" && Number(response?.data?.conversion_rate) > 0) {
+      return Number(response.data.conversion_rate);
     }
-
-    // Available subscription plans 
-    const subscriptionPlans = {
-      Standard: ["monthly", "yearly", "quarterly"],
-      Premium: ["monthly", "yearly", "quarterly"],
-      Enterprise: ["monthly", "yearly", "quarterly"],
-    };
-
-    // Validate plan
-    if (!subscriptionPlans[plan]) {
-      return res.status(400).json({ message: "Invalid subscription plan" });
-    }
-
-    // Validate billing term
-    if (!subscriptionPlans[plan].includes(billTerm)) {
-      return res.status(400).json({ message: "Invalid billing term for selected plan" });
-    }
-
-    // Subscription duration based on billing term
-    const startDate = new Date();
-    let endDate = new Date(startDate);
-
-    if (billTerm === "monthly") {
-      endDate.setMonth(endDate.getMonth() + 1);
-    } else if (billTerm === "quarterly") {
-      endDate.setMonth(endDate.getMonth() + 3);
-    } else if (billTerm === "yearly") {
-      endDate.setFullYear(endDate.getFullYear() + 1);
-    }
-
-    const reference = crypto.randomBytes(5).toString("hex");
-
-    const initializedData = await InitializedOrder.create({
-      userId: user._id,
-      totalAmount: amount,
-      paymentMethod: "Paystack",
-      paymentReference: reference,
-      subscriptionStartDate: startDate,
-      subscriptionEndDate: endDate,
-      billTerm,
-      plan,
-    });
-
-    const countryCurrencyMapping = {
-      nigeria: "NGN",
-      "united kingdom": "GBP",
-      "united states": "USD",
-    };
-
-    const userCountry = user.country?.toLowerCase().trim();
-
-    const userCurrency = countryCurrencyMapping[userCountry] || "USD";
-
-    // Paystack payment initialization
-    const paystackUrl = "https://api.paystack.co/transaction/initialize";
-    const paystackResponse = await axios.post(
-      paystackUrl,
-      {
-        email: user.email,
-        amount: amount * 100, // Paystack requires kobo
-        currency: userCurrency,
-        reference: reference,
-        callback_url: `${process.env.FRONTEND_URL}/payment-success`,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_MAIN_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    if (paystackResponse.status === 200) {
-      return res.status(201).json({
-        success: true,
-        message: "Subscription payment initialized successfully",
-        authorizationUrl: paystackResponse.data.data.authorization_url,
-        data: initializedData,
-      });
-    } else {
-      await InitializedOrder.findByIdAndDelete(initializedData._id);
-      return res.status(400).json({
-        success: false,
-        message: "Payment initialization failed",
-        error: paystackResponse.data.message,
-      });
-    }
-  } catch (error) {
-    next(error);
+    return fallbackRate;
+  } catch {
+    return fallbackRate;
   }
 };
 
+const resolvePlanForPayment = async ({ planId, plan, billTerm }) => {
+  if (planId) {
+    if (!mongoose.Types.ObjectId.isValid(planId)) {
+      throw new Error("Invalid plan ID");
+    }
 
+    const selectedPlan = await Plan.findById(planId);
+    if (!selectedPlan) throw new Error("Subscription plan not found");
+
+    if (billTerm && normalizeDuration(billTerm) !== selectedPlan.duration) {
+      throw new Error("billing term does not match selected plan duration");
+    }
+    return selectedPlan;
+  }
+
+  const normalizedPlanName = normalizePlanName(plan);
+  const normalizedBillTerm = normalizeDuration(billTerm);
+  if (!normalizedPlanName || !ALLOWED_DURATIONS.has(normalizedBillTerm)) {
+    throw new Error("Provide a valid plan and billing term, or use planId");
+  }
+
+  const selectedPlan = await Plan.findOne({
+    name: normalizedPlanName,
+    duration: normalizedBillTerm,
+  });
+
+  if (!selectedPlan) throw new Error("Subscription plan not found");
+  return selectedPlan;
+};
+
+export const subscriptionPayments = async (req, res, next) => {
+  let initializedOrder = null;
+  try {
+    const { id } = req.user;
+    const { planId, plan, billTerm } = req.body;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const selectedPlan = await resolvePlanForPayment({ planId, plan, billTerm });
+    const { startDate, endDate } = calculateSubscriptionDates(selectedPlan.duration);
+    const reference = crypto.randomBytes(12).toString("hex");
+    const baseAmountNGN = Number(selectedPlan.amount);
+    const isNigerianTailor = NIGERIAN_COUNTRIES.has(
+      String(user.country || "").trim().toLowerCase()
+    );
+
+    if (isNigerianTailor) {
+      initializedOrder = await InitializedOrder.create({
+        userId: user._id,
+        totalAmount: baseAmountNGN,
+        amountPaid: baseAmountNGN,
+        paymentMethod: "Paystack",
+        paymentReference: reference,
+        subscriptionStartDate: startDate,
+        subscriptionEndDate: endDate,
+        billTerm: selectedPlan.duration,
+        plan: selectedPlan.name,
+        paymentStatus: "subscription",
+      });
+
+      const paystackResponse = await axios.post(
+        "https://api.paystack.co/transaction/initialize",
+        {
+          email: user.email,
+          amount: Math.round(baseAmountNGN * 100),
+          currency: "NGN",
+          reference,
+          callback_url: `${process.env.FRONTEND_URL}/payment-success`,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.PAYSTACK_MAIN_KEY}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (paystackResponse.status !== 200 || !paystackResponse.data?.data?.authorization_url) {
+        throw new Error(paystackResponse?.data?.message || "Paystack initialization failed");
+      }
+
+      return res.status(201).json({
+        success: true,
+        provider: "paystack",
+        message: "Subscription payment initialized successfully",
+        authorizationUrl: paystackResponse.data.data.authorization_url,
+        data: initializedOrder,
+        breakdown: {
+          plan: selectedPlan.name,
+          billTerm: selectedPlan.duration,
+          amountNGN: baseAmountNGN,
+          currency: "NGN",
+        },
+      });
+    }
+
+    if (!stripe) {
+      return res.status(500).json({
+        success: false,
+        message: "Stripe is not configured for international subscriptions",
+      });
+    }
+
+    const exchangeRate = await fetchUsdNgnRate();
+    const amountUSD = Math.round((baseAmountNGN / exchangeRate) * 100) / 100;
+    if (amountUSD <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid subscription amount after conversion",
+      });
+    }
+
+    initializedOrder = await InitializedOrder.create({
+      userId: user._id,
+      totalAmount: baseAmountNGN,
+      amountPaid: baseAmountNGN,
+      amountPaidUSD: amountUSD,
+      exchangeRate,
+      paymentMethod: "Stripe",
+      paymentReference: reference,
+      subscriptionStartDate: startDate,
+      subscriptionEndDate: endDate,
+      billTerm: selectedPlan.duration,
+      plan: selectedPlan.name,
+      paymentStatus: "subscription",
+    });
+
+    const amountInCents = Math.round(amountUSD * 100);
+    const successUrl = `${process.env.FRONTEND_URL}/payment-success?reference=${reference}&provider=stripe`;
+    const cancelUrl = `${process.env.FRONTEND_URL}/payment-cancelled?reference=${reference}&provider=stripe`;
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "payment",
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: `${selectedPlan.name} Plan (${selectedPlan.duration})`,
+              description: selectedPlan.description,
+            },
+            unit_amount: amountInCents,
+          },
+          quantity: 1,
+        },
+      ],
+      metadata: {
+        reference,
+        paymentType: "subscription",
+        plan: selectedPlan.name,
+        billTerm: selectedPlan.duration,
+      },
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      customer_email: user.email,
+    });
+
+    return res.status(201).json({
+      success: true,
+      provider: "stripe",
+      message: "Subscription payment initialized successfully",
+      checkoutUrl: session.url,
+      sessionId: session.id,
+      data: initializedOrder,
+      breakdown: {
+        plan: selectedPlan.name,
+        billTerm: selectedPlan.duration,
+        amountNGN: baseAmountNGN,
+        amountUSD,
+        exchangeRate,
+        currency: "USD",
+      },
+    });
+  } catch (error) {
+    if (initializedOrder?._id) {
+      await InitializedOrder.findByIdAndDelete(initializedOrder._id);
+    }
+    if (
+      error.message === "Invalid plan ID" ||
+      error.message === "Subscription plan not found" ||
+      error.message?.includes("billing term does not match") ||
+      error.message?.includes("Provide a valid plan")
+    ) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
 
 export const createSubscriptionPlan = async (req, res, next) => {
   try {
@@ -115,51 +257,81 @@ export const createSubscriptionPlan = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "All fields are required" });
     }
 
-    name = name.trim();
-    description = description.trim();
+    const normalizedPlanName = normalizePlanName(name);
+    const normalizedDuration = normalizeDuration(duration);
+    description = String(description).trim();
 
-    const parsedAmount = Number(amount);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      return res.status(400).json({ success: false, message: "Invalid amount" });
+    if (!normalizedPlanName) {
+      return res.status(400).json({ success: false, message: "Invalid plan name" });
     }
-
-    const allowedDurations = ["monthly", "quarterly", "yearly"];
-    if (!allowedDurations.includes(duration.toLowerCase())) {
+    if (!ALLOWED_DURATIONS.has(normalizedDuration)) {
       return res.status(400).json({ success: false, message: "Invalid duration" });
     }
 
-    const existingPlan = await Plan.findOne({ name: new RegExp(`^${name}$`, "i"), duration: duration.toLowerCase() });
+    const parsedAmount = Number(amount);
+    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid amount" });
+    }
+
+    const existingPlan = await Plan.findOne({
+      name: normalizedPlanName,
+      duration: normalizedDuration,
+    });
     if (existingPlan) {
       return res.status(400).json({
         success: false,
-        message: "A subscription plan with this name already exists. Please update it instead.",
+        message: "A subscription plan with this name and duration already exists. Please update it instead.",
       });
     }
 
-    const plan = await Plan.create({
-      name,
+    const createdPlan = await Plan.create({
+      name: normalizedPlanName,
       amount: parsedAmount,
-      duration: duration.toLowerCase(),
+      duration: normalizedDuration,
       description,
     });
 
     return res.status(201).json({
       success: true,
       message: "Subscription plan created successfully",
-      data: plan,
+      data: createdPlan,
     });
   } catch (error) {
-    return next(error);
+    next(error);
   }
 };
 
 export const getSubscriptionPlans = async (req, res, next) => {
   try {
-    const plans = await Plan.find();
+    const plans = await Plan.find().sort({ name: 1, duration: 1 });
+    const isNigerianUser = isNigerianCountry(req.user?.country);
+    const exchangeRate = isNigerianUser ? null : await fetchUsdNgnRate();
+
+    const data = plans.map((plan) => {
+      const base = plan.toObject ? plan.toObject() : plan;
+      if (isNigerianUser || !exchangeRate) {
+        return {
+          ...base,
+          baseCurrency: "NGN",
+          displayCurrency: "NGN",
+          displayAmount: base.amount,
+        };
+      }
+
+      const displayAmount = Math.round((Number(base.amount) / exchangeRate) * 100) / 100;
+      return {
+        ...base,
+        baseCurrency: "NGN",
+        displayCurrency: "USD",
+        displayAmount,
+        exchangeRate,
+      };
+    });
+
     return res.status(200).json({
       success: true,
       message: "Subscription plans retrieved successfully",
-      data: plans,
+      data,
     });
   } catch (error) {
     next(error);
@@ -169,38 +341,94 @@ export const getSubscriptionPlans = async (req, res, next) => {
 export const getSubscriptionPlan = async (req, res, next) => {
   try {
     const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid plan ID" });
+    }
+
     const plan = await Plan.findById(id);
     if (!plan) {
-      return res.status(404).json({ message: "Subscription plan not found" });
+      return res.status(404).json({ success: false, message: "Subscription plan not found" });
     }
+
+    const base = plan.toObject ? plan.toObject() : plan;
+    const isNigerianUser = isNigerianCountry(req.user?.country);
+    const exchangeRate = isNigerianUser ? null : await fetchUsdNgnRate();
+
+    let data;
+    if (isNigerianUser || !exchangeRate) {
+      data = {
+        ...base,
+        baseCurrency: "NGN",
+        displayCurrency: "NGN",
+        displayAmount: base.amount,
+      };
+    } else {
+      const displayAmount = Math.round((Number(base.amount) / exchangeRate) * 100) / 100;
+      data = {
+        ...base,
+        baseCurrency: "NGN",
+        displayCurrency: "USD",
+        displayAmount,
+        exchangeRate,
+      };
+    }
+
     return res.status(200).json({
       success: true,
       message: "Subscription plan retrieved successfully",
-      data: plan,
+      data,
     });
   } catch (error) {
     next(error);
   }
 };
 
-
-
 export const updateSubscriptionPlan = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { name, amount, duration, description } = req.body;
 
-    // 1️⃣ Validate ID format
-    if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ success: false, message: "Invalid plan ID" });
     }
 
-    // 2️⃣ Build update object only with provided fields
-    const updateFields= {};
-    if (name) updateFields.name = name.trim();
-    if (amount !== undefined) updateFields.amount = Number(amount);
-    if (duration !== undefined) updateFields.duration = Number(duration);
-    if (description) updateFields.description = description.trim();
+    const currentPlan = await Plan.findById(id);
+    if (!currentPlan) {
+      return res.status(404).json({
+        success: false,
+        message: "Subscription plan not found",
+      });
+    }
+
+    const updateFields = {};
+    if (name !== undefined) {
+      const normalizedPlanName = normalizePlanName(name);
+      if (!normalizedPlanName) {
+        return res.status(400).json({ success: false, message: "Invalid plan name" });
+      }
+      updateFields.name = normalizedPlanName;
+    }
+    if (amount !== undefined) {
+      const parsedAmount = Number(amount);
+      if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+        return res.status(400).json({ success: false, message: "Invalid amount" });
+      }
+      updateFields.amount = parsedAmount;
+    }
+    if (duration !== undefined) {
+      const normalizedDuration = normalizeDuration(duration);
+      if (!ALLOWED_DURATIONS.has(normalizedDuration)) {
+        return res.status(400).json({ success: false, message: "Invalid duration" });
+      }
+      updateFields.duration = normalizedDuration;
+    }
+    if (description !== undefined) {
+      const normalizedDescription = String(description).trim();
+      if (!normalizedDescription) {
+        return res.status(400).json({ success: false, message: "Description cannot be empty" });
+      }
+      updateFields.description = normalizedDescription;
+    }
 
     if (Object.keys(updateFields).length === 0) {
       return res.status(400).json({
@@ -209,37 +437,53 @@ export const updateSubscriptionPlan = async (req, res, next) => {
       });
     }
 
-    const plan = await Plan.findByIdAndUpdate(id, updateFields, {
+    const candidateName = updateFields.name || currentPlan.name;
+    const candidateDuration = updateFields.duration || currentPlan.duration;
+    const duplicate = await Plan.findOne({
+      _id: { $ne: id },
+      name: candidateName,
+      duration: candidateDuration,
+    });
+    if (duplicate) {
+      return res.status(400).json({
+        success: false,
+        message: "Another subscription plan with the same name and duration already exists",
+      });
+    }
+
+    const updatedPlan = await Plan.findByIdAndUpdate(id, updateFields, {
       new: true,
       runValidators: true,
     });
 
-    if (!plan) {
-      return res.status(404).json({
-        success: false,
-        message: "Subscription plan not found",
-      });
-    }
-
     return res.status(200).json({
       success: true,
       message: "Subscription plan updated successfully",
-      data: plan,
+      data: updatedPlan,
     });
   } catch (error) {
-    return next(error);
+    next(error);
   }
 };
-
 
 export const deleteSubscriptionPlan = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const plan = await Plan.findByIdAndDelete(id);
-    if (!plan) {
-      return res.status(404).json({ message: "Subscription plan not found" });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid plan ID" });
     }
-  }catch (error) {
+
+    const deletedPlan = await Plan.findByIdAndDelete(id);
+    if (!deletedPlan) {
+      return res.status(404).json({ success: false, message: "Subscription plan not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Subscription plan deleted successfully",
+      data: { id },
+    });
+  } catch (error) {
     next(error);
   }
 };
