@@ -4,8 +4,8 @@ import Review from "../../review/model/review.model.js"
 import Vendor from "../../vendor/model/vendor.model.js"
 import mongoose from "mongoose";
 import Material from "../../material/model/material.model.js"
-const QUOTATION_TAX_RATE = 0.1; // 10% quotation tax
-const VAT_RATE = 0.1; // 10% VAT added on mutual agreement
+import { getPricingRates } from "../../../utils/pricingConfig.utils.js";
+
 const roundUpNGN = (value) => Math.ceil(Number(value) || 0);
 const roundUpUSD = (value) => Math.ceil((Number(value) || 0) * 100) / 100;
 
@@ -474,9 +474,10 @@ export const vendorReplyOffer = async (req, res, next) => {
       const review = await Review.findById(offer.reviewId);
       
       if (review) {
+        const { quotationTaxPercent, vatRate, vatPercent } = await getPricingRates();
         // At mutual consent, apply only VAT on agreed base amount
         const subTotalCost = baseMaterialCost + baseWorkmanshipCost;
-        const vat = VAT_RATE * subTotalCost;
+        const vat = vatRate * subTotalCost;
         const tax = 0;
         const commission = vat;
         
@@ -507,9 +508,9 @@ export const vendorReplyOffer = async (req, res, next) => {
         console.log(`   Material Cost: ₦${baseMaterialCost}`);
         console.log(`   Workmanship Cost: ₦${baseWorkmanshipCost}`);
         console.log(`   Subtotal (negotiated): ₦${subTotalCost}`);
-        console.log(`   Quotation Tax: already applied at quote stage`);
-        console.log(`   VAT on Agreement (10%): ₦${vat.toFixed(2)}`);
-        console.log(`   Final Payable = Base + VAT 10%`);
+        console.log(`   Quotation Tax (${quotationTaxPercent}%): already applied at quote stage`);
+        console.log(`   VAT on Agreement (${vatPercent}%): ₦${vat.toFixed(2)}`);
+        console.log(`   Final Payable = Base + VAT ${vatPercent}%`);
         console.log(`   User Payable (NGN): ₦${newTotalCost.toFixed(2)}`);
 
         // If international vendor, calculate USD amounts
@@ -522,7 +523,7 @@ export const vendorReplyOffer = async (req, res, next) => {
           updateData.materialTotalCostUSD = baseMaterialCostUSD;
           updateData.workmanshipTotalCostUSD = baseWorkmanshipCostUSD;
           updateData.subTotalCostUSD = subTotalCostUSD;
-          // Keep vendor USD at agreed base amount (user pays NGN + 10%)
+          // Keep vendor USD at agreed base amount (user payable includes configured VAT in NGN)
           updateData.totalCostUSD = baseTotalCostUSD;
           updateData.amountToPayUSD = baseTotalCostUSD;
           
@@ -773,9 +774,10 @@ export const buyerReplyToOffer = async (req, res, next) => {
       const review = await Review.findById(offer.reviewId);
       
       if (review) {
+        const { quotationTaxPercent, vatRate, vatPercent } = await getPricingRates();
         // At mutual consent, apply only VAT on agreed base amount
         const subTotalCost = baseMaterialCost + baseWorkmanshipCost;
-        const vat = VAT_RATE * subTotalCost;
+        const vat = vatRate * subTotalCost;
         const tax = 0;
         const commission = vat;
         
@@ -806,9 +808,9 @@ export const buyerReplyToOffer = async (req, res, next) => {
         console.log(`   Material Cost: ₦${baseMaterialCost}`);
         console.log(`   Workmanship Cost: ₦${baseWorkmanshipCost}`);
         console.log(`   Subtotal (negotiated): ₦${subTotalCost}`);
-        console.log(`   Quotation Tax: already applied at quote stage`);
-        console.log(`   VAT on Agreement (10%): ₦${vat.toFixed(2)}`);
-        console.log(`   Final Payable = Base + VAT 10%`);
+        console.log(`   Quotation Tax (${quotationTaxPercent}%): already applied at quote stage`);
+        console.log(`   VAT on Agreement (${vatPercent}%): ₦${vat.toFixed(2)}`);
+        console.log(`   Final Payable = Base + VAT ${vatPercent}%`);
         console.log(`   User Payable (NGN): ₦${newTotalCost.toFixed(2)}`);
 
         // If international vendor, calculate USD amounts
@@ -821,7 +823,7 @@ export const buyerReplyToOffer = async (req, res, next) => {
           updateData.materialTotalCostUSD = baseMaterialCostUSD;
           updateData.workmanshipTotalCostUSD = baseWorkmanshipCostUSD;
           updateData.subTotalCostUSD = subTotalCostUSD;
-          // Keep vendor USD at agreed base amount (user pays NGN + 10%)
+          // Keep vendor USD at agreed base amount (user payable includes configured VAT in NGN)
           updateData.totalCostUSD = baseTotalCostUSD;
           updateData.amountToPayUSD = baseTotalCostUSD;
           

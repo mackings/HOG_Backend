@@ -4,6 +4,7 @@ import axios from 'axios';
 import mongoose from 'mongoose';
 import Review from '../../review/model/review.model.js';
 import Vendor from '../../vendor/model/vendor.model.js';
+import PickupCountry from '../model/pickupCountry.model.js';
 import { expressCalculateCost, cargoCalculateCost, regularCalculateCost, resolveDeliveryCurrency } from '../../../utils/shipmentCalcu.distance.js';
 
 const normalizeAddressForGeocode = (rawAddress, country) => {
@@ -44,6 +45,227 @@ const geocodeWithOpenCage = async (address) => {
     latitude: parseFloat(geometry.lat),
     longitude: parseFloat(geometry.lng),
   };
+};
+
+const normalizeName = (value) => String(value || "").trim();
+
+export const createPickupCountry = async (req, res, next) => {
+  try {
+    const { name } = req.body;
+    const countryName = normalizeName(name);
+
+    if (!countryName) {
+      return res.status(400).json({ success: false, message: "Country name is required" });
+    }
+
+    const existingCountry = await PickupCountry.findOne({
+      name: { $regex: new RegExp(`^${countryName}$`, "i") },
+    });
+
+    if (existingCountry) {
+      return res.status(400).json({ success: false, message: "Pickup country already exists" });
+    }
+
+    const country = await PickupCountry.create({ name: countryName, states: [] });
+    return res.status(201).json({
+      success: true,
+      message: "Pickup country created successfully",
+      data: country,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addPickupState = async (req, res, next) => {
+  try {
+    const { countryId } = req.params;
+    const { name } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(countryId)) {
+      return res.status(400).json({ success: false, message: "Invalid country ID" });
+    }
+
+    const stateName = normalizeName(name);
+    if (!stateName) {
+      return res.status(400).json({ success: false, message: "State name is required" });
+    }
+
+    const country = await PickupCountry.findById(countryId);
+    if (!country) {
+      return res.status(404).json({ success: false, message: "Pickup country not found" });
+    }
+
+    const hasState = country.states.some(
+      (state) => state.name.toLowerCase() === stateName.toLowerCase()
+    );
+    if (hasState) {
+      return res.status(400).json({ success: false, message: "State already exists in this country" });
+    }
+
+    country.states.push({ name: stateName, locations: [] });
+    await country.save();
+
+    return res.status(201).json({
+      success: true,
+      message: "Pickup state added successfully",
+      data: country,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addPickupLocation = async (req, res, next) => {
+  try {
+    const { countryId, stateId } = req.params;
+    const { name, address } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(countryId) || !mongoose.Types.ObjectId.isValid(stateId)) {
+      return res.status(400).json({ success: false, message: "Invalid country or state ID" });
+    }
+
+    const locationName = normalizeName(name);
+    const locationAddress = normalizeName(address);
+
+    if (!locationName || !locationAddress) {
+      return res.status(400).json({
+        success: false,
+        message: "Location name and address are required",
+      });
+    }
+
+    const country = await PickupCountry.findById(countryId);
+    if (!country) {
+      return res.status(404).json({ success: false, message: "Pickup country not found" });
+    }
+
+    const state = country.states.id(stateId);
+    if (!state) {
+      return res.status(404).json({ success: false, message: "Pickup state not found" });
+    }
+
+    const hasLocation = state.locations.some(
+      (location) =>
+        location.name.toLowerCase() === locationName.toLowerCase() &&
+        location.address.toLowerCase() === locationAddress.toLowerCase()
+    );
+    if (hasLocation) {
+      return res.status(400).json({ success: false, message: "Pickup location already exists in this state" });
+    }
+
+    state.locations.push({ name: locationName, address: locationAddress });
+    await country.save();
+
+    return res.status(201).json({
+      success: true,
+      message: "Pickup location added successfully",
+      data: country,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPickupCountries = async (req, res, next) => {
+  try {
+    const countries = await PickupCountry.find({ isActive: true })
+      .select("name isActive createdAt updatedAt")
+      .sort({ name: 1 });
+    return res.status(200).json({
+      success: true,
+      message: "Pickup countries retrieved successfully",
+      data: countries,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPickupStatesByCountry = async (req, res, next) => {
+  try {
+    const { countryId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(countryId)) {
+      return res.status(400).json({ success: false, message: "Invalid country ID" });
+    }
+
+    const country = await PickupCountry.findById(countryId).select("name states");
+    if (!country) {
+      return res.status(404).json({ success: false, message: "Pickup country not found" });
+    }
+
+    const states = country.states.filter((state) => state.isActive);
+    return res.status(200).json({
+      success: true,
+      message: "Pickup states retrieved successfully",
+      data: {
+        countryId: country._id,
+        country: country.name,
+        states,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPickupLocationsByState = async (req, res, next) => {
+  try {
+    const { countryId, stateId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(countryId) || !mongoose.Types.ObjectId.isValid(stateId)) {
+      return res.status(400).json({ success: false, message: "Invalid country or state ID" });
+    }
+
+    const country = await PickupCountry.findById(countryId).select("name states");
+    if (!country) {
+      return res.status(404).json({ success: false, message: "Pickup country not found" });
+    }
+
+    const state = country.states.id(stateId);
+    if (!state || !state.isActive) {
+      return res.status(404).json({ success: false, message: "Pickup state not found" });
+    }
+
+    const locations = state.locations.filter((location) => location.isActive);
+    return res.status(200).json({
+      success: true,
+      message: "Pickup locations retrieved successfully",
+      data: {
+        countryId: country._id,
+        country: country.name,
+        stateId: state._id,
+        state: state.name,
+        locations,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPickupHierarchy = async (req, res, next) => {
+  try {
+    const countries = await PickupCountry.find({ isActive: true }).sort({ name: 1 }).lean();
+    const sanitized = countries.map((country) => ({
+      _id: country._id,
+      name: country.name,
+      states: (country.states || [])
+        .filter((state) => state.isActive)
+        .map((state) => ({
+          _id: state._id,
+          name: state.name,
+          locations: (state.locations || []).filter((location) => location.isActive),
+        })),
+    }));
+
+    return res.status(200).json({
+      success: true,
+      message: "Pickup hierarchy retrieved successfully",
+      data: sanitized,
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 
@@ -132,7 +354,7 @@ export const deliveryCost = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    const { shipmentMethod, address } = req.body;
+    const { shipmentMethod, address, pickupCountryId, pickupStateId, pickupLocationId } = req.body;
     const { reviewId } = req.params;
 
     if (!reviewId || !mongoose.Types.ObjectId.isValid(reviewId)) {
@@ -160,7 +382,47 @@ export const deliveryCost = async (req, res, next) => {
 
     // Determine pickup (vendor) and delivery (buyer) addresses
     const pickupAddress = vendor.address || vendor.userId?.address;
-    const deliveryAddress = address || buyer.address;
+    let deliveryAddress = address || buyer.address;
+    let selectedPickupLocation = null;
+
+    if (pickupCountryId || pickupStateId || pickupLocationId) {
+      if (
+        !mongoose.Types.ObjectId.isValid(pickupCountryId) ||
+        !mongoose.Types.ObjectId.isValid(pickupStateId) ||
+        !mongoose.Types.ObjectId.isValid(pickupLocationId)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid pickup country/state/location ID",
+        });
+      }
+
+      const pickupCountry = await PickupCountry.findById(pickupCountryId).select("name states");
+      if (!pickupCountry) {
+        return res.status(404).json({ success: false, message: "Pickup country not found" });
+      }
+
+      const pickupState = pickupCountry.states.id(pickupStateId);
+      if (!pickupState || !pickupState.isActive) {
+        return res.status(404).json({ success: false, message: "Pickup state not found" });
+      }
+
+      const pickupLocation = pickupState.locations.id(pickupLocationId);
+      if (!pickupLocation || !pickupLocation.isActive) {
+        return res.status(404).json({ success: false, message: "Pickup location not found" });
+      }
+
+      selectedPickupLocation = {
+        countryId: pickupCountry._id,
+        country: pickupCountry.name,
+        stateId: pickupState._id,
+        state: pickupState.name,
+        locationId: pickupLocation._id,
+        locationName: pickupLocation.name,
+        locationAddress: pickupLocation.address,
+      };
+      deliveryAddress = pickupLocation.address;
+    }
 
     if (!pickupAddress || !deliveryAddress) {
       return res.status(400).json({
@@ -222,6 +484,7 @@ export const deliveryCost = async (req, res, next) => {
       message: "Delivery cost calculated successfully",
       cost,
       currency: deliveryCurrency,
+      selectedPickupLocation,
     });
   } catch (error) {
     next(error);

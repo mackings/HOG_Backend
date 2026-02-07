@@ -6,10 +6,7 @@ import Transactions from '../../transaction/model/transaction.model.js';
 import Review from '../../review/model/review.model.js';
 import mongoose from "mongoose";
 import { sendReviewUpdateEmail } from "../../../utils/emailService.utils.js";
-
-const TAX_RATE = 0.1; // 10% quotation tax added on initial quotation
-
-
+import { getPricingRates } from "../../../utils/pricingConfig.utils.js";
 
 export const createReview = async (req, res, next) => {
   try {
@@ -135,13 +132,14 @@ export const createReview = async (req, res, next) => {
       console.log(`   ℹ️  Exchange rate stored for payment conversion`);
     }
 
-    const tax = Math.round(subTotalCost * TAX_RATE);
+    const { quotationTaxRate, quotationTaxPercent, vatPercent } = await getPricingRates();
+    const tax = Math.round(subTotalCost * quotationTaxRate);
     const commission = 0;
     const totalCost = Number(subTotalCost) + Number(tax) + Number(commission);
 
     // Calculate USD total if conversion happened
     if (isInternationalTailor && isNigerianBuyer && exchangeRate > 0) {
-      const taxUSD = (TAX_RATE * Number(subTotalCostUSD)).toFixed(2);
+      const taxUSD = (quotationTaxRate * Number(subTotalCostUSD)).toFixed(2);
       const grossAmountUSD = Number(subTotalCostUSD).toFixed(2);
       const commissionUSD = 0;
       totalCostUSD = Number(grossAmountUSD) + Number(taxUSD) + Number(commissionUSD);
@@ -149,8 +147,8 @@ export const createReview = async (req, res, next) => {
       console.log(`   Total Cost (USD): $${totalCostUSD}`);
       console.log(`   Total Cost (NGN): ₦${totalCost}`);
     }
-    console.log(`   Quotation Tax (10%): ₦${tax}`);
-    console.log(`   Note: An extra 10% VAT is added when both parties agree to an offer.`);
+    console.log(`   Quotation Tax (${quotationTaxPercent}%): ₦${tax}`);
+    console.log(`   Note: An extra ${vatPercent}% VAT is added when both parties agree to an offer.`);
 
     // check if review exists
     let review = await Review.findOne({
@@ -422,8 +420,9 @@ export const updateReview = async (req, res, next) => {
       reminderDate,
     } = req.body;
 
+    const { quotationTaxRate, quotationTaxPercent } = await getPricingRates();
     const subTotalCost = Number(materialTotalCost) + Number(workmanshipTotalCost);
-    const tax = Math.round(subTotalCost * TAX_RATE);
+    const tax = Math.round(subTotalCost * quotationTaxRate);
     const commission = 0;
     const totalCost = Number(subTotalCost) + Number(tax) + Number(commission);
 
@@ -447,7 +446,7 @@ export const updateReview = async (req, res, next) => {
     if(totalCost !== undefined) {
       review.totalCost = Number(totalCost) || 0;
     }
-    console.log(`   Quotation Tax (10%): ₦${tax}`);
+    console.log(`   Quotation Tax (${quotationTaxPercent}%): ₦${tax}`);
 
     // Always recompute total
     // review.totalCost =
