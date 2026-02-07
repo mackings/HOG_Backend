@@ -479,8 +479,9 @@ export const vendorReplyOffer = async (req, res, next) => {
         // Calculate tax and commission on the NEW negotiated amount
         const subTotalCost = baseMaterialCost + baseWorkmanshipCost;
         const tax = 0;
+        const extraCommissionRate = FINAL_EXTRA_COMMISSION_RATE;
         const quoteCommission = QUOTE_COMMISSION_RATE * subTotalCost;
-        const extraCommission = FINAL_EXTRA_COMMISSION_RATE * subTotalCost;
+        const extraCommission = extraCommissionRate * subTotalCost;
         const commission = quoteCommission + extraCommission;
         
         const computedTotalCost = subTotalCost + tax + commission;
@@ -512,9 +513,9 @@ export const vendorReplyOffer = async (req, res, next) => {
         console.log(`   Subtotal (negotiated): ₦${subTotalCost}`);
         console.log(`   Tax (0%): ₦${tax.toFixed(2)}`);
         console.log(`   Quote Commission (10%): ₦${quoteCommission.toFixed(2)}`);
-        console.log(`   Extra Commission on Agreement (10%): ₦${extraCommission.toFixed(2)}`);
-        console.log(`   Total Commission (20%): ₦${commission.toFixed(2)}`);
-        console.log(`   Final Payable = Base + Quote 10% + Extra 10% (Tax 0%)`);
+        console.log(`   Extra Commission on Agreement (${(extraCommissionRate * 100).toFixed(0)}%): ₦${extraCommission.toFixed(2)}`);
+        console.log(`   Total Commission (${((QUOTE_COMMISSION_RATE + extraCommissionRate) * 100).toFixed(0)}%): ₦${commission.toFixed(2)}`);
+        console.log(`   Final Payable = Base + Quote 10% + Extra ${(extraCommissionRate * 100).toFixed(0)}% (Tax 0%)`);
         console.log(`   User Payable (NGN): ₦${newTotalCost.toFixed(2)}`);
 
         // If international vendor, calculate USD amounts
@@ -781,8 +782,9 @@ export const buyerReplyToOffer = async (req, res, next) => {
         // Calculate tax and commission on the NEW negotiated amount
         const subTotalCost = baseMaterialCost + baseWorkmanshipCost;
         const tax = 0;
+        const extraCommissionRate = FINAL_EXTRA_COMMISSION_RATE;
         const quoteCommission = QUOTE_COMMISSION_RATE * subTotalCost;
-        const extraCommission = FINAL_EXTRA_COMMISSION_RATE * subTotalCost;
+        const extraCommission = extraCommissionRate * subTotalCost;
         const commission = quoteCommission + extraCommission;
         
         const computedTotalCost = subTotalCost + tax + commission;
@@ -814,9 +816,9 @@ export const buyerReplyToOffer = async (req, res, next) => {
         console.log(`   Subtotal (negotiated): ₦${subTotalCost}`);
         console.log(`   Tax (0%): ₦${tax.toFixed(2)}`);
         console.log(`   Quote Commission (10%): ₦${quoteCommission.toFixed(2)}`);
-        console.log(`   Extra Commission on Agreement (10%): ₦${extraCommission.toFixed(2)}`);
-        console.log(`   Total Commission (20%): ₦${commission.toFixed(2)}`);
-        console.log(`   Final Payable = Base + Quote 10% + Extra 10% (Tax 0%)`);
+        console.log(`   Extra Commission on Agreement (${(extraCommissionRate * 100).toFixed(0)}%): ₦${extraCommission.toFixed(2)}`);
+        console.log(`   Total Commission (${((QUOTE_COMMISSION_RATE + extraCommissionRate) * 100).toFixed(0)}%): ₦${commission.toFixed(2)}`);
+        console.log(`   Final Payable = Base + Quote 10% + Extra ${(extraCommissionRate * 100).toFixed(0)}% (Tax 0%)`);
         console.log(`   User Payable (NGN): ₦${newTotalCost.toFixed(2)}`);
 
         // If international vendor, calculate USD amounts
