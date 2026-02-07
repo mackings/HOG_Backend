@@ -10,7 +10,7 @@ if (!cached) {
 const connectDB = async () => {
     // If already connected, return existing connection
     if (cached.conn) {
-        console.log("✅ Using cached database connection");
+        // console.log("✅ Using cached database connection");
         return cached.conn;
     }
 
