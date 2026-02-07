@@ -47,12 +47,62 @@ const geocodeWithOpenCage = async (address) => {
   };
 };
 
-const normalizeName = (value) => String(value || "").trim();
+const normalizeName = (value) => String(value || "").trim().replace(/\s+/g, " ");
+const canonicalName = (value) =>
+  normalizeName(value)
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+const normalizedKey = (value) => canonicalName(value).toLowerCase();
+
+const mergeStatesByName = (states = []) => {
+  const mergedMap = new Map();
+
+  for (const rawState of states) {
+    if (!rawState || !rawState.isActive) continue;
+
+    const state = rawState.toObject ? rawState.toObject() : rawState;
+    const key = normalizedKey(state.name);
+    if (!key) continue;
+
+    if (!mergedMap.has(key)) {
+      mergedMap.set(key, {
+        _id: state._id,
+        name: canonicalName(state.name),
+        isActive: true,
+        locations: [],
+      });
+    }
+
+    const target = mergedMap.get(key);
+    const seenLocationKeys = new Set(
+      target.locations.map((location) =>
+        `${normalizedKey(location.name)}::${normalizedKey(location.address)}`
+      )
+    );
+
+    for (const rawLocation of state.locations || []) {
+      if (!rawLocation || !rawLocation.isActive) continue;
+      const location = rawLocation.toObject ? rawLocation.toObject() : rawLocation;
+      const locKey = `${normalizedKey(location.name)}::${normalizedKey(location.address)}`;
+      if (!locKey || seenLocationKeys.has(locKey)) continue;
+
+      target.locations.push({
+        _id: location._id,
+        name: canonicalName(location.name),
+        address: normalizeName(location.address),
+        isActive: true,
+      });
+      seenLocationKeys.add(locKey);
+    }
+  }
+
+  return Array.from(mergedMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+};
 
 export const createPickupCountry = async (req, res, next) => {
   try {
     const { name } = req.body;
-    const countryName = normalizeName(name);
+    const countryName = canonicalName(name);
 
     if (!countryName) {
       return res.status(400).json({ success: false, message: "Country name is required" });
@@ -86,7 +136,7 @@ export const addPickupState = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid country ID" });
     }
 
-    const stateName = normalizeName(name);
+    const stateName = canonicalName(name);
     if (!stateName) {
       return res.status(400).json({ success: false, message: "State name is required" });
     }
@@ -97,7 +147,7 @@ export const addPickupState = async (req, res, next) => {
     }
 
     const hasState = country.states.some(
-      (state) => state.name.toLowerCase() === stateName.toLowerCase()
+      (state) => normalizedKey(state.name) === normalizedKey(stateName)
     );
     if (hasState) {
       return res.status(400).json({ success: false, message: "State already exists in this country" });
@@ -125,7 +175,7 @@ export const addPickupLocation = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid country or state ID" });
     }
 
-    const locationName = normalizeName(name);
+    const locationName = canonicalName(name);
     const locationAddress = normalizeName(address);
 
     if (!locationName || !locationAddress) {
@@ -147,8 +197,8 @@ export const addPickupLocation = async (req, res, next) => {
 
     const hasLocation = state.locations.some(
       (location) =>
-        location.name.toLowerCase() === locationName.toLowerCase() &&
-        location.address.toLowerCase() === locationAddress.toLowerCase()
+        normalizedKey(location.name) === normalizedKey(locationName) &&
+        normalizedKey(location.address) === normalizedKey(locationAddress)
     );
     if (hasLocation) {
       return res.status(400).json({ success: false, message: "Pickup location already exists in this state" });
@@ -194,7 +244,7 @@ export const getPickupStatesByCountry = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Pickup country not found" });
     }
 
-    const states = country.states.filter((state) => state.isActive);
+    const states = mergeStatesByName(country.states);
     return res.status(200).json({
       success: true,
       message: "Pickup states retrieved successfully",
@@ -226,7 +276,14 @@ export const getPickupLocationsByState = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Pickup state not found" });
     }
 
-    const locations = state.locations.filter((location) => location.isActive);
+    const locations = (state.locations || [])
+      .filter((location) => location.isActive)
+      .map((location) => ({
+        _id: location._id,
+        name: canonicalName(location.name),
+        address: normalizeName(location.address),
+        isActive: true,
+      }));
     return res.status(200).json({
       success: true,
       message: "Pickup locations retrieved successfully",
@@ -248,14 +305,8 @@ export const getPickupHierarchy = async (req, res, next) => {
     const countries = await PickupCountry.find({ isActive: true }).sort({ name: 1 }).lean();
     const sanitized = countries.map((country) => ({
       _id: country._id,
-      name: country.name,
-      states: (country.states || [])
-        .filter((state) => state.isActive)
-        .map((state) => ({
-          _id: state._id,
-          name: state.name,
-          locations: (state.locations || []).filter((location) => location.isActive),
-        })),
+      name: canonicalName(country.name),
+      states: mergeStatesByName(country.states || []),
     }));
 
     return res.status(200).json({
