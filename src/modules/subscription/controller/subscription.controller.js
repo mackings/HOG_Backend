@@ -5,6 +5,8 @@ import crypto from "crypto";
 import mongoose from "mongoose";
 import Stripe from "stripe";
 import Plan from "../model/plan.model.js";
+import Transactions from "../../transaction/model/transaction.model.js";
+import { sendSubscriptionEmail } from "../../../utils/emailService.utils.js";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" })
@@ -84,6 +86,67 @@ const resolvePlanForPayment = async ({ planId, plan, billTerm }) => {
 
   if (!selectedPlan) throw new Error("Subscription plan not found");
   return selectedPlan;
+};
+
+const finalizeSubscriptionOrder = async (order) => {
+  const existingTransaction = await Transactions.findOne({
+    paymentReference: order.paymentReference,
+  });
+
+  if (existingTransaction) {
+    const user = await User.findById(existingTransaction.userId).select(
+      "subscriptionPlan subscriptionStartDate subscriptionEndDate billTerm"
+    );
+    return {
+      alreadyProcessed: true,
+      transaction: existingTransaction,
+      user,
+    };
+  }
+
+  const transaction = await Transactions.create({
+    userId: order.userId,
+    cartItems: order.cartItems,
+    totalAmount: order.totalAmount,
+    paymentMethod: order.paymentMethod,
+    paymentReference: order.paymentReference,
+    deliveryAddress: order.deliveryAddress,
+    paymentStatus: "success",
+    subscriptionEndDate: order.subscriptionEndDate,
+    subscriptionStartDate: order.subscriptionStartDate,
+    plan: order.plan,
+    billTerm: order.billTerm,
+    paymentCurrency: order.amountPaidUSD > 0 ? "USD" : "NGN",
+    orderStatus: order.paymentStatus,
+    amountPaid: order.amountPaid,
+    vendorId: order.vendorId || null,
+    materialId: order.materialId || null,
+  });
+
+  const updatedUser = await User.findByIdAndUpdate(
+    order.userId,
+    {
+      $set: {
+        subscriptionPlan: String(order.plan || "").toLowerCase(),
+        subscriptionStartDate: order.subscriptionStartDate,
+        subscriptionEndDate: order.subscriptionEndDate,
+        billTerm: order.billTerm,
+      },
+    },
+    { new: true }
+  );
+
+  if (updatedUser) {
+    await sendSubscriptionEmail(updatedUser, order.totalAmount);
+  }
+
+  await InitializedOrder.findByIdAndDelete(order._id);
+
+  return {
+    alreadyProcessed: false,
+    transaction,
+    user: updatedUser,
+  };
 };
 
 export const subscriptionPayments = async (req, res, next) => {
@@ -245,6 +308,92 @@ export const subscriptionPayments = async (req, res, next) => {
     ) {
       return res.status(400).json({ success: false, message: error.message });
     }
+    next(error);
+  }
+};
+
+export const verifySubscriptionPayment = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const { paymentReference } = req.params;
+
+    if (!paymentReference) {
+      return res.status(400).json({ success: false, message: "paymentReference is required" });
+    }
+
+    const order = await InitializedOrder.findOne({ paymentReference });
+    if (!order) {
+      const existingTransaction = await Transactions.findOne({ paymentReference });
+      if (existingTransaction) {
+        return res.status(200).json({
+          success: true,
+          message: "Subscription already activated",
+          alreadyProcessed: true,
+          data: existingTransaction,
+        });
+      }
+      return res.status(404).json({ success: false, message: "Subscription payment not found" });
+    }
+
+    const isOwner = String(order.userId) === String(id);
+    const requester = await User.findById(id).select("role");
+    const isAdmin = ["admin", "superAdmin"].includes(requester?.role);
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to verify this subscription payment",
+      });
+    }
+
+    if (!["Standard", "Premium", "Enterprise"].includes(order.plan)) {
+      return res.status(400).json({
+        success: false,
+        message: "This reference is not a subscription payment",
+      });
+    }
+
+    if (order.paymentMethod === "Paystack") {
+      const verifyResponse = await axios.get(
+        `https://api.paystack.co/transaction/verify/${paymentReference}`,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.PAYSTACK_MAIN_KEY}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const paystackData = verifyResponse?.data?.data;
+      const paymentSuccessful = verifyResponse?.data?.status && paystackData?.status === "success";
+
+      if (!paymentSuccessful) {
+        return res.status(400).json({
+          success: false,
+          message: "Payment has not been confirmed as successful",
+          providerStatus: paystackData?.status || "unknown",
+        });
+      }
+    }
+
+    const finalized = await finalizeSubscriptionOrder(order);
+    return res.status(200).json({
+      success: true,
+      message: finalized.alreadyProcessed
+        ? "Subscription already activated"
+        : "Subscription activated successfully",
+      alreadyProcessed: finalized.alreadyProcessed,
+      data: finalized.transaction,
+      user: finalized.user
+        ? {
+            _id: finalized.user._id,
+            subscriptionPlan: finalized.user.subscriptionPlan,
+            subscriptionStartDate: finalized.user.subscriptionStartDate,
+            subscriptionEndDate: finalized.user.subscriptionEndDate,
+            billTerm: finalized.user.billTerm,
+          }
+        : null,
+    });
+  } catch (error) {
     next(error);
   }
 };

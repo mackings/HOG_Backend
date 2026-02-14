@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { subscriptionPayments, createSubscriptionPlan, getSubscriptionPlans, getSubscriptionPlan, 
-    updateSubscriptionPlan, deleteSubscriptionPlan } from '../controller/subscription.controller.js';
+    updateSubscriptionPlan, deleteSubscriptionPlan, verifySubscriptionPayment } from '../controller/subscription.controller.js';
 import { isAuth } from '../../../middlewares/auth.middleware.js';
 import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
 
@@ -17,6 +17,7 @@ router.post("/subscriptionPayments", subscriptionPayments);
 router.use(userCheckRole(["tailor", "admin", "superAdmin"]));
 router.get("/getSubscriptionPlans", getSubscriptionPlans);
 router.get("/getSubscriptionPlan/:id", getSubscriptionPlan);
+router.get("/verifySubscriptionPayment/:paymentReference", verifySubscriptionPayment);
 
 // Admin management endpoints
 router.use(userCheckRole(["admin", "superAdmin"]));

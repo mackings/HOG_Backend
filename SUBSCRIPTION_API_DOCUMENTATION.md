@@ -3,6 +3,57 @@
 Base URL: `https://<your-domain>/api/v1`  
 Auth Header: `Authorization: Bearer <token>`
 
+## Quick Call Instructions
+
+Use these defaults for every request:
+
+- Header: `Authorization: Bearer <JWT_TOKEN>`
+- Header: `Content-Type: application/json`
+- Base URL example: `https://hog-fyic.onrender.com/api/v1`
+
+### Step A: Admin creates plan (once)
+```bash
+curl -X POST "https://hog-fyic.onrender.com/api/v1/subscription/createSubscriptionPlan" \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Premium",
+    "amount": 50000,
+    "duration": "monthly",
+    "description": "Premium monthly plan"
+  }'
+```
+
+### Step B: Tailor fetches plans
+```bash
+curl -X GET "https://hog-fyic.onrender.com/api/v1/subscription/getSubscriptionPlans" \
+  -H "Authorization: Bearer <TAILOR_TOKEN>"
+```
+
+### Step C: Tailor initializes payment using `planId` (recommended)
+```bash
+curl -X POST "https://hog-fyic.onrender.com/api/v1/subscription/subscriptionPayments" \
+  -H "Authorization: Bearer <TAILOR_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "planId": "<PLAN_ID_FROM_STEP_B>"
+  }'
+```
+
+What to do with response:
+- `provider=paystack`: open `authorizationUrl`.
+- `provider=stripe`: open `checkoutUrl`.
+
+### Step D: Confirm activation in app
+After successful payment redirect/webhook, refresh user profile:
+- expect `subscriptionPlan`, `subscriptionStartDate`, `subscriptionEndDate`, `billTerm` to be updated.
+
+If webhook delay occurs, call manual verify endpoint:
+```bash
+curl -X GET "https://hog-fyic.onrender.com/api/v1/subscription/verifySubscriptionPayment/<PAYMENT_REFERENCE>" \
+  -H "Authorization: Bearer <TAILOR_TOKEN>"
+```
+
 ## Overview
 
 - Admins/SuperAdmins manage subscription plans.
@@ -202,6 +253,9 @@ On successful payment:
 Optional verification endpoint (Stripe):
 - `GET /stripe/verify-payment/:paymentReference`
 
+Manual subscription verification endpoint (Paystack/Stripe subscription refs):
+- `GET /subscription/verifySubscriptionPayment/:paymentReference`
+
 ## 5) Mobile Integration Flow
 
 1. Fetch plans:
@@ -219,6 +273,20 @@ Optional verification endpoint (Stripe):
 
 5. After success redirect/webhook:
 - Refresh user profile from app user API to reflect active subscription.
+
+6. If profile not updated within a short time (webhook delay):
+- Call `GET /subscription/verifySubscriptionPayment/:paymentReference`
+- Then refresh profile again.
+
+## 5.1 Flutter Integration Notes
+
+- Always send JWT token in `Authorization` header.
+- For payment initialization, send either:
+  - `{"planId":"..."}` (recommended), or
+  - `{"plan":"Premium","billTerm":"monthly"}`
+- Do **not** send amount from app; backend computes and secures amount from DB.
+- If request fails with role error, confirm logged-in account role is `tailor` for subscription payment.
+- If request fails with plan errors, fetch plans again and use current `_id`.
 
 ## 6) Error Examples
 
@@ -242,5 +310,20 @@ Plan not found:
 {
   "success": false,
   "message": "Subscription plan not found"
+}
+```
+
+Invalid role for payment endpoint:
+```json
+{
+  "message": "You are not authorized as user to perform this operation"
+}
+```
+
+Invalid body for payment endpoint:
+```json
+{
+  "success": false,
+  "message": "Provide a valid plan and billing term, or use planId"
 }
 ```

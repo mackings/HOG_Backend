@@ -25,7 +25,7 @@ export const createTracking = async (req, res, next) => {
     }
 
     if(material.isDelivered == true ){
-        return res.status(401).json({
+        return res.status(409).json({
         success: false,
         message: "Cloth material has been delivered to the owner, thanks you",
       });
@@ -33,10 +33,12 @@ export const createTracking = async (req, res, next) => {
 
     const existingTracking = await Tracking.findOne({materialId: material._id});
     if(existingTracking){
-      return res.status(401).json({
-        success: false,
-        message: "Tracking has been created for this cloth material for dispatch or delivery"
-    });
+      return res.status(200).json({
+        success: true,
+        message: "Tracking already exists for this cloth material for dispatch or delivery",
+        data: existingTracking,
+        alreadyExists: true,
+      });
    }
 
     let trackingNumber;
