@@ -231,7 +231,11 @@ export const updateMaterialThroughTracking = async (req, res, next) => {
         new: true
     });
 
-    await Tracking.findByIdAndUpdate(track._id, { isDelivered: true}, { new: true });
+    await Tracking.findByIdAndUpdate(
+      track._id,
+      { isDelivered: true, status: "delivered" },
+      { new: true }
+    );
 
     return res.status(200).json({
       success: true,

@@ -563,7 +563,7 @@ export const acceptOrder = async (req, res, next) => {
     // Mark order delivered
     await Tracking.findByIdAndUpdate(
       track._id,
-      { isDelivered: true },
+      { isDelivered: true, status: "delivered" },
       { new: true }
     );
 
