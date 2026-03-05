@@ -88,6 +88,47 @@ const reviewSchema = new mongoose.Schema({
     finalTotalCostUSD: {
         type: Number,
     },
+    // Preserve the tailor's submitted quote (base amounts before tax/commission)
+    quotationMaterialCost: {
+        type: Number,
+    },
+    quotationWorkmanshipCost: {
+        type: Number,
+    },
+    quotationTotalCost: {
+        type: Number,
+    },
+    quotationMaterialCostUSD: {
+        type: Number,
+    },
+    quotationWorkmanshipCostUSD: {
+        type: Number,
+    },
+    quotationTotalCostUSD: {
+        type: Number,
+    },
+    // Payout amounts resolved at mutual consent:
+    // payoutBaseAmount = min(quotationTotalCost, agreed offer total)
+    // payoutCommissionAmount = payoutBaseAmount * vatRate
+    // payoutNetAmount = payoutBaseAmount - payoutCommissionAmount
+    payoutBaseAmount: {
+        type: Number,
+    },
+    payoutCommissionAmount: {
+        type: Number,
+    },
+    payoutNetAmount: {
+        type: Number,
+    },
+    payoutBaseAmountUSD: {
+        type: Number,
+    },
+    payoutCommissionAmountUSD: {
+        type: Number,
+    },
+    payoutNetAmountUSD: {
+        type: Number,
+    },
     
     exchangeRate: {
         type: Number,

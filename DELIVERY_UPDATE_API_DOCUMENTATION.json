@@ -1,0 +1,134 @@
+{
+  "title": "HOG Fashion - Delivery Update API Documentation",
+  "version": "1.0",
+  "lastUpdated": "2026-02-14",
+  "baseUrl": "https://hog-fyic.onrender.com/api/v1",
+  "auth": {
+    "type": "Bearer Token",
+    "header": "Authorization: Bearer <token>"
+  },
+  "overview": {
+    "description": "Endpoints used to mark a tracked item as delivered. Delivery update now sets both isDelivered=true and status='delivered' on tracking records.",
+    "deliveryStateAfterUpdate": {
+      "tracking": {
+        "isDelivered": true,
+        "status": "delivered"
+      },
+      "material": {
+        "isDelivered": true
+      }
+    }
+  },
+  "endpoints": [
+    {
+      "name": "Update Material Through Tracking",
+      "method": "PUT",
+      "path": "/tracking/updateMaterialThroughTracking",
+      "roles": ["tailor", "user"],
+      "query": {
+        "trackingNumber": "required"
+      },
+      "headers": {
+        "Authorization": "Bearer <token>"
+      },
+      "curlExample": "curl -X PUT \"https://hog-fyic.onrender.com/api/v1/tracking/updateMaterialThroughTracking?trackingNumber=123456\" -H \"Authorization: Bearer <TOKEN>\"",
+      "successResponse": {
+        "statusCode": 200,
+        "body": {
+          "success": true,
+          "message": "Material successfully marked as delivered",
+          "data": {
+            "_id": "697f8d3035edad30be631d37",
+            "userId": "697f8a9f35edad30be631d10",
+            "attireType": "Agbada",
+            "clothMaterial": "Senator",
+            "color": "Black",
+            "isDelivered": true,
+            "updatedAt": "2026-02-14T11:40:12.000Z"
+          }
+        }
+      },
+      "errorResponses": [
+        {
+          "statusCode": 400,
+          "body": {
+            "success": false,
+            "message": "Tracking number is required"
+          }
+        },
+        {
+          "statusCode": 403,
+          "body": {
+            "success": false,
+            "message": "Unauthorized: You are not the owner of this material"
+          }
+        },
+        {
+          "statusCode": 404,
+          "body": {
+            "success": false,
+            "message": "Invalid tracking number"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Accept Order (Buyer Flow)",
+      "method": "PUT",
+      "path": "/buyer/acceptOrder",
+      "roles": ["admin", "tailor", "user"],
+      "query": {
+        "trackingNumber": "required"
+      },
+      "headers": {
+        "Authorization": "Bearer <token>"
+      },
+      "curlExample": "curl -X PUT \"https://hog-fyic.onrender.com/api/v1/buyer/acceptOrder?trackingNumber=123456\" -H \"Authorization: Bearer <TOKEN>\"",
+      "successResponse": {
+        "statusCode": 200,
+        "body": {
+          "success": true,
+          "message": "Order accepted and processed successfully",
+          "data": {
+            "trackingNumber": 123456,
+            "grossAmount": 50000
+          }
+        }
+      },
+      "notes": [
+        "This endpoint also updates tracking to isDelivered=true and status='delivered'.",
+        "It credits admin/vendor wallets based on fee configuration before completing delivery acceptance."
+      ],
+      "errorResponses": [
+        {
+          "statusCode": 400,
+          "body": {
+            "success": false,
+            "message": "Tracking number is required"
+          }
+        },
+        {
+          "statusCode": 404,
+          "body": {
+            "success": false,
+            "message": "Tracking record not found"
+          }
+        },
+        {
+          "statusCode": 404,
+          "body": {
+            "success": false,
+            "message": "This order has been accepted and collected already by you, John Doe."
+          }
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "recommendation": "After calling either delivery endpoint, fetch tracking record to confirm status and delivery flag.",
+    "expectedTrackingFields": {
+      "status": "delivered",
+      "isDelivered": true
+    }
+  }
+}

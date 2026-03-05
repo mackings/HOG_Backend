@@ -96,6 +96,23 @@ const transformOfferForViewer = (offer, viewerType, totalRate) => {
   return { ...offer, chats };
 };
 
+const buildPayoutBreakdown = (review, agreedBase) => {
+  if (!review) return null;
+  const quotationBase = Number(review.quotationTotalCost ?? review.subTotalCost ?? 0);
+  const safeAgreedBase = Number(agreedBase ?? review.finalTotalCost ?? review.subTotalCost ?? 0);
+  const payoutBaseUsed = Number(review.payoutBaseAmount ?? Math.min(quotationBase, safeAgreedBase));
+  const commissionDeducted = Number(review.payoutCommissionAmount ?? 0);
+  const designerNetCredit = Number(review.payoutNetAmount ?? Math.max(0, payoutBaseUsed - commissionDeducted));
+
+  return {
+    quotationBase,
+    agreedBase: safeAgreedBase,
+    payoutBaseUsed,
+    commissionDeducted,
+    designerNetCredit,
+  };
+};
+
 
 
 export const createMakeOffer = async (req, res, next) => {
@@ -466,6 +483,7 @@ export const vendorReplyOffer = async (req, res, next) => {
 
     await offer.save();
 
+    let payoutBreakdown = null;
     // 🔥 UPDATE REVIEW WHEN MUTUAL CONSENT IS ACHIEVED
     if (offer.mutualConsentAchieved && offer.reviewId) {
       console.log(`\n💰 MUTUAL CONSENT ACHIEVED - Updating Review ${offer.reviewId}`);
@@ -475,11 +493,20 @@ export const vendorReplyOffer = async (req, res, next) => {
       
       if (review) {
         const { quotationTaxPercent, vatRate, vatPercent } = await getPricingRates();
+        const quotationTotalBeforeNegotiation = Number(
+          review.quotationTotalCost ?? review.subTotalCost ?? 0
+        );
         // At mutual consent, apply only VAT on agreed base amount
         const subTotalCost = baseMaterialCost + baseWorkmanshipCost;
         const vat = vatRate * subTotalCost;
         const tax = 0;
         const commission = vat;
+        const payoutBaseAmount = Math.min(
+          Math.max(0, quotationTotalBeforeNegotiation),
+          Math.max(0, subTotalCost)
+        );
+        const payoutCommissionAmount = vatRate * payoutBaseAmount;
+        const payoutNetAmount = Math.max(0, payoutBaseAmount - payoutCommissionAmount);
         
         const computedTotalCost = subTotalCost + tax + commission;
         const newTotalCost = computedTotalCost;
@@ -500,6 +527,9 @@ export const vendorReplyOffer = async (req, res, next) => {
           finalMaterialCost: baseMaterialCost,
           finalWorkmanshipCost: baseWorkmanshipCost,
           finalTotalCost: baseTotalCost,
+          payoutBaseAmount: payoutBaseAmount,
+          payoutCommissionAmount: payoutCommissionAmount,
+          payoutNetAmount: payoutNetAmount,
           // Expose both vendor base and user payable totals for the frontend
           vendorBaseTotal: baseTotalCost,
           userPayableTotal: newTotalCost,
@@ -511,6 +541,9 @@ export const vendorReplyOffer = async (req, res, next) => {
         console.log(`   Quotation Tax (${quotationTaxPercent}%): already applied at quote stage`);
         console.log(`   VAT on Agreement (${vatPercent}%): ₦${vat.toFixed(2)}`);
         console.log(`   Final Payable = Base + VAT ${vatPercent}%`);
+        console.log(`   Payout Base = min(Quote, Agreed): ₦${payoutBaseAmount.toFixed(2)}`);
+        console.log(`   Payout Commission (${vatPercent}%): ₦${payoutCommissionAmount.toFixed(2)}`);
+        console.log(`   Payout Net to Designer: ₦${payoutNetAmount.toFixed(2)}`);
         console.log(`   User Payable (NGN): ₦${newTotalCost.toFixed(2)}`);
 
         // If international vendor, calculate USD amounts
@@ -519,6 +552,9 @@ export const vendorReplyOffer = async (req, res, next) => {
           const taxUSD = 0;
           const commissionUSD = Math.round(commission / exchangeRate * 100) / 100;
           const totalCostUSD = Math.round(newTotalCost / exchangeRate * 100) / 100;
+          const payoutBaseAmountUSD = Math.round(payoutBaseAmount / exchangeRate * 100) / 100;
+          const payoutCommissionAmountUSD = Math.round(payoutCommissionAmount / exchangeRate * 100) / 100;
+          const payoutNetAmountUSD = Math.round(payoutNetAmount / exchangeRate * 100) / 100;
 
           updateData.materialTotalCostUSD = baseMaterialCostUSD;
           updateData.workmanshipTotalCostUSD = baseWorkmanshipCostUSD;
@@ -533,17 +569,21 @@ export const vendorReplyOffer = async (req, res, next) => {
           updateData.finalTotalCostUSD = baseTotalCostUSD;
           updateData.vendorBaseTotalUSD = baseTotalCostUSD;
           updateData.userPayableTotalUSD = totalCostUSD;
+          updateData.payoutBaseAmountUSD = payoutBaseAmountUSD;
+          updateData.payoutCommissionAmountUSD = payoutCommissionAmountUSD;
+          updateData.payoutNetAmountUSD = payoutNetAmountUSD;
 
           console.log(`   Negotiated Amount (USD): $${subTotalCostUSD}`);
           console.log(`   Vendor Base (USD): $${baseTotalCostUSD}`);
           console.log(`   Exchange Rate: 1 USD = ₦${exchangeRate}`);
         }
 
-        await Review.findByIdAndUpdate(
+        const updatedReview = await Review.findByIdAndUpdate(
           offer.reviewId,
           { $set: updateData },
           { new: true }
         );
+        payoutBreakdown = buildPayoutBreakdown(updatedReview, baseTotalCost);
 
         console.log(`✅ Review updated successfully with negotiated amounts`);
       }
@@ -566,6 +606,7 @@ export const vendorReplyOffer = async (req, res, next) => {
       mutualConsentAchieved: offer.mutualConsentAchieved,
       buyerConsent: offer.buyerConsent,
       vendorConsent: offer.vendorConsent,
+      payoutBreakdown,
     });
   } catch (error) {
     next(error);
@@ -766,6 +807,7 @@ export const buyerReplyToOffer = async (req, res, next) => {
 
     await offer.save();
 
+    let payoutBreakdown = null;
     // 🔥 UPDATE REVIEW WHEN MUTUAL CONSENT IS ACHIEVED
     if (offer.mutualConsentAchieved && offer.reviewId) {
       console.log(`\n💰 MUTUAL CONSENT ACHIEVED - Updating Review ${offer.reviewId}`);
@@ -775,11 +817,20 @@ export const buyerReplyToOffer = async (req, res, next) => {
       
       if (review) {
         const { quotationTaxPercent, vatRate, vatPercent } = await getPricingRates();
+        const quotationTotalBeforeNegotiation = Number(
+          review.quotationTotalCost ?? review.subTotalCost ?? 0
+        );
         // At mutual consent, apply only VAT on agreed base amount
         const subTotalCost = baseMaterialCost + baseWorkmanshipCost;
         const vat = vatRate * subTotalCost;
         const tax = 0;
         const commission = vat;
+        const payoutBaseAmount = Math.min(
+          Math.max(0, quotationTotalBeforeNegotiation),
+          Math.max(0, subTotalCost)
+        );
+        const payoutCommissionAmount = vatRate * payoutBaseAmount;
+        const payoutNetAmount = Math.max(0, payoutBaseAmount - payoutCommissionAmount);
         
         const computedTotalCost = subTotalCost + tax + commission;
         const newTotalCost = computedTotalCost;
@@ -800,6 +851,9 @@ export const buyerReplyToOffer = async (req, res, next) => {
           finalMaterialCost: baseMaterialCost,
           finalWorkmanshipCost: baseWorkmanshipCost,
           finalTotalCost: baseTotalCost,
+          payoutBaseAmount: payoutBaseAmount,
+          payoutCommissionAmount: payoutCommissionAmount,
+          payoutNetAmount: payoutNetAmount,
           // Expose both vendor base and user payable totals for the frontend
           vendorBaseTotal: baseTotalCost,
           userPayableTotal: newTotalCost,
@@ -811,6 +865,9 @@ export const buyerReplyToOffer = async (req, res, next) => {
         console.log(`   Quotation Tax (${quotationTaxPercent}%): already applied at quote stage`);
         console.log(`   VAT on Agreement (${vatPercent}%): ₦${vat.toFixed(2)}`);
         console.log(`   Final Payable = Base + VAT ${vatPercent}%`);
+        console.log(`   Payout Base = min(Quote, Agreed): ₦${payoutBaseAmount.toFixed(2)}`);
+        console.log(`   Payout Commission (${vatPercent}%): ₦${payoutCommissionAmount.toFixed(2)}`);
+        console.log(`   Payout Net to Designer: ₦${payoutNetAmount.toFixed(2)}`);
         console.log(`   User Payable (NGN): ₦${newTotalCost.toFixed(2)}`);
 
         // If international vendor, calculate USD amounts
@@ -819,6 +876,9 @@ export const buyerReplyToOffer = async (req, res, next) => {
           const taxUSD = 0;
           const commissionUSD = Math.round(commission / exchangeRate * 100) / 100;
           const totalCostUSD = Math.round(newTotalCost / exchangeRate * 100) / 100;
+          const payoutBaseAmountUSD = Math.round(payoutBaseAmount / exchangeRate * 100) / 100;
+          const payoutCommissionAmountUSD = Math.round(payoutCommissionAmount / exchangeRate * 100) / 100;
+          const payoutNetAmountUSD = Math.round(payoutNetAmount / exchangeRate * 100) / 100;
 
           updateData.materialTotalCostUSD = baseMaterialCostUSD;
           updateData.workmanshipTotalCostUSD = baseWorkmanshipCostUSD;
@@ -833,17 +893,21 @@ export const buyerReplyToOffer = async (req, res, next) => {
           updateData.finalTotalCostUSD = baseTotalCostUSD;
           updateData.vendorBaseTotalUSD = baseTotalCostUSD;
           updateData.userPayableTotalUSD = totalCostUSD;
+          updateData.payoutBaseAmountUSD = payoutBaseAmountUSD;
+          updateData.payoutCommissionAmountUSD = payoutCommissionAmountUSD;
+          updateData.payoutNetAmountUSD = payoutNetAmountUSD;
 
           console.log(`   Negotiated Amount (USD): $${subTotalCostUSD}`);
           console.log(`   Vendor Base (USD): $${baseTotalCostUSD}`);
           console.log(`   Exchange Rate: 1 USD = ₦${exchangeRate}`);
         }
 
-        await Review.findByIdAndUpdate(
+        const updatedReview = await Review.findByIdAndUpdate(
           offer.reviewId,
           { $set: updateData },
           { new: true }
         );
+        payoutBreakdown = buildPayoutBreakdown(updatedReview, baseTotalCost);
 
         console.log(`✅ Review updated successfully with negotiated amounts`);
       }
@@ -866,6 +930,7 @@ export const buyerReplyToOffer = async (req, res, next) => {
       mutualConsentAchieved: offer.mutualConsentAchieved,
       buyerConsent: offer.buyerConsent,
       vendorConsent: offer.vendorConsent,
+      payoutBreakdown,
     });
   } catch (error) {
     next(error);

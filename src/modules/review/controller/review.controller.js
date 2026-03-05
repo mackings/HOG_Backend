@@ -165,6 +165,9 @@ export const createReview = async (req, res, next) => {
       tax,
       subTotalCost,
       commission,
+      quotationMaterialCost: materialCost,
+      quotationWorkmanshipCost: workmanshipCost,
+      quotationTotalCost: subTotalCost,
       deliveryDate,
       reminderDate,
       comment,
@@ -175,6 +178,9 @@ export const createReview = async (req, res, next) => {
       subTotalCostUSD: subTotalCostUSD,
       totalCostUSD: totalCostUSD,
       amountToPayUSD: totalCostUSD,
+      quotationMaterialCostUSD: materialCostUSD,
+      quotationWorkmanshipCostUSD: workmanshipCostUSD,
+      quotationTotalCostUSD: subTotalCostUSD,
       exchangeRate: exchangeRate,
       isInternationalVendor: isInternationalTailor,
     };
@@ -429,15 +435,18 @@ export const updateReview = async (req, res, next) => {
     // Update numeric fields safely
     if (materialTotalCost !== undefined) {
       review.materialTotalCost = Number(materialTotalCost) || 0;
+      review.quotationMaterialCost = Number(materialTotalCost) || 0;
     }
     if (workmanshipTotalCost !== undefined) {
       review.workmanshipTotalCost = Number(workmanshipTotalCost) || 0;
+      review.quotationWorkmanshipCost = Number(workmanshipTotalCost) || 0;
     }
     if(tax !== undefined) {
       review.tax = Number(tax) || 0;
     }
     if(subTotalCost !== undefined) {
       review.subTotalCost = Number(subTotalCost) || 0;
+      review.quotationTotalCost = Number(subTotalCost) || 0;
     }
 
     if(commission !== undefined) {

@@ -11,6 +11,7 @@ import crypto from "crypto"
 import mongoose from "mongoose";
 import Review from '../../review/model/review.model.js';
 import Tracking from '../../tracking/model/tracking.model.js';
+import { getPricingRates } from '../../../utils/pricingConfig.utils.js';
 
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -71,6 +72,27 @@ const geocodeWithFallback = async (address) => {
   }
 
   return null;
+};
+
+const buildPayoutBreakdown = (review) => {
+  if (!review) return null;
+  const quotationBase = Number(review.quotationTotalCost ?? review.subTotalCost ?? 0);
+  const agreedBase = Number(review.finalTotalCost ?? review.subTotalCost ?? 0);
+  const payoutBaseUsed = Number(review.payoutBaseAmount ?? Math.min(quotationBase, agreedBase));
+  const commissionDeducted = Number(
+    review.payoutCommissionAmount ?? review.commission ?? 0
+  );
+  const designerNetCredit = Number(
+    review.payoutNetAmount ?? Math.max(0, payoutBaseUsed - commissionDeducted)
+  );
+
+  return {
+    quotationBase,
+    agreedBase,
+    payoutBaseUsed,
+    commissionDeducted,
+    designerNetCredit,
+  };
 };
 
 
@@ -402,6 +424,7 @@ export const createPaymentOnline = async (req, res, next) => {
     // Negotiation is optional - users can pay without negotiating
     // If they negotiated and achieved mutual consent, use those amounts
     // Otherwise, use the original quote amounts
+    const payoutBreakdown = buildPayoutBreakdown(review);
 
     // Validate material
     const material = await Material.findOne({ _id: review.materialId });
@@ -549,6 +572,7 @@ export const createPaymentOnline = async (req, res, next) => {
           total: totalCost,
           deliveryMethod: method,
         },
+        payoutBreakdown,
       });
     }
 
@@ -661,6 +685,7 @@ export const createPartPaymentOnline = async (req, res, next) => {
     );
     
     if (paystackResponse.status === 200) {
+      const payoutBreakdown = buildPayoutBreakdown(review);
       return res.status(201).json({
         success: true,
         message: "Payment initialized successfully",
@@ -673,6 +698,7 @@ export const createPartPaymentOnline = async (req, res, next) => {
           total: order.amountPaid,
           deliveryMethod: "part payment",
         },
+        payoutBreakdown,
       });  
     }else {
       await InitializedOrder.findByIdAndDelete(order._id);  
@@ -793,6 +819,7 @@ export const orderWebhook = async (req, res, next) => {
       });
     }
 
+    let payoutBreakdown = null;
     // ✅ If it's a vendor/material purchase
     if (order.vendorId && order.materialId) {
       const [user, vendor, material, review] = await Promise.all([
@@ -809,11 +836,46 @@ export const orderWebhook = async (req, res, next) => {
         const newAmountToPay = order.paymentStatus === "full payment"
           ? 0
           : Math.max(0, review.totalCost - newAmountPaid);
-
-        const platformFee = (review.tax || 0) + (review.commission || 0);
-        const vendorCredit = order.paymentStatus === "full payment"
+        const isAcceptedOfferFlow = Boolean(review?.hasAcceptedOffer && review?.acceptedOfferId);
+        let platformFee = (review.tax || 0) + (review.commission || 0);
+        let vendorCredit = order.paymentStatus === "full payment"
           ? Math.max(0, deltaPaid - platformFee)
           : deltaPaid;
+
+        // For mutually-consented offers, pay vendor based on:
+        // min(quotation amount, agreed offer amount) - company commission
+        if (order.paymentStatus === "full payment" && isAcceptedOfferFlow) {
+          const { vatRate } = await getPricingRates();
+          const quotationBase = Number(review.quotationTotalCost ?? review.subTotalCost ?? 0);
+          const agreedBase = Number(review.finalTotalCost ?? review.subTotalCost ?? 0);
+          const payoutBase = Number.isFinite(Number(review.payoutBaseAmount))
+            ? Number(review.payoutBaseAmount)
+            : Math.min(Math.max(0, quotationBase), Math.max(0, agreedBase));
+          const payoutCommission = Number.isFinite(Number(review.payoutCommissionAmount))
+            ? Number(review.payoutCommissionAmount)
+            : payoutBase * vatRate;
+          const payoutNet = Number.isFinite(Number(review.payoutNetAmount))
+            ? Number(review.payoutNetAmount)
+            : Math.max(0, payoutBase - payoutCommission);
+
+          platformFee = Math.max(0, payoutCommission);
+          vendorCredit = Math.max(0, payoutNet);
+        }
+        payoutBreakdown = {
+          quotationBase: Number(review.quotationTotalCost ?? review.subTotalCost ?? 0),
+          agreedBase: Number(review.finalTotalCost ?? review.subTotalCost ?? 0),
+          payoutBaseUsed: isAcceptedOfferFlow
+            ? Number(
+              review.payoutBaseAmount ??
+              Math.min(
+                Number(review.quotationTotalCost ?? review.subTotalCost ?? 0),
+                Number(review.finalTotalCost ?? review.subTotalCost ?? 0)
+              )
+            )
+            : Number(review.subTotalCost ?? 0),
+          commissionDeducted: Number(platformFee || 0),
+          designerNetCredit: Number(vendorCredit || 0),
+        };
 
         // Credit vendor wallet (net on full payment)
         await User.findByIdAndUpdate(
@@ -837,13 +899,15 @@ export const orderWebhook = async (req, res, next) => {
 
         // Credit platform commission (only on full payment)
         if (order.paymentStatus === "full payment") {
+          const adminTax = isAcceptedOfferFlow ? 0 : (review.tax || 0);
+          const adminCommission = isAcceptedOfferFlow ? platformFee : (review.commission || 0);
           await User.updateMany(
             { role: { $in: ["admin", "superAdmin"] } },
             {
               $inc: {
                 wallet: platformFee,
-                commission: review.commission,
-                tax: review.tax
+                commission: adminCommission,
+                tax: adminTax
               }
             }
           );
@@ -887,6 +951,7 @@ export const orderWebhook = async (req, res, next) => {
       success: true,
       message: "Payment successful",
       order: transaction,
+      payoutBreakdown,
     });
   }
   } catch (error) {
