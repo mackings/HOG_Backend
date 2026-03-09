@@ -100,7 +100,10 @@ const buildPayoutBreakdown = (review, agreedBase) => {
   if (!review) return null;
   const quotationBase = Number(review.quotationTotalCost ?? review.subTotalCost ?? 0);
   const safeAgreedBase = Number(agreedBase ?? review.finalTotalCost ?? review.subTotalCost ?? 0);
-  const payoutBaseUsed = Number(review.payoutBaseAmount ?? Math.min(quotationBase, safeAgreedBase));
+  const payoutBaseUsed = Number(
+    review.payoutBaseAmount ??
+      (Number.isFinite(safeAgreedBase) && safeAgreedBase > 0 ? safeAgreedBase : quotationBase)
+  );
   const commissionDeducted = Number(review.payoutCommissionAmount ?? 0);
   const designerNetCredit = Number(review.payoutNetAmount ?? Math.max(0, payoutBaseUsed - commissionDeducted));
 
@@ -493,18 +496,12 @@ export const vendorReplyOffer = async (req, res, next) => {
       
       if (review) {
         const { quotationTaxPercent, vatRate, vatPercent } = await getPricingRates();
-        const quotationTotalBeforeNegotiation = Number(
-          review.quotationTotalCost ?? review.subTotalCost ?? 0
-        );
         // At mutual consent, apply only VAT on agreed base amount
         const subTotalCost = baseMaterialCost + baseWorkmanshipCost;
         const vat = vatRate * subTotalCost;
         const tax = 0;
         const commission = vat;
-        const payoutBaseAmount = Math.min(
-          Math.max(0, quotationTotalBeforeNegotiation),
-          Math.max(0, subTotalCost)
-        );
+        const payoutBaseAmount = Math.max(0, subTotalCost);
         const payoutCommissionAmount = vatRate * payoutBaseAmount;
         const payoutNetAmount = Math.max(0, payoutBaseAmount - payoutCommissionAmount);
         
@@ -817,18 +814,12 @@ export const buyerReplyToOffer = async (req, res, next) => {
       
       if (review) {
         const { quotationTaxPercent, vatRate, vatPercent } = await getPricingRates();
-        const quotationTotalBeforeNegotiation = Number(
-          review.quotationTotalCost ?? review.subTotalCost ?? 0
-        );
         // At mutual consent, apply only VAT on agreed base amount
         const subTotalCost = baseMaterialCost + baseWorkmanshipCost;
         const vat = vatRate * subTotalCost;
         const tax = 0;
         const commission = vat;
-        const payoutBaseAmount = Math.min(
-          Math.max(0, quotationTotalBeforeNegotiation),
-          Math.max(0, subTotalCost)
-        );
+        const payoutBaseAmount = Math.max(0, subTotalCost);
         const payoutCommissionAmount = vatRate * payoutBaseAmount;
         const payoutNetAmount = Math.max(0, payoutBaseAmount - payoutCommissionAmount);
         
