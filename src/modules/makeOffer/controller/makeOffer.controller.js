@@ -102,7 +102,7 @@ const buildPayoutBreakdown = (review, agreedBase) => {
   const safeAgreedBase = Number(agreedBase ?? review.finalTotalCost ?? review.subTotalCost ?? 0);
   const payoutBaseUsed = Number(
     review.payoutBaseAmount ??
-      (Number.isFinite(safeAgreedBase) && safeAgreedBase > 0 ? safeAgreedBase : quotationBase)
+      Math.min(Math.max(0, quotationBase), Math.max(0, safeAgreedBase))
   );
   const commissionDeducted = Number(review.payoutCommissionAmount ?? 0);
   const designerNetCredit = Number(review.payoutNetAmount ?? Math.max(0, payoutBaseUsed - commissionDeducted));
@@ -501,7 +501,10 @@ export const vendorReplyOffer = async (req, res, next) => {
         const vat = vatRate * subTotalCost;
         const tax = 0;
         const commission = vat;
-        const payoutBaseAmount = Math.max(0, subTotalCost);
+        const payoutBaseAmount = Math.min(
+          Math.max(0, Number(review.quotationTotalCost ?? review.subTotalCost ?? 0)),
+          Math.max(0, subTotalCost)
+        );
         const payoutCommissionAmount = vatRate * payoutBaseAmount;
         const payoutNetAmount = Math.max(0, payoutBaseAmount - payoutCommissionAmount);
         
@@ -819,7 +822,10 @@ export const buyerReplyToOffer = async (req, res, next) => {
         const vat = vatRate * subTotalCost;
         const tax = 0;
         const commission = vat;
-        const payoutBaseAmount = Math.max(0, subTotalCost);
+        const payoutBaseAmount = Math.min(
+          Math.max(0, Number(review.quotationTotalCost ?? review.subTotalCost ?? 0)),
+          Math.max(0, subTotalCost)
+        );
         const payoutCommissionAmount = vatRate * payoutBaseAmount;
         const payoutNetAmount = Math.max(0, payoutBaseAmount - payoutCommissionAmount);
         

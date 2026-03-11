@@ -108,7 +108,7 @@ const reviewSchema = new mongoose.Schema({
         type: Number,
     },
     // Payout amounts resolved at payment time:
-    // payoutBaseAmount = accepted offer total when negotiated, otherwise the submitted quote total
+    // payoutBaseAmount = the lower of the submitted quote total and accepted offer total
     // payoutCommissionAmount = payoutBaseAmount * vatRate
     // payoutNetAmount = payoutBaseAmount - payoutCommissionAmount
     payoutBaseAmount: {

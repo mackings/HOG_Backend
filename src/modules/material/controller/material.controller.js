@@ -80,7 +80,7 @@ const buildPayoutBreakdown = (review) => {
   const agreedBase = Number(review.finalTotalCost ?? review.subTotalCost ?? 0);
   const payoutBaseUsed = Number(
     review.payoutBaseAmount ??
-      (Number.isFinite(agreedBase) && agreedBase > 0 ? agreedBase : quotationBase)
+      Math.min(Math.max(0, quotationBase), Math.max(0, agreedBase))
   );
   const commissionDeducted = Number(
     review.payoutCommissionAmount ?? review.commission ?? 0
@@ -846,14 +846,14 @@ export const orderWebhook = async (req, res, next) => {
           : deltaPaid;
 
         // For mutually-consented offers, pay vendor based on:
-        // agreed offer amount - company commission
+        // the lower of the submitted quote and agreed offer amount, minus company commission
         if (order.paymentStatus === "full payment" && isAcceptedOfferFlow) {
           const { vatRate } = await getPricingRates();
           const quotationBase = Number(review.quotationTotalCost ?? review.subTotalCost ?? 0);
           const agreedBase = Number(review.finalTotalCost ?? review.subTotalCost ?? 0);
           const payoutBase = Number.isFinite(Number(review.payoutBaseAmount))
             ? Number(review.payoutBaseAmount)
-            : (Math.max(0, agreedBase) || Math.max(0, quotationBase));
+            : Math.min(Math.max(0, quotationBase), Math.max(0, agreedBase));
           const payoutCommission = Number.isFinite(Number(review.payoutCommissionAmount))
             ? Number(review.payoutCommissionAmount)
             : payoutBase * vatRate;
@@ -870,8 +870,10 @@ export const orderWebhook = async (req, res, next) => {
           payoutBaseUsed: isAcceptedOfferFlow
             ? Number(
               review.payoutBaseAmount ??
-              (Math.max(0, Number(review.finalTotalCost ?? review.subTotalCost ?? 0)) ||
-                Math.max(0, Number(review.quotationTotalCost ?? review.subTotalCost ?? 0)))
+              Math.min(
+                Math.max(0, Number(review.quotationTotalCost ?? review.subTotalCost ?? 0)),
+                Math.max(0, Number(review.finalTotalCost ?? review.subTotalCost ?? 0))
+              )
             )
             : Number(review.subTotalCost ?? 0),
           commissionDeducted: Number(platformFee || 0),
