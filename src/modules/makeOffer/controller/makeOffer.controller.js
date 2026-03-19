@@ -51,12 +51,11 @@ const getInitialBuyerOfferBase = (offer, totalRate) => {
   return Number(normalizeOfferFromChat(initialBuyerChat, totalRate).baseTotal || 0);
 };
 
-const calculateNegotiatedPayoutBase = ({ quotationBase, buyerOfferBase }) => {
+const calculateNegotiatedPayoutBase = ({ quotationBase, buyerMarkdown }) => {
   const safeQuotationBase = Math.max(0, Number(quotationBase) || 0);
-  const safeBuyerOfferBase = Math.max(0, Number(buyerOfferBase) || 0);
-  const buyerMarkdown = Math.max(0, safeQuotationBase - safeBuyerOfferBase);
+  const safeBuyerMarkdown = Math.max(0, Number(buyerMarkdown) || 0);
 
-  return Math.max(0, safeQuotationBase - buyerMarkdown);
+  return Math.max(0, safeQuotationBase - safeBuyerMarkdown);
 };
 
 const transformOfferForViewer = (offer, viewerType, totalRate) => {
@@ -527,7 +526,7 @@ export const vendorReplyOffer = async (req, res, next) => {
         const buyerMarkdown = Math.max(0, visibleQuoteAmount - initialBuyerOfferBase);
         const payoutBaseAmount = calculateNegotiatedPayoutBase({
           quotationBase: Number(review.quotationTotalCost ?? review.subTotalCost ?? 0),
-          buyerOfferBase: initialBuyerOfferBase,
+          buyerMarkdown,
         });
         const payoutCommissionAmount = vatRate * payoutBaseAmount;
         const payoutNetAmount = Math.max(0, payoutBaseAmount - payoutCommissionAmount);
@@ -855,7 +854,7 @@ export const buyerReplyToOffer = async (req, res, next) => {
         const buyerMarkdown = Math.max(0, visibleQuoteAmount - initialBuyerOfferBase);
         const payoutBaseAmount = calculateNegotiatedPayoutBase({
           quotationBase: Number(review.quotationTotalCost ?? review.subTotalCost ?? 0),
-          buyerOfferBase: initialBuyerOfferBase,
+          buyerMarkdown,
         });
         const payoutCommissionAmount = vatRate * payoutBaseAmount;
         const payoutNetAmount = Math.max(0, payoutBaseAmount - payoutCommissionAmount);
