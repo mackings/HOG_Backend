@@ -168,7 +168,7 @@ export const sendReviewUpdateEmail = async (review) => {
 
 export const sendTransactionListingEmail = async (vendor, email, transaction) => {
   return sendEmail({
-    to: [ "vendor.email", email ],
+    to: [ vendor?.email, email ],
     subject: `Payment for ${transaction.cartItems?.[0]?.title}`,
     htmlContent: sendTransactionListingEmailTemplate(vendor, transaction),
   });

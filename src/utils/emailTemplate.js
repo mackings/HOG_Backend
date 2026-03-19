@@ -1,3 +1,14 @@
+const formatNairaAmount = (amount) => `₦${Number(amount || 0).toLocaleString()}`;
+
+const getFinalPayableAmount = (transaction) => {
+  const totalAmount = Number(transaction?.totalAmount);
+  const amountPaid = Number(transaction?.amountPaid);
+
+  if (Number.isFinite(totalAmount) && totalAmount > 0) return totalAmount;
+  if (Number.isFinite(amountPaid) && amountPaid > 0) return amountPaid;
+  return 0;
+};
+
 export const sendVerifyTokenEmailTemplate = ({ fullName, token }) => {
   const firstName = fullName?.split(" ")[0] || "there";
 
@@ -114,6 +125,8 @@ export const sendBankTransferEmailTemplate = (transaction, email) => {
 
 
 export const sendTransactionEmailTemplate = (user, transaction, material) => {
+  const finalPayableAmount = getFinalPayableAmount(transaction);
+
   return `
   <!DOCTYPE html>
   <html>
@@ -179,8 +192,8 @@ export const sendTransactionEmailTemplate = (user, transaction, material) => {
             <td class="highlight">${transaction.paymentReference}</td>
           </tr>
           <tr>
-            <th>Amount Paid</th>
-            <td class="highlight">₦${transaction.amountPaid.toLocaleString()}</td>
+            <th>Final Payable Amount</th>
+            <td class="highlight">${formatNairaAmount(finalPayableAmount)}</td>
           </tr>
           <tr>
             <th>Payment Method</th>
@@ -221,17 +234,9 @@ export const sendTransactionEmailTemplate = (user, transaction, material) => {
             <td>${material?.measurement || "N/A"}</td>
           </tr>
           <tr>
-            <th>Price</th>
-            <td>₦${material?.price?.toLocaleString() || "N/A"}</td>
-          </tr>
-          <tr>
             <th>Sample Image</th>
             <td><img src="${material?.sampleImage[0]}" alt="Sample Image" style="max-width: 100%; height: auto;"></td>
           </tr> 
-          <tr>
-            <th>Total Amount Paid</th>
-            <td>₦${transaction.totalAmount.toLocaleString()}</td>
-          </tr>
           <tr>
             <th>Payment Status</th>
             <td>${transaction.paymentStatus}</td>
@@ -420,6 +425,8 @@ export const sendReviewUpdateEmailTemplate = (review) => {
 
 
 export const sendTransactionListingEmailTemplate = (vendor, transaction) => {
+  const finalPayableAmount = getFinalPayableAmount(transaction);
+
   return `
   <!DOCTYPE html>
   <html>
@@ -485,8 +492,8 @@ export const sendTransactionListingEmailTemplate = (vendor, transaction) => {
             <td class="highlight">${transaction.paymentReference}</td>
           </tr>
           <tr>
-            <th>Amount Paid</th>
-            <td class="highlight">₦${transaction.amountPaid.toLocaleString()}</td>
+            <th>Final Payable Amount</th>
+            <td class="highlight">${formatNairaAmount(finalPayableAmount)}</td>
           </tr>
           <tr>
             <th>Payment Method</th>
@@ -520,21 +527,12 @@ export const sendTransactionListingEmailTemplate = (vendor, transaction) => {
             <td>${transaction?.cartItems?.[0]?.description || "N/A"}</td>
           </tr>
         
-          <tr>
-            <th>Price</th>
-            <td>₦${transaction?.cartItems?.[0]?.amount?.toLocaleString() || "N/A"}</td>
-          </tr>
          <tr>
           <th>Sample Image</th>
           <td>
             <img src="${transaction?.cartItems?.[0]?.images?.[0]}" alt="Sample Image" style="max-width: 100%; height: auto;">
           </td>
         </tr>
-
-          <tr>
-            <th>Total Amount Paid</th>
-            <td>₦${transaction.totalAmount.toLocaleString()}</td>
-          </tr>
           <tr>
             <th>Payment Status</th>
             <td>${transaction.paymentStatus}</td>
@@ -840,4 +838,3 @@ export const sendPaymentReceivedEmailTemplate = (user, amount, vendor, reference
     </html>
   `;
 };
-

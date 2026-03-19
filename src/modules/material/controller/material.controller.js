@@ -78,9 +78,12 @@ const buildPayoutBreakdown = (review) => {
   if (!review) return null;
   const quotationBase = Number(review.quotationTotalCost ?? review.subTotalCost ?? 0);
   const agreedBase = Number(review.finalTotalCost ?? review.subTotalCost ?? 0);
+  const buyerMarkdown = Number(
+    review.buyerMarkdownAmount ?? Math.max(0, agreedBase - Number(review.payoutBaseAmount ?? agreedBase))
+  );
   const payoutBaseUsed = Number(
     review.payoutBaseAmount ??
-      Math.min(Math.max(0, quotationBase), Math.max(0, agreedBase))
+      Math.max(0, agreedBase - buyerMarkdown)
   );
   const commissionDeducted = Number(
     review.payoutCommissionAmount ?? review.commission ?? 0
@@ -92,6 +95,7 @@ const buildPayoutBreakdown = (review) => {
   return {
     quotationBase,
     agreedBase,
+    buyerMarkdown,
     payoutBaseUsed,
     commissionDeducted,
     designerNetCredit,
@@ -849,11 +853,13 @@ export const orderWebhook = async (req, res, next) => {
         // the lower of the submitted quote and agreed offer amount, minus company commission
         if (order.paymentStatus === "full payment" && isAcceptedOfferFlow) {
           const { vatRate } = await getPricingRates();
-          const quotationBase = Number(review.quotationTotalCost ?? review.subTotalCost ?? 0);
           const agreedBase = Number(review.finalTotalCost ?? review.subTotalCost ?? 0);
+          const buyerMarkdown = Number(
+            review.buyerMarkdownAmount ?? Math.max(0, agreedBase - Number(review.payoutBaseAmount ?? agreedBase))
+          );
           const payoutBase = Number.isFinite(Number(review.payoutBaseAmount))
             ? Number(review.payoutBaseAmount)
-            : Math.min(Math.max(0, quotationBase), Math.max(0, agreedBase));
+            : Math.max(0, agreedBase - buyerMarkdown);
           const payoutCommission = Number.isFinite(Number(review.payoutCommissionAmount))
             ? Number(review.payoutCommissionAmount)
             : payoutBase * vatRate;
@@ -867,12 +873,14 @@ export const orderWebhook = async (req, res, next) => {
         payoutBreakdown = {
           quotationBase: Number(review.quotationTotalCost ?? review.subTotalCost ?? 0),
           agreedBase: Number(review.finalTotalCost ?? review.subTotalCost ?? 0),
+          buyerMarkdown: Number(review.buyerMarkdownAmount ?? 0),
           payoutBaseUsed: isAcceptedOfferFlow
             ? Number(
               review.payoutBaseAmount ??
-              Math.min(
-                Math.max(0, Number(review.quotationTotalCost ?? review.subTotalCost ?? 0)),
-                Math.max(0, Number(review.finalTotalCost ?? review.subTotalCost ?? 0))
+              Math.max(
+                0,
+                Number(review.finalTotalCost ?? review.subTotalCost ?? 0) -
+                  Number(review.buyerMarkdownAmount ?? 0)
               )
             )
             : Number(review.subTotalCost ?? 0),
