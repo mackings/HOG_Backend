@@ -109,7 +109,7 @@ const reviewSchema = new mongoose.Schema({
     },
     // Payout amounts resolved at payment time:
     // buyerMarkdownAmount = buyer-visible quote total - buyer's first offer total
-    // payoutBaseAmount = accepted offer total - buyerMarkdownAmount
+    // payoutBaseAmount = designer quote total - buyerMarkdownAmount
     // payoutCommissionAmount = payoutBaseAmount * vatRate
     // payoutNetAmount = payoutBaseAmount - payoutCommissionAmount
     buyerMarkdownAmount: {

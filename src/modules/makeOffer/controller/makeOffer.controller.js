@@ -51,13 +51,12 @@ const getInitialBuyerOfferBase = (offer, totalRate) => {
   return Number(normalizeOfferFromChat(initialBuyerChat, totalRate).baseTotal || 0);
 };
 
-const calculateNegotiatedPayoutBase = ({ quotationBase, agreedBase, buyerOfferBase }) => {
+const calculateNegotiatedPayoutBase = ({ quotationBase, buyerOfferBase }) => {
   const safeQuotationBase = Math.max(0, Number(quotationBase) || 0);
-  const safeAgreedBase = Math.max(0, Number(agreedBase) || 0);
   const safeBuyerOfferBase = Math.max(0, Number(buyerOfferBase) || 0);
   const buyerMarkdown = Math.max(0, safeQuotationBase - safeBuyerOfferBase);
 
-  return Math.max(0, safeAgreedBase - buyerMarkdown);
+  return Math.max(0, safeQuotationBase - buyerMarkdown);
 };
 
 const transformOfferForViewer = (offer, viewerType, totalRate) => {
@@ -123,7 +122,7 @@ const buildPayoutBreakdown = (review, agreedBase) => {
   );
   const payoutBaseUsed = Number(
     review.payoutBaseAmount ??
-      Math.max(0, safeAgreedBase - buyerMarkdown)
+      Math.max(0, quotationBase - buyerMarkdown)
   );
   const commissionDeducted = Number(review.payoutCommissionAmount ?? 0);
   const designerNetCredit = Number(review.payoutNetAmount ?? Math.max(0, payoutBaseUsed - commissionDeducted));
@@ -527,8 +526,7 @@ export const vendorReplyOffer = async (req, res, next) => {
         const initialBuyerOfferBase = getInitialBuyerOfferBase(offer, totalRate);
         const buyerMarkdown = Math.max(0, visibleQuoteAmount - initialBuyerOfferBase);
         const payoutBaseAmount = calculateNegotiatedPayoutBase({
-          quotationBase: visibleQuoteAmount,
-          agreedBase: subTotalCost,
+          quotationBase: Number(review.quotationTotalCost ?? review.subTotalCost ?? 0),
           buyerOfferBase: initialBuyerOfferBase,
         });
         const payoutCommissionAmount = vatRate * payoutBaseAmount;
@@ -569,7 +567,7 @@ export const vendorReplyOffer = async (req, res, next) => {
         console.log(`   VAT on Agreement (${vatPercent}%): ₦${vat.toFixed(2)}`);
         console.log(`   Final Payable = Base + VAT ${vatPercent}%`);
         console.log(`   Buyer Markdown from Quote: ₦${buyerMarkdown.toFixed(2)}`);
-        console.log(`   Payout Base = Agreed - Buyer Markdown: ₦${payoutBaseAmount.toFixed(2)}`);
+        console.log(`   Payout Base = Designer Quote - Buyer Markdown: ₦${payoutBaseAmount.toFixed(2)}`);
         console.log(`   Payout Commission (${vatPercent}%): ₦${payoutCommissionAmount.toFixed(2)}`);
         console.log(`   Payout Net to Designer: ₦${payoutNetAmount.toFixed(2)}`);
         console.log(`   User Payable (NGN): ₦${newTotalCost.toFixed(2)}`);
@@ -856,8 +854,7 @@ export const buyerReplyToOffer = async (req, res, next) => {
         const initialBuyerOfferBase = getInitialBuyerOfferBase(offer, totalRate);
         const buyerMarkdown = Math.max(0, visibleQuoteAmount - initialBuyerOfferBase);
         const payoutBaseAmount = calculateNegotiatedPayoutBase({
-          quotationBase: visibleQuoteAmount,
-          agreedBase: subTotalCost,
+          quotationBase: Number(review.quotationTotalCost ?? review.subTotalCost ?? 0),
           buyerOfferBase: initialBuyerOfferBase,
         });
         const payoutCommissionAmount = vatRate * payoutBaseAmount;
@@ -898,7 +895,7 @@ export const buyerReplyToOffer = async (req, res, next) => {
         console.log(`   VAT on Agreement (${vatPercent}%): ₦${vat.toFixed(2)}`);
         console.log(`   Final Payable = Base + VAT ${vatPercent}%`);
         console.log(`   Buyer Markdown from Quote: ₦${buyerMarkdown.toFixed(2)}`);
-        console.log(`   Payout Base = Agreed - Buyer Markdown: ₦${payoutBaseAmount.toFixed(2)}`);
+        console.log(`   Payout Base = Designer Quote - Buyer Markdown: ₦${payoutBaseAmount.toFixed(2)}`);
         console.log(`   Payout Commission (${vatPercent}%): ₦${payoutCommissionAmount.toFixed(2)}`);
         console.log(`   Payout Net to Designer: ₦${payoutNetAmount.toFixed(2)}`);
         console.log(`   User Payable (NGN): ₦${newTotalCost.toFixed(2)}`);
