@@ -523,11 +523,11 @@ export const vendorReplyOffer = async (req, res, next) => {
         const vat = vatRate * subTotalCost;
         const tax = 0;
         const commission = vat;
-        const quotationBase = Number(review.quotationTotalCost ?? review.subTotalCost ?? 0);
+        const visibleQuoteAmount = Number(review.totalCost ?? review.amountToPay ?? 0);
         const initialBuyerOfferBase = getInitialBuyerOfferBase(offer, totalRate);
-        const buyerMarkdown = Math.max(0, quotationBase - initialBuyerOfferBase);
+        const buyerMarkdown = Math.max(0, visibleQuoteAmount - initialBuyerOfferBase);
         const payoutBaseAmount = calculateNegotiatedPayoutBase({
-          quotationBase,
+          quotationBase: visibleQuoteAmount,
           agreedBase: subTotalCost,
           buyerOfferBase: initialBuyerOfferBase,
         });
@@ -852,11 +852,11 @@ export const buyerReplyToOffer = async (req, res, next) => {
         const vat = vatRate * subTotalCost;
         const tax = 0;
         const commission = vat;
-        const quotationBase = Number(review.quotationTotalCost ?? review.subTotalCost ?? 0);
+        const visibleQuoteAmount = Number(review.totalCost ?? review.amountToPay ?? 0);
         const initialBuyerOfferBase = getInitialBuyerOfferBase(offer, totalRate);
-        const buyerMarkdown = Math.max(0, quotationBase - initialBuyerOfferBase);
+        const buyerMarkdown = Math.max(0, visibleQuoteAmount - initialBuyerOfferBase);
         const payoutBaseAmount = calculateNegotiatedPayoutBase({
-          quotationBase,
+          quotationBase: visibleQuoteAmount,
           agreedBase: subTotalCost,
           buyerOfferBase: initialBuyerOfferBase,
         });
