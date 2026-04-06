@@ -10,6 +10,13 @@ import crypto from "crypto"
 import Tracking from "../../tracking/model/tracking.model.js";
 import Fee from "../model/fee.model.js";
 
+const approvedListingsFilter = {
+  $or: [
+    { approvalStatus: "approved" },
+    { approvalStatus: { $exists: false }, isApproved: true },
+  ],
+};
+
 const normalizeAddressForGeocode = (rawAddress, country) => {
   let address = String(rawAddress || "").trim();
   address = address.replace(/[\r\n]+/g, ", ");
@@ -63,7 +70,7 @@ export const getAlSellerListings = async (req, res, next) => {
                 message: "User not found"
             });
         }
-        const listings = await Listing.find({ isApproved: true })
+        const listings = await Listing.find(approvedListingsFilter)
         .sort({ createdAt: -1 })        
         .populate("userId", "fullName image address")
         .populate("categoryId", "name")
@@ -89,7 +96,7 @@ export const searchListings = async (req, res, next) => {
   try {
     const { query } = req.query;
 
-    const searchConditions = [] = [
+    const searchConditions = [
       { title: { $regex: query, $options: "i" } },
       { size: { $regex: query, $options: "i" } },
       { description: { $regex: query, $options: "i" } },
@@ -101,7 +108,8 @@ export const searchListings = async (req, res, next) => {
     }
 
     const materials = await Listing.find({
-      $or: searchConditions, isApproved: true
+      ...approvedListingsFilter,
+      $or: searchConditions,
     })
       .populate("userId", "fullName image address")
       .populate("categoryId", "name");
@@ -134,7 +142,7 @@ export const getSellerListingById = async (req, res, next) => {
         }
 
         const { listingId } = req.params;
-        const listing = await Listing.findOne({ _id: listingId })
+        const listing = await Listing.findOne({ _id: listingId, ...approvedListingsFilter })
         .populate("userId", "fullName image address")
         .populate("categoryId", "name");
         if (!listing) {
@@ -167,11 +175,11 @@ export const purchaseListing = async (req, res, next) => {
         }
         const { listingId } = req.params;
         const {address, shipmentMethod } = req.body;
-        const listing = await Listing.findById(listingId);
+        const listing = await Listing.findOne({ _id: listingId, ...approvedListingsFilter });
         if (!listing) {
             return res.status(404).json({
                 success: false,
-                message: "Listing not found"
+                message: "Listing not found or is no longer available"
             });
         }
         if (listing.userId.toString() === user._id.toString()) {
@@ -314,9 +322,12 @@ export const purchaseMultipleListings = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Provide at least one listingId" });
 
     // Fetch listings
-    const listings = await Listing.find({ _id: { $in: listingIds } });
+    const listings = await Listing.find({
+      _id: { $in: listingIds },
+      ...approvedListingsFilter,
+    });
     if (listings.length !== listingIds.length)
-      return res.status(404).json({ success: false, message: "Some listings not found" });
+      return res.status(404).json({ success: false, message: "Some listings are not approved or no longer available" });
 
     // Prevent self-purchase
     if (listings.some(l => l.userId.toString() === user._id.toString()))

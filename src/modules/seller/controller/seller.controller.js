@@ -4,6 +4,12 @@ import Listing from '../model/seller.model.js';
 import Transaction from '../../transaction/model/transaction.model.js';
 import Tracking from "../../tracking/model/tracking.model.js";
 
+const formatListingModeration = (listing) => ({
+  ...listing,
+  approvalStatus: listing?.approvalStatus || (listing?.isApproved ? "approved" : "pending"),
+  rejectionReasons: Array.isArray(listing?.rejectionReasons) ? listing.rejectionReasons : [],
+});
+
 
 
 export const sellerCreateListing = async (req, res, next) => {
@@ -92,11 +98,14 @@ export const getSellerListings = async (req, res, next) => {
             });
         }
 
-        const listings = await Listing.find({ userId: user._id });
+        const listings = await Listing.find({ userId: user._id })
+          .populate("approvedBy", "fullName email role")
+          .populate("rejectedBy", "fullName email role")
+          .lean();
         return res.status(200).json({
             success: true,
             message: "Seller listings fetched successfully",
-            data: listings
+            data: listings.map(formatListingModeration)
         });
     } catch (error) {
         next(error);
@@ -117,7 +126,10 @@ export const getSellerListingById = async (req, res, next) => {
         }
 
         const { listingId } = req.params;
-        const listing = await Listing.findOne({ _id: listingId, userId: user._id });
+        const listing = await Listing.findOne({ _id: listingId, userId: user._id })
+          .populate("approvedBy", "fullName email role")
+          .populate("rejectedBy", "fullName email role")
+          .lean();
 
         if (!listing) {
             return res.status(404).json({
@@ -128,7 +140,7 @@ export const getSellerListingById = async (req, res, next) => {
         return res.status(200).json({
             success: true,
             message: "Seller listing fetched successfully",
-            data: listing
+            data: formatListingModeration(listing)
         });
         } catch (error) {
         next(error);
@@ -212,7 +224,10 @@ export const updateSellerListing = async (req, res, next) => {
       { _id: listingId, userId: user._id },
       { $set: updateData },
       { new: true }
-    );
+    )
+      .populate("approvedBy", "fullName email role")
+      .populate("rejectedBy", "fullName email role")
+      .lean();
 
     if (!updatedListing) {
       return res.status(404).json({
@@ -224,7 +239,7 @@ export const updateSellerListing = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: "Seller listing updated successfully",
-      data: updatedListing,
+      data: formatListingModeration(updatedListing),
     });
   } catch (error) {
     console.error(error);
