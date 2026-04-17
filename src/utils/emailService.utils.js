@@ -3,7 +3,8 @@ import axios from "axios";
 import { sendVerifyTokenEmailTemplate, sendResetPasswordEmailTemplate, sendBankTransferEmailTemplate,
   sendTransactionEmailTemplate, sendSubscriptionEmailTemplate, sendReviewUpdateEmailTemplate,
   sendTransactionListingEmailTemplate, sendApprovalEmailTemplate, sendRejectionEmailTemplate, sendDeliveryEmailTemplate,
-  sendPayoutNotificationEmailTemplate, sendPaymentReceivedEmailTemplate
+  sendPayoutNotificationEmailTemplate, sendPaymentReceivedEmailTemplate, sendDeliveryStartedEmailTemplate,
+  sendOfferDecisionEmailTemplate
  } from "../utils/emailTemplate.js";
 
 // Create Gmail transporter
@@ -199,6 +200,54 @@ export const sendDeliveryEmail = async (listingOwner, fee, netAmount, trackingNu
     subject: "Your order has been delivered-Wallet Credited",
     htmlContent: sendDeliveryEmailTemplate(listingOwner, fee, netAmount, trackingNumber),
   });
+};
+
+export const buildDeliveryStartedEmailPayload = ({ user, vendorUser, vendorProfile, material, tracking }) => ({
+  to: user?.email,
+  subject: "Your attire is now in delivery",
+  htmlContent: sendDeliveryStartedEmailTemplate({
+    recipientName: user?.fullName,
+    trackingNumber: tracking?.trackingNumber,
+    material,
+    vendorName: vendorUser?.fullName,
+    vendorBusinessName: vendorProfile?.businessName,
+    createdAt: tracking?.createdAt,
+  }),
+});
+
+export const sendDeliveryStartedEmail = async ({ user, vendorUser, vendorProfile, material, tracking }) => {
+  return sendEmail(buildDeliveryStartedEmailPayload({ user, vendorUser, vendorProfile, material, tracking }));
+};
+
+export const buildOfferDecisionEmailPayload = ({
+  recipientEmail,
+  recipientName,
+  actorName,
+  actorRoleLabel,
+  action,
+  material,
+  amountNGN,
+  amountUSD = 0,
+  comment,
+  mutualConsentAchieved = false,
+}) => ({
+  to: recipientEmail,
+  subject: `Offer ${String(action || "").toLowerCase() === "accepted" ? "accepted" : "rejected"} for your attire order`,
+  htmlContent: sendOfferDecisionEmailTemplate({
+    recipientName,
+    actorName,
+    actorRoleLabel,
+    action,
+    material,
+    amountNGN,
+    amountUSD,
+    comment,
+    mutualConsentAchieved,
+  }),
+});
+
+export const sendOfferDecisionEmail = async (payload) => {
+  return sendEmail(buildOfferDecisionEmailPayload(payload));
 };
 
 

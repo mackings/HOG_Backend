@@ -1,6 +1,9 @@
 import Tracking from "../model/tracking.model.js";
 import Material from "../../material/model/material.model.js";
 import crypto from "crypto";
+import User from "../../user/model/user.model.js";
+import Vendor from "../../vendor/model/vendor.model.js";
+import { sendDeliveryStartedEmail } from "../../../utils/emailService.utils.js";
 
 
 
@@ -54,6 +57,22 @@ export const createTracking = async (req, res, next) => {
       materialId: material._id,
       trackingNumber,
     });
+
+    const [user, vendorUser, vendorProfile] = await Promise.all([
+      User.findById(material.userId).lean(),
+      User.findById(id).lean(),
+      Vendor.findOne({ userId: id }).select("businessName").lean(),
+    ]);
+
+    if (user?.email) {
+      await sendDeliveryStartedEmail({
+        user,
+        vendorUser,
+        vendorProfile,
+        material,
+        tracking: track,
+      });
+    }
 
     return res.status(201).json({
       success: true,

@@ -5,6 +5,7 @@ import Vendor from "../../vendor/model/vendor.model.js"
 import mongoose from "mongoose";
 import Material from "../../material/model/material.model.js"
 import { getPricingRates } from "../../../utils/pricingConfig.utils.js";
+import { sendOfferDecisionEmail } from "../../../utils/emailService.utils.js";
 
 const roundUpNGN = (value) => Math.ceil(Number(value) || 0);
 const roundUpUSD = (value) => Math.ceil((Number(value) || 0) * 100) / 100;
@@ -134,6 +135,35 @@ const buildPayoutBreakdown = (review, agreedBase) => {
     commissionDeducted,
     designerNetCredit,
   };
+};
+
+const notifyOfferDecision = async ({
+  recipient,
+  actorName,
+  actorRoleLabel,
+  action,
+  material,
+  amountNGN,
+  amountUSD,
+  comment,
+  mutualConsentAchieved,
+}) => {
+  if (!recipient?.email || !["accepted", "rejected"].includes(action)) {
+    return;
+  }
+
+  await sendOfferDecisionEmail({
+    recipientEmail: recipient.email,
+    recipientName: recipient.fullName,
+    actorName,
+    actorRoleLabel,
+    action,
+    material,
+    amountNGN,
+    amountUSD,
+    comment,
+    mutualConsentAchieved,
+  });
 };
 
 
@@ -313,9 +343,17 @@ export const vendorReplyOffer = async (req, res, next) => {
 
     const offer = await MakeOffer.findById(offerId)
       .populate({
+        path: "userId",
+        select: "fullName email",
+      })
+      .populate({
         path: "vendorId",
         select: "businessName userId",
         populate: { path: "userId", select: "fullName email" },
+      })
+      .populate({
+        path: "materialId",
+        select: "attireType clothMaterial color brand",
       });
 
     if (!offer) {
@@ -506,6 +544,18 @@ export const vendorReplyOffer = async (req, res, next) => {
 
     await offer.save();
 
+    await notifyOfferDecision({
+      recipient: offer.userId,
+      actorName: offer.vendorId?.businessName || offer.vendorId?.userId?.fullName || "Designer",
+      actorRoleLabel: "designer",
+      action,
+      material: offer.materialId,
+      amountNGN: action === "accepted" ? acceptedGrossTotal : baseTotalCost,
+      amountUSD: action === "accepted" ? acceptedGrossTotalUSD : baseTotalCostUSD,
+      comment,
+      mutualConsentAchieved: offer.mutualConsentAchieved,
+    });
+
     let payoutBreakdown = null;
     // 🔥 UPDATE REVIEW WHEN MUTUAL CONSENT IS ACHIEVED
     if (offer.mutualConsentAchieved && offer.reviewId) {
@@ -668,6 +718,10 @@ export const buyerReplyToOffer = async (req, res, next) => {
           path: "userId",
           select: "fullName email",
         },
+      })
+      .populate({
+        path: "materialId",
+        select: "attireType clothMaterial color brand",
       });
 
     if (!offer) {
@@ -833,6 +887,18 @@ export const buyerReplyToOffer = async (req, res, next) => {
     }
 
     await offer.save();
+
+    await notifyOfferDecision({
+      recipient: offer.vendorId?.userId,
+      actorName: offer.userId?.fullName || "Buyer",
+      actorRoleLabel: "buyer",
+      action,
+      material: offer.materialId,
+      amountNGN: action === "accepted" ? acceptedGrossTotal : baseTotalCost,
+      amountUSD: action === "accepted" ? acceptedGrossTotalUSD : baseTotalCostUSD,
+      comment,
+      mutualConsentAchieved: offer.mutualConsentAchieved,
+    });
 
     let payoutBreakdown = null;
     // 🔥 UPDATE REVIEW WHEN MUTUAL CONSENT IS ACHIEVED

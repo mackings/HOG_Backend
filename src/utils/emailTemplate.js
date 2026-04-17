@@ -1,4 +1,23 @@
 const formatNairaAmount = (amount) => `₦${Number(amount || 0).toLocaleString()}`;
+const formatUsdAmount = (amount) => `$${Number(amount || 0).toLocaleString(undefined, {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})}`;
+const formatDateTime = (value) => {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return "N/A";
+  return date.toLocaleString();
+};
+const resolveMaterialLabel = (material = {}) => {
+  const parts = [
+    material?.attireType,
+    material?.clothMaterial,
+    material?.color,
+    material?.brand,
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" • ") : "Attire order";
+};
 
 const getFinalPayableAmount = (transaction) => {
   const totalAmount = Number(transaction?.totalAmount);
@@ -728,6 +747,119 @@ export const sendDeliveryEmailTemplate = (vendorName, fee, netAmount, trackingNu
       <p style="margin-top: 20px;">Best regards,<br/>
       <strong>HOG Team</strong></p>
     </div>
+  `;
+};
+
+export const sendDeliveryStartedEmailTemplate = ({
+  recipientName,
+  trackingNumber,
+  material,
+  vendorName,
+  vendorBusinessName,
+  createdAt,
+}) => {
+  const materialLabel = resolveMaterialLabel(material);
+  const designerLabel = vendorBusinessName || vendorName || "Your designer";
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8" />
+      <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 24px; border-radius: 12px; }
+        .header { background: #1f6feb; color: white; padding: 18px; text-align: center; border-radius: 10px 10px 0 0; }
+        .details { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin: 20px 0; }
+        .details p { margin: 8px 0; }
+        .footer { color: #666; font-size: 12px; text-align: center; margin-top: 24px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h2>Your Attire Is In Delivery</h2>
+        </div>
+        <p>Hello <strong>${recipientName || "Customer"}</strong>,</p>
+        <p>${designerLabel} has marked your attire for delivery. You can use the tracking number below to follow up on the order.</p>
+
+        <div class="details">
+          <p><strong>Tracking Number:</strong> ${trackingNumber}</p>
+          <p><strong>Attire:</strong> ${materialLabel}</p>
+          <p><strong>Designer:</strong> ${designerLabel}</p>
+          <p><strong>Placed In Delivery:</strong> ${formatDateTime(createdAt)}</p>
+        </div>
+
+        <p>Please keep this tracking number safe until delivery is completed.</p>
+
+        <div class="footer">
+          <p>&copy; ${new Date().getFullYear()} House of Glame. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
+
+export const sendOfferDecisionEmailTemplate = ({
+  recipientName,
+  actorName,
+  actorRoleLabel,
+  action,
+  material,
+  amountNGN,
+  amountUSD,
+  comment,
+  mutualConsentAchieved,
+}) => {
+  const materialLabel = resolveMaterialLabel(material);
+  const normalizedAction = String(action || "").toLowerCase();
+  const title = normalizedAction === "accepted" ? "Offer Accepted" : "Offer Rejected";
+  const accent = normalizedAction === "accepted" ? "#16a34a" : "#dc2626";
+  const nextStep =
+    normalizedAction === "accepted"
+      ? mutualConsentAchieved
+        ? "Both parties have now agreed to this offer. The order can proceed to payment."
+        : "One side has accepted the offer. The order will move forward once the other side confirms."
+      : "This offer is now closed. You can review the conversation and create a fresh offer if needed.";
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8" />
+      <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 24px; border-radius: 12px; }
+        .header { background: ${accent}; color: white; padding: 18px; text-align: center; border-radius: 10px 10px 0 0; }
+        .details { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin: 20px 0; }
+        .details p { margin: 8px 0; }
+        .footer { color: #666; font-size: 12px; text-align: center; margin-top: 24px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h2>${title}</h2>
+        </div>
+        <p>Hello <strong>${recipientName || "User"}</strong>,</p>
+        <p>${actorName || "The other party"} (${actorRoleLabel || "participant"}) has ${normalizedAction} an offer on your attire order.</p>
+
+        <div class="details">
+          <p><strong>Attire:</strong> ${materialLabel}</p>
+          <p><strong>Action:</strong> ${normalizedAction}</p>
+          <p><strong>Offer Amount:</strong> ${formatNairaAmount(amountNGN)}${amountUSD > 0 ? ` (${formatUsdAmount(amountUSD)})` : ""}</p>
+          <p><strong>Comment:</strong> ${comment || "No comment provided"}</p>
+        </div>
+
+        <p>${nextStep}</p>
+
+        <div class="footer">
+          <p>&copy; ${new Date().getFullYear()} House of Glame. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
   `;
 };
 
