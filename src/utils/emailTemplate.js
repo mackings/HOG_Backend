@@ -863,6 +863,55 @@ export const sendOfferDecisionEmailTemplate = ({
   `;
 };
 
+export const sendOfferCreatedEmailTemplate = ({
+  recipientName,
+  buyerName,
+  material,
+  amountNGN,
+  amountUSD,
+  comment,
+}) => {
+  const materialLabel = resolveMaterialLabel(material);
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8" />
+      <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 24px; border-radius: 12px; }
+        .header { background: #2563eb; color: white; padding: 18px; text-align: center; border-radius: 10px 10px 0 0; }
+        .details { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin: 20px 0; }
+        .details p { margin: 8px 0; }
+        .footer { color: #666; font-size: 12px; text-align: center; margin-top: 24px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h2>New Offer Received</h2>
+        </div>
+        <p>Hello <strong>${recipientName || "Designer"}</strong>,</p>
+        <p>${buyerName || "A customer"} has sent you a new offer for an attire order. Sign in to your account to respond.</p>
+
+        <div class="details">
+          <p><strong>Attire:</strong> ${materialLabel}</p>
+          <p><strong>Offer Amount:</strong> ${formatNairaAmount(amountNGN)}${amountUSD > 0 ? ` (${formatUsdAmount(amountUSD)})` : ""}</p>
+          <p><strong>Comment:</strong> ${comment || "No comment provided"}</p>
+        </div>
+
+        <p>Please sign in to review the offer and send your response.</p>
+
+        <div class="footer">
+          <p>&copy; ${new Date().getFullYear()} House of Glame. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
+
 
 export const sendPayoutNotificationEmailTemplate = (vendor, amount, reference) => {
   return `

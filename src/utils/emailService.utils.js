@@ -4,7 +4,7 @@ import { sendVerifyTokenEmailTemplate, sendResetPasswordEmailTemplate, sendBankT
   sendTransactionEmailTemplate, sendSubscriptionEmailTemplate, sendReviewUpdateEmailTemplate,
   sendTransactionListingEmailTemplate, sendApprovalEmailTemplate, sendRejectionEmailTemplate, sendDeliveryEmailTemplate,
   sendPayoutNotificationEmailTemplate, sendPaymentReceivedEmailTemplate, sendDeliveryStartedEmailTemplate,
-  sendOfferDecisionEmailTemplate
+  sendOfferDecisionEmailTemplate, sendOfferCreatedEmailTemplate
  } from "../utils/emailTemplate.js";
 
 // Create Gmail transporter
@@ -248,6 +248,31 @@ export const buildOfferDecisionEmailPayload = ({
 
 export const sendOfferDecisionEmail = async (payload) => {
   return sendEmail(buildOfferDecisionEmailPayload(payload));
+};
+
+export const buildOfferCreatedEmailPayload = ({
+  recipientEmail,
+  recipientName,
+  buyerName,
+  material,
+  amountNGN,
+  amountUSD = 0,
+  comment,
+}) => ({
+  to: recipientEmail,
+  subject: "You have a new offer to review",
+  htmlContent: sendOfferCreatedEmailTemplate({
+    recipientName,
+    buyerName,
+    material,
+    amountNGN,
+    amountUSD,
+    comment,
+  }),
+});
+
+export const sendOfferCreatedEmail = async (payload) => {
+  return sendEmail(buildOfferCreatedEmailPayload(payload));
 };
 
 

@@ -5,7 +5,7 @@ import Vendor from "../../vendor/model/vendor.model.js"
 import mongoose from "mongoose";
 import Material from "../../material/model/material.model.js"
 import { getPricingRates } from "../../../utils/pricingConfig.utils.js";
-import { sendOfferDecisionEmail } from "../../../utils/emailService.utils.js";
+import { sendOfferCreatedEmail, sendOfferDecisionEmail } from "../../../utils/emailService.utils.js";
 
 const roundUpNGN = (value) => Math.ceil(Number(value) || 0);
 const roundUpUSD = (value) => Math.ceil((Number(value) || 0) * 100) / 100;
@@ -308,6 +308,18 @@ export const createMakeOffer = async (req, res, next) => {
       return res.status(500).json({
         success: false,
         message: "Error creating or updating offer",
+      });
+    }
+
+    if (vendor?.userId?.email) {
+      await sendOfferCreatedEmail({
+        recipientEmail: vendor.userId.email,
+        recipientName: vendor.userId.fullName || vendor.businessName,
+        buyerName: buyer?.fullName || user.fullName,
+        material,
+        amountNGN: netTotalCost,
+        amountUSD: totalCostUSD,
+        comment,
       });
     }
 

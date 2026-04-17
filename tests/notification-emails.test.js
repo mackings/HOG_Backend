@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildDeliveryStartedEmailPayload,
+  buildOfferCreatedEmailPayload,
   buildOfferDecisionEmailPayload,
 } from "../src/utils/emailService.utils.js";
 
@@ -91,4 +92,29 @@ test("buildOfferDecisionEmailPayload includes rejected state fallback comment", 
   assert.match(payload.htmlContent, /₦80,000/);
   assert.match(payload.htmlContent, /No comment provided/);
   assert.match(payload.htmlContent, /This offer is now closed/);
+});
+
+test("buildOfferCreatedEmailPayload includes the new offer values for the designer", () => {
+  const payload = buildOfferCreatedEmailPayload({
+    recipientEmail: "designer@example.com",
+    recipientName: "Tolu Designer",
+    buyerName: "Ada Buyer",
+    material: {
+      attireType: "Agbada",
+      clothMaterial: "Silk",
+      color: "Navy",
+    },
+    amountNGN: 120000,
+    amountUSD: 80,
+    comment: "Can you deliver before Friday?",
+  });
+
+  assert.equal(payload.to, "designer@example.com");
+  assert.equal(payload.subject, "You have a new offer to review");
+  assert.match(payload.htmlContent, /Tolu Designer/);
+  assert.match(payload.htmlContent, /Ada Buyer/);
+  assert.match(payload.htmlContent, /₦120,000/);
+  assert.match(payload.htmlContent, /\$80\.00/);
+  assert.match(payload.htmlContent, /Can you deliver before Friday\?/);
+  assert.match(payload.htmlContent, /Sign in|sign in/);
 });
