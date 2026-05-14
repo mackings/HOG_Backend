@@ -1,0 +1,31 @@
+import { Router } from "express";
+import { isAuth } from "../../../middlewares/auth.middleware.js";
+import { userCheckRole } from "../../../middlewares/checkRole.middleware.js";
+import {
+  acceptCustomQuote,
+  convertCustomRequestToOrder,
+  createCustomRequest,
+  designerRespondToCustomRequest,
+  refundEscrowPayment,
+  recordEscrowPayment,
+  releaseEscrowPayment,
+  requestQuoteRevision,
+  submitCustomQuote,
+  updateOrderWorkflow,
+} from "../controller/customOrder.controller.js";
+
+const router = Router();
+
+router.use(isAuth);
+router.post("/requests", userCheckRole(["user", "admin"]), createCustomRequest);
+router.post("/requests/:requestId/designer-response", userCheckRole(["tailor", "admin"]), designerRespondToCustomRequest);
+router.post("/requests/:requestId/quote", userCheckRole(["tailor", "admin"]), submitCustomQuote);
+router.post("/requests/:requestId/revisions", userCheckRole(["user", "tailor", "admin"]), requestQuoteRevision);
+router.post("/requests/:requestId/accept", userCheckRole(["user", "admin"]), acceptCustomQuote);
+router.post("/requests/:requestId/convert", userCheckRole(["user", "tailor", "admin"]), convertCustomRequestToOrder);
+router.put("/workflow", userCheckRole(["tailor", "admin", "superAdmin"]), updateOrderWorkflow);
+router.post("/escrow/:escrowId/payments", userCheckRole(["user", "admin"]), recordEscrowPayment);
+router.post("/escrow/:escrowId/release", userCheckRole(["admin", "superAdmin"]), releaseEscrowPayment);
+router.post("/escrow/:escrowId/refund", userCheckRole(["admin", "superAdmin"]), refundEscrowPayment);
+
+export default router;

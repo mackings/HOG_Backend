@@ -102,6 +102,43 @@ const listingSchema = new mongoose.Schema({
     currency: {
         type: String,
     },
+    gender: {
+        type: String,
+    },
+    occasion: {
+        type: String,
+    },
+    fabric: {
+        type: String,
+    },
+    availability: {
+        type: String,
+        enum: ["available", "sold", "made_to_order", "unavailable"],
+        default: "available",
+    },
+    media: {
+        fabricCloseups: { type: [String], default: [] },
+        videoPreviews: { type: [String], default: [] },
+        beforeAfterShowcases: { type: [String], default: [] },
+        styledLookPreviews: { type: [String], default: [] },
+        zoomImages: { type: [String], default: [] },
+    },
+    viewsCount: {
+        type: Number,
+        default: 0,
+    },
+    savedCount: {
+        type: Number,
+        default: 0,
+    },
+    averageRating: {
+        type: Number,
+        default: 0,
+    },
+    isFeatured: {
+        type: Boolean,
+        default: false,
+    },
     images: {
         type: Array,
         required: true,

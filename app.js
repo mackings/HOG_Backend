@@ -29,6 +29,14 @@ import feeRouter from './src/modules/commission/routes/commission.routes.js'
 import conversionRouter from './src/modules/conversion/routes/conversion.routes.js';
 import imagekitRouter from './src/modules/imagekit/routes/imagekit.routes.js';
 import pricingRouter from './src/modules/pricing/routes/pricing.routes.js';
+import messagingRouter from './src/modules/messaging/routes/messaging.routes.js';
+import measurementRouter from './src/modules/measurement/routes/measurement.routes.js';
+import customOrderRouter from './src/modules/customOrder/routes/customOrder.routes.js';
+import moodboardRouter from './src/modules/moodboard/routes/moodboard.routes.js';
+import disputeRouter from './src/modules/dispute/routes/dispute.routes.js';
+import reputationRouter from './src/modules/reputation/routes/reputation.routes.js';
+import discoveryRouter from './src/modules/discovery/routes/discovery.routes.js';
+import designerToolsRouter from './src/modules/designerTools/routes/designerTools.routes.js';
 
 
 
@@ -79,6 +87,14 @@ app.use('/api/v1/fee', feeRouter);
 app.use('/api/v1/conversion', conversionRouter);
 app.use('/api/v1/imagekit', imagekitRouter);
 app.use('/api/v1/pricing', pricingRouter);
+app.use('/api/v1/messaging', messagingRouter);
+app.use('/api/v1/measurements', measurementRouter);
+app.use('/api/v1/custom-orders', customOrderRouter);
+app.use('/api/v1/moodboards', moodboardRouter);
+app.use('/api/v1/disputes', disputeRouter);
+app.use('/api/v1/reputation', reputationRouter);
+app.use('/api/v1/discovery', discoveryRouter);
+app.use('/api/v1/designer-tools', designerToolsRouter);
 
 app.use((req, res) => {
   res.status(404).json({ message: "Endpoint not found. please, check the url and try again." });

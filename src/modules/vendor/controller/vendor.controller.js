@@ -17,7 +17,11 @@ export const createTailor = async (req, res, next) => {
       city,
       state,
       yearOfExperience,
-      description
+      description,
+      bio,
+      specializationTags,
+      turnaroundTime,
+      availabilityStatus
     } = req.body;
 
     // Validate required fields
@@ -61,7 +65,11 @@ export const createTailor = async (req, res, next) => {
       city,
       state,
       yearOfExperience,
-      description
+      description,
+      bio,
+      specializationTags,
+      turnaroundTime,
+      availabilityStatus
     });
 
     await User.findByIdAndUpdate(id, { isVendorEnabled: true });
@@ -111,7 +119,12 @@ export const updateTailor = async (req, res, next) => {
           businessRegistrationNumber: updates.businessRegistrationNumber,
           registeredIn: updates.registeredIn,
           yearOfExperience: updates.yearOfExperience,
-          description: updates.description
+          description: updates.description,
+          bio: updates.bio,
+          specializationTags: updates.specializationTags,
+          turnaroundTime: updates.turnaroundTime,
+          availabilityStatus: updates.availabilityStatus,
+          categorizedWorkSections: updates.categorizedWorkSections
         }
       },
       { new: true, runValidators: true }
@@ -127,6 +140,72 @@ export const updateTailor = async (req, res, next) => {
       data: tailor
     });
 
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateDesignerPortfolio = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const { portfolioGallery, categorizedWorkSections } = req.body;
+
+    const tailor = await Vendor.findOneAndUpdate(
+      { userId: id },
+      {
+        $set: {
+          ...(Array.isArray(portfolioGallery) ? { portfolioGallery } : {}),
+          ...(categorizedWorkSections ? { categorizedWorkSections } : {}),
+        },
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!tailor) {
+      return res.status(404).json({ success: false, message: "Tailor not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Designer portfolio updated successfully",
+      data: tailor,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getDesignerPublicProfile = async (req, res, next) => {
+  try {
+    const { designerId } = req.params;
+    const designer = await Vendor.findOne({
+      $or: [{ _id: designerId }, { userId: designerId }],
+    })
+      .populate("userId", "fullName image country")
+      .lean();
+
+    if (!designer) {
+      return res.status(404).json({ success: false, message: "Designer not found" });
+    }
+
+    const averageRating = designer.totalRatings ? designer.ratingSum / designer.totalRatings : 0;
+
+    return res.status(200).json({
+      success: true,
+      message: "Designer profile fetched successfully",
+      data: {
+        ...designer,
+        socialProof: {
+          completedOrders: designer.completedOrdersCount || 0,
+          reviews: designer.reviewsCount || designer.totalRatings || 0,
+          ratings: Number(averageRating.toFixed(2)),
+        },
+        verificationBadge: {
+          isVerified: Boolean(designer.isVerifiedDesigner),
+          verifiedAt: designer.verifiedAt,
+        },
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -218,5 +297,4 @@ export const getAllAssignedMaterials = async (req, res, next) => {
     next(error);
   }
 };
-
 

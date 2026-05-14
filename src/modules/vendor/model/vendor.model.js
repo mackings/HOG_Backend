@@ -49,6 +49,59 @@ const vendorSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
+    bio: {
+        type: String,
+    },
+    portfolioGallery: [
+      {
+        imageUrl: String,
+        caption: String,
+        category: {
+          type: String,
+          enum: ["bridal", "native_wear", "corporate", "casual", "menswear", "womenswear", "other"],
+          default: "other",
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+    categorizedWorkSections: {
+      bridal: { type: [String], default: [] },
+      nativeWear: { type: [String], default: [] },
+      corporate: { type: [String], default: [] },
+      casual: { type: [String], default: [] },
+      menswear: { type: [String], default: [] },
+      womenswear: { type: [String], default: [] },
+    },
+    specializationTags: {
+      type: [String],
+      default: [],
+    },
+    turnaroundTime: {
+      type: String,
+    },
+    availabilityStatus: {
+      type: String,
+      enum: ["available", "busy", "away", "unavailable"],
+      default: "available",
+    },
+    completedOrdersCount: {
+      type: Number,
+      default: 0,
+    },
+    reviewsCount: {
+      type: Number,
+      default: 0,
+    },
+    isVerifiedDesigner: {
+      type: Boolean,
+      default: false,
+    },
+    verifiedAt: {
+      type: Date,
+    },
     ratings: [
       {
         userId: {

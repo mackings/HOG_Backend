@@ -292,3 +292,13 @@ export const sendPaymentReceivedEmail = async (user, amount, vendor, reference) 
     htmlContent: sendPaymentReceivedEmailTemplate(user, amount, vendor, reference),
   });
 };
+
+
+
+
+
+
+
+
+
+
