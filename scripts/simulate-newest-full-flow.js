@@ -302,6 +302,27 @@ const main = async () => {
     assertStatus("public designer profile", designerProfile, 200);
     report.designerProfile = { portfolio: 200, publicProfile: 200 };
 
+    const listingMedia = await request({
+      port,
+      method: "PUT",
+      path: `/api/v1/seller/updateSellerListingMedia/${seed.listing._id}`,
+      token: designerToken,
+      body: {
+        gender: "male",
+        occasion: "native",
+        fabric: "silk",
+        availability: "available",
+        media: {
+          fabricCloseups: ["https://cdn.example.com/fabric-close.jpg"],
+          videoPreviews: ["https://cdn.example.com/listing-preview.mp4"],
+          beforeAfterShowcases: ["https://cdn.example.com/before-after.jpg"],
+          styledLookPreviews: ["https://cdn.example.com/styled-look.jpg"],
+          zoomImages: ["https://cdn.example.com/zoom.jpg"],
+        },
+      },
+    });
+    assertStatus("listing media", listingMedia, 200);
+
     const customRequest = await request({
       port,
       method: "POST",
@@ -553,7 +574,7 @@ const main = async () => {
       token: customerToken,
     });
     assertStatus("auth discovery designers", filterDesigners, 200);
-    report.discovery = { listings: 200, designers: 200 };
+    report.discovery = { listings: 200, designers: 200, listingMedia: 200 };
 
     const tracking = await request({
       port,
@@ -683,4 +704,3 @@ main().catch(async (error) => {
   await mongoose.disconnect();
   process.exit(1);
 });
-

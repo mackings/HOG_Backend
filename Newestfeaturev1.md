@@ -497,6 +497,38 @@ Listings now support:
 
 Note: product/listing video previews are allowed. Messaging video sharing is not supported.
 
+### Update Listing Rich Media
+
+`PUT /seller/updateSellerListingMedia/:listingId`
+
+```json
+{
+  "gender": "male",
+  "occasion": "native",
+  "fabric": "silk",
+  "availability": "available",
+  "media": {
+    "fabricCloseups": ["https://cdn.example.com/fabric-close.jpg"],
+    "videoPreviews": ["https://cdn.example.com/listing-preview.mp4"],
+    "beforeAfterShowcases": ["https://cdn.example.com/before-after.jpg"],
+    "styledLookPreviews": ["https://cdn.example.com/styled-look.jpg"],
+    "zoomImages": ["https://cdn.example.com/zoom.jpg"]
+  }
+}
+```
+
+Video preview playback requirements:
+
+- `media.videoPreviews` must contain public HTTPS URLs.
+- Supported URL formats are `.mp4` or HLS `.m3u8`.
+- The hosting provider must allow mobile/web playback and CORS access.
+- The backend stores and returns the URLs; the mobile app renders the video player.
+
+Video upload note:
+
+- Current backend support is URL-based.
+- If mobile needs direct video upload later, use the existing ImageKit auth endpoint `GET /imagekit/auth` for signed client upload, or add a dedicated upload flow.
+
 ## 10. Dispute Resolution & Support
 
 ### Report Issue

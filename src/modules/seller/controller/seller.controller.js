@@ -10,6 +10,49 @@ const formatListingModeration = (listing) => ({
   rejectionReasons: Array.isArray(listing?.rejectionReasons) ? listing.rejectionReasons : [],
 });
 
+const parseJsonField = (value, fallback) => {
+  if (value === undefined) return fallback;
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  try {
+    return JSON.parse(trimmed);
+  } catch (error) {
+    return value;
+  }
+};
+
+const normalizeUrlArray = (value) => {
+  const parsed = parseJsonField(value, []);
+  if (Array.isArray(parsed)) return parsed.filter(Boolean).map(String);
+  if (typeof parsed === "string" && parsed.trim()) return [parsed.trim()];
+  return [];
+};
+
+const normalizeMediaInput = (mediaInput = {}) => {
+  const media = parseJsonField(mediaInput, {}) || {};
+  return {
+    fabricCloseups: normalizeUrlArray(media.fabricCloseups),
+    videoPreviews: normalizeUrlArray(media.videoPreviews),
+    beforeAfterShowcases: normalizeUrlArray(media.beforeAfterShowcases),
+    styledLookPreviews: normalizeUrlArray(media.styledLookPreviews),
+    zoomImages: normalizeUrlArray(media.zoomImages),
+  };
+};
+
+const validateVideoPreviewUrls = (urls = []) => {
+  const invalid = urls.filter((url) => {
+    const value = String(url || "").trim().toLowerCase();
+    return !value.startsWith("https://") || !(/\.(mp4|m3u8)(\?|#|$)/.test(value));
+  });
+
+  if (invalid.length > 0) {
+    return "media.videoPreviews must contain public HTTPS .mp4 or HLS .m3u8 URLs";
+  }
+
+  return null;
+};
+
 
 
 export const sellerCreateListing = async (req, res, next) => {
@@ -27,7 +70,7 @@ export const sellerCreateListing = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Category not found" });
     }
 
-    let { title, size, description, condition, status, price, yards } = req.body;
+    let { title, size, description, condition, status, price, yards, gender, occasion, fabric, availability, media } = req.body;
 
     if (typeof yards === "string") {
       try {
@@ -43,6 +86,12 @@ export const sellerCreateListing = async (req, res, next) => {
 
     if (isNaN(price)) {
       return res.status(400).json({ success: false, message: "Price must be a number" });
+    }
+
+    const normalizedMedia = normalizeMediaInput(media);
+    const videoValidationError = validateVideoPreviewUrls(normalizedMedia.videoPreviews);
+    if (videoValidationError) {
+      return res.status(400).json({ success: false, message: videoValidationError });
     }
 
     const images = Array.isArray(req.imageUrls) ? req.imageUrls : [];
@@ -71,6 +120,11 @@ export const sellerCreateListing = async (req, res, next) => {
       images,
       yards: Array.isArray(yards) ? yards : [],
       currency: userCurrency,
+      gender,
+      occasion,
+      fabric,
+      availability,
+      media: normalizedMedia,
     });
 
     return res.status(201).json({
@@ -162,7 +216,7 @@ export const updateSellerListing = async (req, res, next) => {
     }
 
     const { listingId } = req.params;
-    let { title, size, description, condition, status, deliveryMethod, price, yards } = req.body;
+    let { title, size, description, condition, status, deliveryMethod, price, yards, gender, occasion, fabric, availability, media } = req.body;
 
     if (typeof yards === "string") {
       try {
@@ -183,6 +237,18 @@ export const updateSellerListing = async (req, res, next) => {
     if (condition !== undefined) updateData.condition = condition;
     if (status !== undefined) updateData.status = status;
     if (deliveryMethod !== undefined) updateData.deliveryMethod = deliveryMethod;
+    if (gender !== undefined) updateData.gender = gender;
+    if (occasion !== undefined) updateData.occasion = occasion;
+    if (fabric !== undefined) updateData.fabric = fabric;
+    if (availability !== undefined) updateData.availability = availability;
+    if (media !== undefined) {
+      const normalizedMedia = normalizeMediaInput(media);
+      const videoValidationError = validateVideoPreviewUrls(normalizedMedia.videoPreviews);
+      if (videoValidationError) {
+        return res.status(400).json({ success: false, message: videoValidationError });
+      }
+      updateData.media = normalizedMedia;
+    }
     if (price !== undefined) {
       if (isNaN(price)) {
         return res.status(400).json({
@@ -243,6 +309,52 @@ export const updateSellerListing = async (req, res, next) => {
     });
   } catch (error) {
     console.error(error);
+    next(error);
+  }
+};
+
+export const updateSellerListingMedia = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const { listingId } = req.params;
+    const { media, gender, occasion, fabric, availability } = req.body;
+
+    const normalizedMedia = normalizeMediaInput(media || req.body);
+    const videoValidationError = validateVideoPreviewUrls(normalizedMedia.videoPreviews);
+    if (videoValidationError) {
+      return res.status(400).json({ success: false, message: videoValidationError });
+    }
+
+    const updateData = {
+      media: normalizedMedia,
+    };
+    if (gender !== undefined) updateData.gender = gender;
+    if (occasion !== undefined) updateData.occasion = occasion;
+    if (fabric !== undefined) updateData.fabric = fabric;
+    if (availability !== undefined) updateData.availability = availability;
+
+    const updatedListing = await Listing.findOneAndUpdate(
+      { _id: listingId, userId: id },
+      { $set: updateData },
+      { new: true, runValidators: true }
+    )
+      .populate("approvedBy", "fullName email role")
+      .populate("rejectedBy", "fullName email role")
+      .lean();
+
+    if (!updatedListing) {
+      return res.status(404).json({
+        success: false,
+        message: "Listing not found or you are not authorized to update it",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Listing media updated successfully",
+      data: formatListingModeration(updatedListing),
+    });
+  } catch (error) {
     next(error);
   }
 };
