@@ -1,5 +1,6 @@
 import MeasurementProfile from "../model/measurementProfile.model.js";
 import MeasurementRequest from "../model/measurementRequest.model.js";
+import CustomRequest from "../../customOrder/model/customRequest.model.js";
 
 const canAccessProfile = (profile, userId) => String(profile.userId) === String(userId);
 
@@ -112,6 +113,71 @@ export const requestAdditionalMeasurements = async (req, res, next) => {
   }
 };
 
+export const getMeasurementRequestTargets = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const requests = await CustomRequest.find({
+      designerId: id,
+      status: { $in: ["submitted", "designer_review", "quote_submitted", "revision_requested", "accepted", "converted_to_order"] },
+    })
+      .sort({ updatedAt: -1 })
+      .populate("customerId", "fullName image")
+      .populate("vendorId", "businessName")
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      message: "Measurement request targets fetched successfully",
+      data: requests.map((request) => ({
+        measurementTargetId: request._id,
+        title: request.vendorId?.businessName || "Custom order",
+        customer: request.customerId,
+        status: request.status,
+        quote: request.quote,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const requestAdditionalMeasurementsFromTarget = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const { measurementTargetId } = req.params;
+    const { requestedFields, note } = req.body;
+
+    if (!Array.isArray(requestedFields) || requestedFields.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "requestedFields is required",
+      });
+    }
+
+    const customRequest = await CustomRequest.findOne({ _id: measurementTargetId, designerId: id });
+    if (!customRequest) {
+      return res.status(404).json({ success: false, message: "Measurement target not found" });
+    }
+
+    const request = await MeasurementRequest.create({
+      requesterId: id,
+      customerId: customRequest.customerId,
+      orderId: customRequest._id,
+      orderType: "customRequest",
+      requestedFields,
+      note,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Additional measurement request created successfully",
+      data: request,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getMeasurementRequests = async (req, res, next) => {
   try {
     const { id } = req.user;
@@ -130,4 +196,3 @@ export const getMeasurementRequests = async (req, res, next) => {
     next(error);
   }
 };
-

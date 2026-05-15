@@ -4,6 +4,7 @@ import { userCheckRole } from "../../../middlewares/checkRole.middleware.js";
 import {
   createConversation,
   getConversationMessages,
+  getEligibleMessageThreads,
   getFlaggedConversations,
   getMyConversations,
   sendMessage,
@@ -12,6 +13,7 @@ import {
 const router = Router();
 
 router.use(isAuth);
+router.get("/eligible-threads", userCheckRole(["user", "tailor", "admin"]), getEligibleMessageThreads);
 router.post("/conversations", userCheckRole(["user", "tailor", "admin"]), createConversation);
 router.get("/conversations", userCheckRole(["user", "tailor", "admin"]), getMyConversations);
 router.post("/conversations/:conversationId/messages", userCheckRole(["user", "tailor", "admin"]), sendMessage);
@@ -19,4 +21,3 @@ router.get("/conversations/:conversationId/messages", userCheckRole(["user", "ta
 router.get("/admin/flagged-conversations", userCheckRole(["admin", "superAdmin"]), getFlaggedConversations);
 
 export default router;
-

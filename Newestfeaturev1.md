@@ -8,6 +8,8 @@ Mobile UI responsibility: the backend provides APIs, fields, URLs, status values
 
 Guest access: guests can explore listings, collections, designers, and public listing/designer details without registering. When a guest wants to buy, create a custom request, save a style, message a designer, or make payment, the mobile app should ask the user to create/login to an account.
 
+Important UX rule: customer-facing screens should not ask users to type backend IDs such as `designerId`, `vendorId`, `orderId`, `escrowId`, Paystack references, or respondent IDs. The mobile app should show names/cards returned by backend list/search endpoints. When a user taps a card, mobile can pass the backend `threadId`, `reviewTargetId`, or `supportTargetId` that came from the API response. These are internal selection tokens, not fields the user manually enters.
+
 ## Full Requirement Checklist
 
 | Feature | Status | API / Data Support |
@@ -16,22 +18,22 @@ Guest access: guests can explore listings, collections, designers, and public li
 | Casual, fitted, native/traditional profiles | Integrated | `fitType`: `casual`, `fitted`, `native`, `custom` |
 | Chest, waist, hip, shoulder, sleeve, trouser, native fields | Integrated | `measurements` object on measurement profile |
 | Visual guides, diagrams, optional video instructions | Integrated as URLs | `guideReferences.visualGuideUrls`, `diagramUrls`, `instructionVideoUrls`; mobile renders UI |
-| Designer requests additional measurements | Integrated | `POST /measurements/requests` |
+| Designer requests additional measurements | Integrated | `GET /measurements/request-targets`, `POST /measurements/request-targets/:measurementTargetId` |
 | Editable measurement history | Integrated | `PUT /measurements/profiles/:profileId` stores previous values in `history` |
 | Designer portfolio gallery | Integrated | `PUT /tailor/portfolio` |
 | Bridal/native/corporate/casual/menswear/womenswear sections | Integrated | `categorizedWorkSections` |
 | Bio/about, experience, tags, turnaround, availability | Integrated | Vendor profile fields and `PUT /tailor/updateTailor/:tailorId` |
 | Completed orders, reviews, ratings | Integrated | Public designer profile `socialProof` |
 | Verification badge | Integrated | `isVerifiedDesigner`, `verifiedAt` |
-| Star and written reviews | Integrated | `POST /reputation/designer-reviews` |
+| Star and written reviews | Integrated | `GET /reputation/reviewable-orders`, `POST /reputation/reviewable-orders/:reviewTargetId/review` |
 | Review categories | Integrated | `categories.fitAccuracy`, `communication`, `deliveryReliability`, `materialQuality`, `overallExperience` |
-| Verified purchase reviews only | Integrated | Review creation checks transaction/payment record |
+| Verified purchase reviews only | Integrated | Review target is generated only from paid/escrowed orders |
 | Designer review response | Integrated | `POST /reputation/designer-reviews/:reviewId/respond` |
-| Deposit and balance payments | Integrated as protected milestones | `POST /custom-orders/escrow/:escrowId/payments` |
+| Deposit and balance payments | Integrated as protected milestones | `POST /custom-orders/requests/:requestId/pay` |
 | Payment milestone tracking | Integrated | `EscrowPayment.milestones` |
-| Delivery confirmation before final release | Integrated | `POST /custom-orders/escrow/:escrowId/release` records `deliveryConfirmedAt` |
+| Delivery confirmation before final release | Integrated | Admin release records `deliveryConfirmedAt` and credits designer wallet |
 | Hold/release logic | Integrated | Escrow statuses: `deposit_held`, `fully_held`, `released` |
-| Refund/dispute support | Integrated | `POST /custom-orders/escrow/:escrowId/refund`, `/disputes` |
+| Refund/dispute support | Integrated | Escrow refund endpoint plus `GET /disputes/support-orders`, `POST /disputes/support-orders/:supportTargetId` |
 | Admin intervention | Integrated | Escrow admin fields and dispute admin endpoints |
 | Order timeline/status tracking | Integrated | `PUT /custom-orders/workflow` |
 | Quote received, accepted, in production, ready, shipped, delivered | Integrated | Workflow status enum |
@@ -43,7 +45,7 @@ Guest access: guests can explore listings, collections, designers, and public li
 | Inspired-by linking | Integrated | `items.inspiredBy` |
 | Fashion filters and sort | Integrated | `/discovery/listings`, `/discovery/designers` |
 | Multiple images, zoom, closeups, video previews, before/after, styled looks | Integrated as media fields | Listing `images` and `media`; mobile handles zoom/player UI |
-| Report issue, fit/delivery issues, ticketing | Integrated | `POST /disputes` |
+| Report issue, fit/delivery issues, ticketing | Integrated | `GET /disputes/support-orders`, `POST /disputes/support-orders/:supportTargetId` |
 | Admin moderation tools | Integrated | `GET /disputes/admin`, `PUT /disputes/admin/:disputeId` |
 | Refund/revision request handling | Integrated | `requestedResolution`, escrow refund endpoint |
 | Designer sales/listing/order/engagement analytics | Integrated | `GET /designer-tools/analytics` |
@@ -89,16 +91,38 @@ Contact blocking rule: phone numbers, emails, physical addresses, external links
 
 Push notifications: messaging notifications are email-based through the existing backend email service. No mobile push provider is required for this feature version.
 
-### Create Order-Linked Conversation
+### Get Messageable Threads
+
+Messaging is WhatsApp-style. First fetch threads the logged-in user is allowed to message.
+
+`GET /messaging/eligible-threads`
+
+Only agreed quotation/order threads are returned. If both parties have not agreed at quotation level, the thread is not messageable.
+
+Sample response:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "threadId": "665000000000000000000030",
+      "threadType": "customRequest",
+      "title": "Tolu Couture",
+      "subtitle": "Agreed quote: NGN 190000",
+      "status": "converted_to_order"
+    }
+  ]
+}
+```
+
+### Start Or Open Conversation
 
 `POST /messaging/conversations`
 
 ```json
 {
-  "orderType": "material",
-  "orderId": "665000000000000000000004",
-  "designerId": "665000000000000000000002",
-  "vendorId": "665000000000000000000003",
+  "threadId": "665000000000000000000030",
   "topic": "measurement"
 }
 ```
@@ -111,8 +135,8 @@ Sample response:
   "message": "Conversation ready",
   "data": {
     "_id": "665000000000000000000010",
-    "orderType": "material",
-    "orderId": "665000000000000000000004",
+    "orderType": "customRequest",
+    "orderId": "665000000000000000000030",
     "customerId": "665000000000000000000001",
     "designerId": "665000000000000000000002",
     "vendorId": "665000000000000000000003",
@@ -267,13 +291,18 @@ The previous measurement values are stored in `history`.
 
 ### Request Additional Measurements
 
-`POST /measurements/requests`
+First fetch measurement request targets for the designer:
+
+`GET /measurements/request-targets`
+
+The mobile app should show the returned cards. The designer taps the customer/order they need more measurements for.
+
+Then submit the request:
+
+`POST /measurements/request-targets/:measurementTargetId`
 
 ```json
 {
-  "customerId": "665000000000000000000001",
-  "orderId": "665000000000000000000004",
-  "orderType": "material",
   "requestedFields": ["neck", "inseam", "agbadaLength"],
   "note": "Please add neck and full native attire length."
 }
@@ -332,16 +361,18 @@ Response includes portfolio, bio, years of experience, specialization tags, turn
 
 Only verified purchase reviews are accepted.
 
-### Create Designer Review
+### Fetch Reviewable Orders
 
-`POST /reputation/designer-reviews`
+`GET /reputation/reviewable-orders`
+
+The mobile app should show these returned cards. The customer taps an order to review.
+
+### Create Designer Review From Selected Order
+
+`POST /reputation/reviewable-orders/:reviewTargetId/review`
 
 ```json
 {
-  "designerId": "665000000000000000000002",
-  "vendorId": "665000000000000000000003",
-  "orderId": "665000000000000000000004",
-  "orderType": "material",
   "rating": 5,
   "categories": {
     "fitAccuracy": 5,
@@ -353,6 +384,8 @@ Only verified purchase reviews are accepted.
   "comment": "The fit was accurate and delivery was smooth."
 }
 ```
+
+The backend resolves designer, vendor, order, and verified purchase status from the selected review target.
 
 ### Designer Responds
 
@@ -370,18 +403,49 @@ Only verified purchase reviews are accepted.
 
 ## 5. Escrow-Like Payment Protection
 
-Payment protection records track deposit, balance, hold, release, refund/dispute readiness, and admin intervention. Payment processor charging still uses the existing Paystack/Stripe paths; these APIs record the protected order state.
+Payment protection records track deposit, balance, hold, release, refund/dispute readiness, and admin intervention. The user should not enter Paystack references. Backend generates internal payment references when a payment milestone is recorded.
 
-### Record Escrow Milestone Payment
+Escrow behavior:
 
-`POST /custom-orders/escrow/:escrowId/payments`
+- When the customer pays deposit/balance, the money is marked as held in escrow.
+- The designer sees the held money in their escrow wallet as `pendingEscrow`.
+- The money is not added to the designer wallet/bank payout balance until the release condition is met.
+- On admin/customer-confirmed release, backend credits the designer wallet.
+- Existing payout/bank transfer flows can then move released wallet funds to the designer bank account.
+
+### Designer Escrow Wallet
+
+`GET /custom-orders/designer/escrow-wallet`
+
+Sample response:
 
 ```json
 {
-  "milestoneName": "deposit",
-  "reference": "PAYSTACK_REF_123"
+  "success": true,
+  "data": {
+    "summary": {
+      "pendingEscrow": 190000,
+      "released": 0,
+      "refunded": 0
+    },
+    "orders": []
+  }
 }
 ```
+
+### Record Escrow Milestone Payment
+
+Primary customer-facing endpoint:
+
+`POST /custom-orders/requests/:requestId/pay`
+
+```json
+{
+  "milestoneName": "deposit"
+}
+```
+
+The backend generates the internal reference automatically.
 
 ### Admin Release Payment
 
@@ -533,13 +597,16 @@ Video upload note:
 
 ### Report Issue
 
-`POST /disputes`
+First fetch support-eligible orders. The mobile app shows the returned cards; user taps the order they need help with.
+
+`GET /disputes/support-orders`
+
+Then create a support ticket from the selected order:
+
+`POST /disputes/support-orders/:supportTargetId`
 
 ```json
 {
-  "respondentId": "665000000000000000000002",
-  "orderId": "665000000000000000000030",
-  "orderType": "customRequest",
   "category": "fit_issue",
   "title": "Sleeve length is incorrect",
   "description": "The sleeve is shorter than the approved measurement profile.",
@@ -590,8 +657,7 @@ Response includes sales totals, listing performance, order insights, and engagem
 
 ```json
 {
-  "designerId": "665000000000000000000002",
-  "vendorId": "665000000000000000000003",
+  "vendorName": "Tolu Couture",
   "measurementProfileId": "665000000000000000000020",
   "inspirationImages": ["https://cdn.example.com/inspo.jpg"],
   "styleNotes": "Native agbada with subtle embroidery.",
@@ -599,6 +665,8 @@ Response includes sales totals, listing performance, order insights, and engagem
   "deliveryTimelinePreference": "Before June 1"
 }
 ```
+
+The backend can resolve the designer by `vendorName`, `designerName`, or `designerUsername`. In the mobile UI, users should select a designer from discovery/search results instead of typing IDs.
 
 ### Designer Submits Quote
 
@@ -676,10 +744,11 @@ Sample response:
 
 ```json
 {
-  "convertedOrderId": "665000000000000000000099",
   "estimatedCompletionDate": "2026-06-01T00:00:00.000Z"
 }
 ```
+
+The backend can use the accepted request as the order record. Mobile should not ask the user to enter an order ID.
 
 ### Refund Escrow Payment
 
@@ -691,6 +760,34 @@ Sample response:
   "adminNote": "Partial refund approved after dispute review."
 }
 ```
+
+## 13. Review Flow Without Manual IDs
+
+### Fetch Reviewable Orders
+
+`GET /reputation/reviewable-orders`
+
+The API returns paid custom orders the customer can review.
+
+### Create Review From Selected Order
+
+`POST /reputation/reviewable-orders/:reviewTargetId/review`
+
+```json
+{
+  "rating": 5,
+  "categories": {
+    "fitAccuracy": 5,
+    "communication": 5,
+    "deliveryReliability": 4,
+    "materialQuality": 5,
+    "overallExperience": 5
+  },
+  "comment": "The fit was accurate and delivery was smooth."
+}
+```
+
+The backend resolves the designer, vendor, order, and verified-purchase status from the selected review target.
 
 ## Test Status
 
@@ -780,6 +877,7 @@ Latest full-flow result:
     "measurements": {
       "create": 201,
       "update": 200,
+      "requestTargets": 200,
       "request": 201
     },
     "designerProfile": {
@@ -798,9 +896,11 @@ Latest full-flow result:
       "workflow": 200,
       "delay": 200,
       "refund": 200,
-      "release": 200
+      "release": 200,
+      "designerWallet": 200
     },
     "messaging": {
+      "eligibleThreads": 200,
       "conversation": 201,
       "validMessage": 201,
       "blockedContact": 400,
@@ -812,7 +912,8 @@ Latest full-flow result:
     },
     "discovery": {
       "listings": 200,
-      "designers": 200
+      "designers": 200,
+      "listingMedia": 200
     },
     "trackingDelivery": {
       "create": 201,
@@ -820,10 +921,12 @@ Latest full-flow result:
       "delivered": 200
     },
     "reputation": {
+      "reviewableOrders": 200,
       "review": 201,
       "response": 200
     },
     "disputes": {
+      "supportOrders": 200,
       "create": 201,
       "adminList": 200,
       "update": 200

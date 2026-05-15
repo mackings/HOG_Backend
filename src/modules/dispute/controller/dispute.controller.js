@@ -1,4 +1,5 @@
 import Dispute from "../model/dispute.model.js";
+import CustomRequest from "../../customOrder/model/customRequest.model.js";
 
 export const createDispute = async (req, res, next) => {
   try {
@@ -22,6 +23,73 @@ export const createDispute = async (req, res, next) => {
     });
 
     return res.status(201).json({ success: true, message: "Dispute ticket created successfully", data: dispute });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getSupportOrders = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const requests = await CustomRequest.find({
+      status: { $in: ["accepted", "converted_to_order"] },
+      $or: [{ customerId: id }, { designerId: id }],
+    })
+      .sort({ updatedAt: -1 })
+      .populate("customerId", "fullName image")
+      .populate("designerId", "fullName image")
+      .populate("vendorId", "businessName")
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      message: "Support-eligible orders fetched successfully",
+      data: requests.map((request) => ({
+        supportTargetId: request._id,
+        title: request.vendorId?.businessName || "Custom order",
+        customer: request.customerId,
+        designer: request.designerId,
+        vendor: request.vendorId,
+        status: request.status,
+        quote: request.quote,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createDisputeFromOrder = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const { supportTargetId } = req.params;
+    const { category, title, description, evidence, requestedResolution } = req.body;
+
+    const request = await CustomRequest.findOne({
+      _id: supportTargetId,
+      $or: [{ customerId: id }, { designerId: id }],
+    });
+    if (!request) return res.status(404).json({ success: false, message: "Support order not found" });
+
+    const respondentId = String(request.customerId) === String(id) ? request.designerId : request.customerId;
+
+    const dispute = await Dispute.create({
+      reporterId: id,
+      respondentId,
+      orderId: request._id,
+      orderType: "customRequest",
+      category,
+      title,
+      description,
+      evidence,
+      requestedResolution,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Dispute ticket created successfully",
+      data: dispute,
+    });
   } catch (error) {
     next(error);
   }
@@ -63,4 +131,3 @@ export const updateDispute = async (req, res, next) => {
     next(error);
   }
 };
-

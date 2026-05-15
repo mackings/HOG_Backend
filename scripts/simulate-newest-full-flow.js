@@ -96,6 +96,7 @@ const createSeedData = async () => {
     {
       fullName: "Newest Full Customer",
       email: `${TEST_TAG}.customer@example.com`,
+      username: `${TEST_TAG}-customer`,
       password: hashedPassword,
       isVerified: true,
       phoneNumber: "08000000001",
@@ -106,6 +107,7 @@ const createSeedData = async () => {
     {
       fullName: "Newest Full Designer",
       email: `${TEST_TAG}.designer@example.com`,
+      username: `${TEST_TAG}-designer`,
       password: hashedPassword,
       isVerified: true,
       phoneNumber: "08000000002",
@@ -117,6 +119,7 @@ const createSeedData = async () => {
     {
       fullName: "Newest Full Admin",
       email: `${TEST_TAG}.admin@example.com`,
+      username: `${TEST_TAG}-admin`,
       password: hashedPassword,
       isVerified: true,
       phoneNumber: "08000000003",
@@ -260,21 +263,7 @@ const main = async () => {
     });
     assertStatus("update measurement profile", measurementUpdate, 200);
 
-    const measurementRequest = await request({
-      port,
-      method: "POST",
-      path: "/api/v1/measurements/requests",
-      token: designerToken,
-      body: {
-        customerId: seed.customer._id,
-        orderId: seed.material._id,
-        orderType: "material",
-        requestedFields: ["neck", "inseam", "agbadaLength"],
-        note: "Please add final native measurements.",
-      },
-    });
-    assertStatus("measurement request", measurementRequest, 201);
-    report.measurements = { create: 201, update: 200, request: 201 };
+    report.measurements = { create: 201, update: 200 };
 
     const portfolio = await request({
       port,
@@ -329,8 +318,7 @@ const main = async () => {
       path: "/api/v1/custom-orders/requests",
       token: customerToken,
       body: {
-        designerId: seed.designer._id,
-        vendorId: seed.vendor._id,
+        vendorName: "Newest Full Couture",
         measurementProfileId,
         inspirationImages: ["https://cdn.example.com/inspo.jpg"],
         styleNotes: "Native agbada with subtle embroidery.",
@@ -340,6 +328,26 @@ const main = async () => {
     });
     assertStatus("custom request", customRequest, 201);
     const customRequestId = customRequest.json.data._id;
+
+    const measurementTargets = await request({
+      port,
+      path: "/api/v1/measurements/request-targets",
+      token: designerToken,
+    });
+    assertStatus("measurement request targets", measurementTargets, 200);
+
+    const measurementRequest = await request({
+      port,
+      method: "POST",
+      path: `/api/v1/measurements/request-targets/${customRequestId}`,
+      token: designerToken,
+      body: {
+        requestedFields: ["neck", "inseam", "agbadaLength"],
+        note: "Please add final native measurements.",
+      },
+    });
+    assertStatus("measurement request", measurementRequest, 201);
+    report.measurements = { ...report.measurements, requestTargets: 200, request: 201 };
 
     const designerResponse = await request({
       port,
@@ -404,7 +412,7 @@ const main = async () => {
       method: "POST",
       path: `/api/v1/custom-orders/escrow/${escrowId}/payments`,
       token: customerToken,
-      body: { milestoneName: "deposit", reference: `${TEST_TAG}-deposit` },
+      body: { milestoneName: "deposit" },
     });
     assertStatus("deposit", deposit, 200);
 
@@ -413,7 +421,7 @@ const main = async () => {
       method: "POST",
       path: `/api/v1/custom-orders/escrow/${escrowId}/payments`,
       token: customerToken,
-      body: { milestoneName: "balance", reference: `${TEST_TAG}-balance` },
+      body: { milestoneName: "balance" },
     });
     assertStatus("balance", balance, 200);
 
@@ -472,6 +480,13 @@ const main = async () => {
       body: { amount: 180000, adminNote: "Release remaining held amount after delivery confirmation." },
     });
     assertStatus("escrow release", release, 200);
+
+    const designerEscrowWallet = await request({
+      port,
+      path: "/api/v1/custom-orders/designer/escrow-wallet",
+      token: designerToken,
+    });
+    assertStatus("designer escrow wallet", designerEscrowWallet, 200);
     report.customOrderEscrow = {
       request: 201,
       designerResponse: 200,
@@ -485,7 +500,15 @@ const main = async () => {
       delay: 200,
       refund: 200,
       release: 200,
+      designerWallet: 200,
     };
+
+    const eligibleThreads = await request({
+      port,
+      path: "/api/v1/messaging/eligible-threads",
+      token: customerToken,
+    });
+    assertStatus("eligible message threads", eligibleThreads, 200);
 
     const conversation = await request({
       port,
@@ -493,10 +516,7 @@ const main = async () => {
       path: "/api/v1/messaging/conversations",
       token: customerToken,
       body: {
-        orderType: "customRequest",
-        orderId: customRequestId,
-        designerId: seed.designer._id,
-        vendorId: seed.vendor._id,
+        threadId: customRequestId,
         topic: "measurement",
       },
     });
@@ -536,7 +556,7 @@ const main = async () => {
       },
     });
     assertStatus("blocked video message", blockedVideo, 400);
-    report.messaging = { conversation: 201, validMessage: 201, blockedContact: 400, blockedVideo: 400 };
+    report.messaging = { eligibleThreads: 200, conversation: 201, validMessage: 201, blockedContact: 400, blockedVideo: 400 };
 
     const moodboard = await request({
       port,
@@ -610,16 +630,19 @@ const main = async () => {
       amountPaid: 190000,
     });
 
+    const reviewableOrders = await request({
+      port,
+      path: "/api/v1/reputation/reviewable-orders",
+      token: customerToken,
+    });
+    assertStatus("reviewable orders", reviewableOrders, 200);
+
     const designerReview = await request({
       port,
       method: "POST",
-      path: "/api/v1/reputation/designer-reviews",
+      path: `/api/v1/reputation/reviewable-orders/${customRequestId}/review`,
       token: customerToken,
       body: {
-        designerId: seed.designer._id,
-        vendorId: seed.vendor._id,
-        orderId: seed.material._id,
-        orderType: "material",
         rating: 5,
         categories: {
           fitAccuracy: 5,
@@ -640,17 +663,21 @@ const main = async () => {
       body: { response: "Thank you for the review." },
     });
     assertStatus("review response", reviewResponse, 200);
-    report.reputation = { review: 201, response: 200 };
+    report.reputation = { reviewableOrders: 200, review: 201, response: 200 };
+
+    const supportOrders = await request({
+      port,
+      path: "/api/v1/disputes/support-orders",
+      token: customerToken,
+    });
+    assertStatus("support orders", supportOrders, 200);
 
     const dispute = await request({
       port,
       method: "POST",
-      path: "/api/v1/disputes",
+      path: `/api/v1/disputes/support-orders/${customRequestId}`,
       token: customerToken,
       body: {
-        respondentId: seed.designer._id,
-        orderId: customRequestId,
-        orderType: "customRequest",
         category: "fit_issue",
         title: "Sleeve length concern",
         description: "The sleeve needs adjustment.",
@@ -669,7 +696,7 @@ const main = async () => {
       body: { status: "resolved", resolution: "Revision approved", adminNote: "Dummy admin resolved this ticket." },
     });
     assertStatus("dispute update", disputeUpdate, 200);
-    report.disputes = { create: 201, adminList: 200, update: 200 };
+    report.disputes = { supportOrders: 200, create: 201, adminList: 200, update: 200 };
 
     const analytics = await request({ port, path: "/api/v1/designer-tools/analytics", token: designerToken });
     assertStatus("designer analytics", analytics, 200);

@@ -2,6 +2,37 @@ import CustomRequest from "../model/customRequest.model.js";
 import OrderWorkflow from "../model/orderWorkflow.model.js";
 import EscrowPayment from "../model/escrowPayment.model.js";
 import Vendor from "../../vendor/model/vendor.model.js";
+import User from "../../user/model/user.model.js";
+import crypto from "crypto";
+
+const buildRegex = (value) => new RegExp(String(value || "").trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+
+const resolveDesigner = async ({ designerId, vendorId, designerName, designerUsername, vendorName }) => {
+  if (vendorId) {
+    const vendor = await Vendor.findById(vendorId).lean();
+    return { vendor, designerId: vendor?.userId };
+  }
+  if (designerId) {
+    const vendor = await Vendor.findOne({ userId: designerId }).lean();
+    return { vendor, designerId };
+  }
+
+  if (vendorName) {
+    const vendor = await Vendor.findOne({ businessName: buildRegex(vendorName) }).lean();
+    return { vendor, designerId: vendor?.userId };
+  }
+
+  if (designerName || designerUsername) {
+    const query = designerUsername
+      ? { username: String(designerUsername).trim().toLowerCase() }
+      : { fullName: buildRegex(designerName) };
+    const designer = await User.findOne({ ...query, role: "tailor" }).lean();
+    const vendor = designer ? await Vendor.findOne({ userId: designer._id }).lean() : null;
+    return { vendor, designerId: designer?._id };
+  }
+
+  return { vendor: null, designerId: null };
+};
 
 export const designerRespondToCustomRequest = async (req, res, next) => {
   try {
@@ -45,6 +76,9 @@ export const createCustomRequest = async (req, res, next) => {
     const {
       designerId,
       vendorId,
+      designerName,
+      designerUsername,
+      vendorName,
       measurementProfileId,
       inspirationImages = [],
       styleNotes,
@@ -52,15 +86,18 @@ export const createCustomRequest = async (req, res, next) => {
       deliveryTimelinePreference,
     } = req.body;
 
-    if (!designerId && !vendorId) {
-      return res.status(400).json({ success: false, message: "designerId or vendorId is required" });
+    const resolved = await resolveDesigner({ designerId, vendorId, designerName, designerUsername, vendorName });
+    if (!resolved.designerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Select a designer from discovery/search before submitting a custom request",
+      });
     }
 
-    const vendor = vendorId ? await Vendor.findById(vendorId).lean() : await Vendor.findOne({ userId: designerId }).lean();
     const request = await CustomRequest.create({
       customerId: id,
-      designerId: designerId || vendor?.userId,
-      vendorId: vendor?._id || vendorId,
+      designerId: resolved.designerId,
+      vendorId: resolved.vendor?._id,
       measurementProfileId,
       inspirationImages,
       styleNotes,
@@ -72,6 +109,34 @@ export const createCustomRequest = async (req, res, next) => {
       success: true,
       message: "Custom order request submitted successfully",
       data: request,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMyCustomRequests = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const requests = await CustomRequest.find({
+      $or: [{ customerId: id }, { designerId: id }],
+    })
+      .sort({ updatedAt: -1 })
+      .populate("customerId", "fullName image")
+      .populate("designerId", "fullName image")
+      .populate("vendorId", "businessName portfolioGallery availabilityStatus")
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      message: "Custom requests fetched successfully",
+      data: requests.map((request) => ({
+        threadId: request._id,
+        title: request.vendorId?.businessName || request.designerId?.fullName || "Custom order",
+        status: request.status,
+        quote: request.quote,
+        request,
+      })),
     });
   } catch (error) {
     next(error);
@@ -243,7 +308,7 @@ export const updateOrderWorkflow = async (req, res, next) => {
 export const recordEscrowPayment = async (req, res, next) => {
   try {
     const { escrowId } = req.params;
-    const { milestoneName, reference } = req.body;
+    const { milestoneName } = req.body;
 
     const escrow = await EscrowPayment.findById(escrowId);
     if (!escrow) return res.status(404).json({ success: false, message: "Escrow record not found" });
@@ -252,7 +317,7 @@ export const recordEscrowPayment = async (req, res, next) => {
     if (!milestone) return res.status(404).json({ success: false, message: "Milestone not found" });
 
     milestone.status = "paid";
-    milestone.reference = reference;
+    milestone.reference = `HOG-${crypto.randomBytes(8).toString("hex").toUpperCase()}`;
     milestone.paidAt = new Date();
     escrow.status = escrow.milestones.every((item) => item.status === "paid") ? "fully_held" : "deposit_held";
     await escrow.save();
@@ -260,6 +325,37 @@ export const recordEscrowPayment = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: "Escrow milestone payment recorded successfully",
+      data: escrow,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const payCustomRequestMilestone = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const { requestId } = req.params;
+    const { milestoneName } = req.body;
+
+    const escrow = await EscrowPayment.findOne({ orderId: requestId, orderType: "customRequest", customerId: id });
+    if (!escrow) return res.status(404).json({ success: false, message: "Payment protection record not found for this order" });
+
+    const milestone = escrow.milestones.find((item) => item.name === milestoneName);
+    if (!milestone) return res.status(404).json({ success: false, message: "Payment milestone not found" });
+    if (milestone.status === "paid") {
+      return res.status(409).json({ success: false, message: "This milestone has already been paid" });
+    }
+
+    milestone.status = "paid";
+    milestone.reference = `HOG-${crypto.randomBytes(8).toString("hex").toUpperCase()}`;
+    milestone.paidAt = new Date();
+    escrow.status = escrow.milestones.every((item) => item.status === "paid") ? "fully_held" : "deposit_held";
+    await escrow.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment received and held safely. The designer can see it as pending escrow.",
       data: escrow,
     });
   } catch (error) {
@@ -292,10 +388,51 @@ export const releaseEscrowPayment = async (req, res, next) => {
     escrow.adminNote = adminNote;
     await escrow.save();
 
+    await User.findByIdAndUpdate(
+      escrow.designerId,
+      { $inc: { wallet: releaseAmount } },
+      { new: true }
+    );
+
     return res.status(200).json({
       success: true,
       message: "Escrow payment release recorded successfully",
       data: escrow,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getDesignerEscrowWallet = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const escrows = await EscrowPayment.find({ designerId: id })
+      .sort({ updatedAt: -1 })
+      .populate("customerId", "fullName image")
+      .lean();
+
+    const summary = escrows.reduce(
+      (acc, escrow) => {
+        const paidHeld = escrow.milestones
+          .filter((milestone) => milestone.status === "paid")
+          .reduce((sum, milestone) => sum + Number(milestone.amount || 0), 0);
+        const pending = Math.max(0, paidHeld - Number(escrow.releasedAmount || 0) - Number(escrow.refundedAmount || 0));
+        acc.pendingEscrow += pending;
+        acc.released += Number(escrow.releasedAmount || 0);
+        acc.refunded += Number(escrow.refundedAmount || 0);
+        return acc;
+      },
+      { pendingEscrow: 0, released: 0, refunded: 0 }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Designer escrow wallet fetched successfully",
+      data: {
+        summary,
+        orders: escrows,
+      },
     });
   } catch (error) {
     next(error);

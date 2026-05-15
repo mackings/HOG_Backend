@@ -1,6 +1,8 @@
 import DesignerReview from "../model/designerReview.model.js";
 import Transaction from "../../transaction/model/transaction.model.js";
 import Vendor from "../../vendor/model/vendor.model.js";
+import CustomRequest from "../../customOrder/model/customRequest.model.js";
+import EscrowPayment from "../../customOrder/model/escrowPayment.model.js";
 
 const hasVerifiedPurchase = async ({ customerId, designerId, orderId, orderType }) => {
   if (orderType === "listing") {
@@ -63,6 +65,92 @@ export const createDesignerReview = async (req, res, next) => {
   }
 };
 
+export const getReviewableOrders = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const requests = await CustomRequest.find({
+      customerId: id,
+      status: { $in: ["accepted", "converted_to_order"] },
+    })
+      .sort({ updatedAt: -1 })
+      .populate("designerId", "fullName image")
+      .populate("vendorId", "businessName")
+      .lean();
+
+    const requestIds = requests.map((request) => request._id);
+    const existingReviews = await DesignerReview.find({
+      customerId: id,
+      orderId: { $in: requestIds },
+      orderType: "customRequest",
+    }).select("orderId").lean();
+    const reviewed = new Set(existingReviews.map((review) => String(review.orderId)));
+
+    return res.status(200).json({
+      success: true,
+      message: "Reviewable orders fetched successfully",
+      data: requests
+        .filter((request) => !reviewed.has(String(request._id)))
+        .map((request) => ({
+          reviewTargetId: request._id,
+          title: request.vendorId?.businessName || request.designerId?.fullName || "Custom order",
+          designer: request.designerId,
+          vendor: request.vendorId,
+          status: request.status,
+          quote: request.quote,
+        })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createDesignerReviewFromOrder = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const { reviewTargetId } = req.params;
+    const { rating, categories, comment } = req.body;
+
+    const request = await CustomRequest.findOne({ _id: reviewTargetId, customerId: id });
+    if (!request) return res.status(404).json({ success: false, message: "Reviewable order not found" });
+
+    const escrow = await EscrowPayment.findOne({ orderId: request._id, orderType: "customRequest", customerId: id }).lean();
+    const hasPaidEscrow = escrow?.milestones?.some((milestone) => milestone.status === "paid");
+    if (!hasPaidEscrow) {
+      return res.status(403).json({ success: false, message: "Only paid orders can be reviewed" });
+    }
+
+    const review = await DesignerReview.create({
+      customerId: id,
+      designerId: request.designerId,
+      vendorId: request.vendorId,
+      orderId: request._id,
+      orderType: "customRequest",
+      isVerifiedPurchase: true,
+      rating,
+      categories,
+      comment,
+    });
+
+    if (request.vendorId) {
+      await Vendor.findByIdAndUpdate(request.vendorId, {
+        $inc: { totalRatings: 1, ratingSum: Number(rating), reviewsCount: 1 },
+        $push: { ratings: { userId: id, value: Number(rating) } },
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Designer review created successfully",
+      data: review,
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ success: false, message: "You already reviewed this order" });
+    }
+    next(error);
+  }
+};
+
 export const respondToDesignerReview = async (req, res, next) => {
   try {
     const { id } = req.user;
@@ -97,4 +185,3 @@ export const getDesignerReviews = async (req, res, next) => {
     next(error);
   }
 };
-

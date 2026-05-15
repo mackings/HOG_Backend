@@ -2,6 +2,7 @@ import Conversation from "../model/conversation.model.js";
 import Message from "../model/message.model.js";
 import Vendor from "../../vendor/model/vendor.model.js";
 import User from "../../user/model/user.model.js";
+import CustomRequest from "../../customOrder/model/customRequest.model.js";
 import { blockRestrictedContact, validateMessageAttachments } from "../../../utils/contactMask.utils.js";
 import { sendEmail } from "../../../utils/emailService.utils.js";
 
@@ -16,24 +17,89 @@ const ensureParticipant = (conversation, userId) => {
   return String(conversation.customerId) === id || String(conversation.designerId) === id;
 };
 
+const AGREED_CUSTOM_REQUEST_STATUSES = ["accepted", "converted_to_order"];
+
+const resolveConversationThread = async ({ orderType, orderId, userId }) => {
+  if (orderType !== "customRequest") {
+    return { error: "Messaging is only available for agreed custom order quotation threads" };
+  }
+
+  const request = await CustomRequest.findById(orderId).populate("vendorId", "businessName").lean();
+  if (!request) return { error: "Agreed quotation thread not found" };
+  if (!AGREED_CUSTOM_REQUEST_STATUSES.includes(request.status)) {
+    return { error: "Messaging opens only after both parties agree on the quotation" };
+  }
+  if (![request.customerId, request.designerId].some((participantId) => String(participantId) === String(userId))) {
+    return { error: "You are not part of this quotation thread" };
+  }
+
+  return {
+    thread: request,
+    customerId: request.customerId,
+    designerId: request.designerId,
+    vendorId: request.vendorId?._id || request.vendorId,
+  };
+};
+
+export const getEligibleMessageThreads = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const requests = await CustomRequest.find({
+      status: { $in: AGREED_CUSTOM_REQUEST_STATUSES },
+      $or: [{ customerId: id }, { designerId: id }],
+    })
+      .sort({ updatedAt: -1 })
+      .populate("customerId", "fullName image")
+      .populate("designerId", "fullName image")
+      .populate("vendorId", "businessName")
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      message: "Eligible message threads fetched successfully",
+      data: requests.map((request) => ({
+        threadId: request._id,
+        threadType: "customRequest",
+        title: request.vendorId?.businessName || request.designerId?.fullName || "Custom order",
+        subtitle: request.quote?.totalCost ? `Agreed quote: ${request.quote.currency || "NGN"} ${request.quote.totalCost}` : "Agreed quotation",
+        participants: {
+          customer: request.customerId,
+          designer: request.designerId,
+        },
+        status: request.status,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const createConversation = async (req, res, next) => {
   try {
     const { id } = req.user;
-    const { orderType, orderId, customerId, designerId, vendorId, topic } = req.body;
+    const { orderType = "customRequest", orderId, threadId, topic } = req.body;
 
-    const customer = customerId || id;
-    if (!orderType || !orderId || !designerId) {
+    const selectedOrderId = orderId || threadId;
+    if (!selectedOrderId) {
       return res.status(400).json({
         success: false,
-        message: "orderType, orderId and designerId are required",
+        message: "Select an agreed quotation thread before starting a conversation",
       });
     }
 
-    const vendor = vendorId || (await Vendor.findOne({ userId: designerId }).select("_id").lean())?._id;
+    const resolved = await resolveConversationThread({ orderType, orderId: selectedOrderId, userId: id });
+    if (resolved.error) {
+      return res.status(403).json({ success: false, message: resolved.error });
+    }
 
     const conversation = await Conversation.findOneAndUpdate(
-      { orderType, orderId, customerId: customer, designerId },
-      { $setOnInsert: { vendorId: vendor, topic: topic || "general" } },
+      {
+        orderType,
+        orderId: selectedOrderId,
+        customerId: resolved.customerId,
+        designerId: resolved.designerId,
+      },
+      { $setOnInsert: { vendorId: resolved.vendorId, topic: topic || "general" } },
       { new: true, upsert: true }
     );
 
@@ -195,12 +261,25 @@ export const getMyConversations = async (req, res, next) => {
       .sort({ lastMessageAt: -1, createdAt: -1 })
       .populate("customerId", "fullName image")
       .populate("designerId", "fullName image")
+      .populate("vendorId", "businessName")
       .lean();
 
     return res.status(200).json({
       success: true,
       message: "Conversations fetched successfully",
-      data: conversations,
+      data: conversations.map((conversation) => ({
+        conversationId: conversation._id,
+        threadId: conversation.orderId,
+        threadType: conversation.orderType,
+        title: conversation.vendorId?.businessName || conversation.designerId?.fullName || conversation.customerId?.fullName || "Conversation",
+        participants: {
+          customer: conversation.customerId,
+          designer: conversation.designerId,
+        },
+        lastMessageAt: conversation.lastMessageAt,
+        status: conversation.status,
+        topic: conversation.topic,
+      })),
     });
   } catch (error) {
     next(error);

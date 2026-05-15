@@ -6,6 +6,9 @@ import {
   convertCustomRequestToOrder,
   createCustomRequest,
   designerRespondToCustomRequest,
+  getDesignerEscrowWallet,
+  getMyCustomRequests,
+  payCustomRequestMilestone,
   refundEscrowPayment,
   recordEscrowPayment,
   releaseEscrowPayment,
@@ -18,12 +21,15 @@ const router = Router();
 
 router.use(isAuth);
 router.post("/requests", userCheckRole(["user", "admin"]), createCustomRequest);
+router.get("/requests", userCheckRole(["user", "tailor", "admin"]), getMyCustomRequests);
 router.post("/requests/:requestId/designer-response", userCheckRole(["tailor", "admin"]), designerRespondToCustomRequest);
 router.post("/requests/:requestId/quote", userCheckRole(["tailor", "admin"]), submitCustomQuote);
 router.post("/requests/:requestId/revisions", userCheckRole(["user", "tailor", "admin"]), requestQuoteRevision);
 router.post("/requests/:requestId/accept", userCheckRole(["user", "admin"]), acceptCustomQuote);
 router.post("/requests/:requestId/convert", userCheckRole(["user", "tailor", "admin"]), convertCustomRequestToOrder);
+router.post("/requests/:requestId/pay", userCheckRole(["user", "admin"]), payCustomRequestMilestone);
 router.put("/workflow", userCheckRole(["tailor", "admin", "superAdmin"]), updateOrderWorkflow);
+router.get("/designer/escrow-wallet", userCheckRole(["tailor", "admin"]), getDesignerEscrowWallet);
 router.post("/escrow/:escrowId/payments", userCheckRole(["user", "admin"]), recordEscrowPayment);
 router.post("/escrow/:escrowId/release", userCheckRole(["admin", "superAdmin"]), releaseEscrowPayment);
 router.post("/escrow/:escrowId/refund", userCheckRole(["admin", "superAdmin"]), refundEscrowPayment);
