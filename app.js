@@ -37,6 +37,7 @@ import disputeRouter from './src/modules/dispute/routes/dispute.routes.js';
 import reputationRouter from './src/modules/reputation/routes/reputation.routes.js';
 import discoveryRouter from './src/modules/discovery/routes/discovery.routes.js';
 import designerToolsRouter from './src/modules/designerTools/routes/designerTools.routes.js';
+import supportRouter from './src/modules/support/routes/support.routes.js';
 
 
 
@@ -95,6 +96,7 @@ app.use('/api/v1/disputes', disputeRouter);
 app.use('/api/v1/reputation', reputationRouter);
 app.use('/api/v1/discovery', discoveryRouter);
 app.use('/api/v1/designer-tools', designerToolsRouter);
+app.use('/api/v1/support', supportRouter);
 
 app.use((req, res) => {
   res.status(404).json({ message: "Endpoint not found. please, check the url and try again." });

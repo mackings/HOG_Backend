@@ -59,6 +59,7 @@ Important UX rule: customer-facing screens should not ask users to type backend 
 | Quote approval | Integrated | `POST /custom-orders/requests/:requestId/accept` |
 | Order conversion after approval | Integrated | `POST /custom-orders/requests/:requestId/convert` |
 | Guest exploration without account | Integrated | `GET /discovery/public/listings`, `/public/designers` |
+| Chat with Support | Integrated | `/support/conversations`; user/designer can message admin support |
 
 Dummy simulation accounts used in examples:
 
@@ -231,6 +232,38 @@ Video rejection sample:
 ### Admin Flagged Conversations
 
 `GET /messaging/admin/flagged-conversations`
+
+### Chat With Support
+
+This is the direct support communication channel between customers/designers and admins. It is separate from order-linked customer-designer chat.
+
+`POST /support/conversations`
+
+```json
+{
+  "subject": "Need help with my custom order",
+  "category": "order",
+  "content": "Please help review the latest order update."
+}
+```
+
+`GET /support/conversations`
+
+Admins receive all support conversations. Users/designers receive only their own conversations.
+
+`POST /support/conversations/:conversationId/messages`
+
+Send text as JSON, or send image/voice attachments as `multipart/form-data` using the `files` field. Pasted media URLs are rejected.
+
+```json
+{
+  "content": "Please check this support request."
+}
+```
+
+`GET /support/conversations/:conversationId/messages`
+
+Contact details are blocked in support chat using the same safety rule as designer/customer messaging.
 
 ## 2. Measurement & Sizing
 
