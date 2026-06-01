@@ -244,15 +244,24 @@ const main = async () => {
           trouserLength: 41,
           native: { agbadaLength: 56, capSize: 22 },
         },
-        guideReferences: {
-          visualGuideUrls: ["https://cdn.example.com/chest-guide.jpg"],
-          diagramUrls: ["https://cdn.example.com/native-diagram.png"],
-          instructionVideoUrls: ["https://cdn.example.com/measurement-guide.mp4"],
-        },
       },
     });
     assertStatus("create measurement profile", measurementProfile, 201);
     const measurementProfileId = measurementProfile.json.data._id;
+
+    const blockedMeasurementGuideUrl = await request({
+      port,
+      method: "POST",
+      path: "/api/v1/measurements/profiles",
+      token: customerToken,
+      body: {
+        profileName: "Blocked guide URL",
+        fitType: "casual",
+        measurements: { chest: 40 },
+        guideReferences: { visualGuideUrls: ["https://cdn.example.com/chest-guide.jpg"] },
+      },
+    });
+    assertStatus("blocked measurement guide URL", blockedMeasurementGuideUrl, 400);
 
     const measurementUpdate = await request({
       port,
@@ -263,24 +272,23 @@ const main = async () => {
     });
     assertStatus("update measurement profile", measurementUpdate, 200);
 
-    report.measurements = { create: 201, update: 200 };
+    report.measurements = { create: 201, update: 200, blockedGuideUrl: 400 };
+
+    const blockedPortfolioUrl = await request({
+      port,
+      method: "PUT",
+      path: "/api/v1/tailor/portfolio",
+      token: designerToken,
+      body: { portfolioGallery: [{ imageUrl: "https://cdn.example.com/bridal.jpg", caption: "Bridal look", category: "bridal" }] },
+    });
+    assertStatus("blocked portfolio URL", blockedPortfolioUrl, 400);
 
     const portfolio = await request({
       port,
       method: "PUT",
       path: "/api/v1/tailor/portfolio",
       token: designerToken,
-      body: {
-        portfolioGallery: [{ imageUrl: "https://cdn.example.com/bridal.jpg", caption: "Bridal look", category: "bridal" }],
-        categorizedWorkSections: {
-          bridal: ["https://cdn.example.com/bridal.jpg"],
-          nativeWear: ["https://cdn.example.com/native.jpg"],
-          corporate: [],
-          casual: [],
-          menswear: ["https://cdn.example.com/menswear.jpg"],
-          womenswear: ["https://cdn.example.com/womenswear.jpg"],
-        },
-      },
+      body: { captions: ["Bridal look"], categories: ["bridal"] },
     });
     assertStatus("portfolio", portfolio, 200);
 
@@ -289,7 +297,16 @@ const main = async () => {
       path: `/api/v1/discovery/public/designers/${seed.designer._id}`,
     });
     assertStatus("public designer profile", designerProfile, 200);
-    report.designerProfile = { portfolio: 200, publicProfile: 200 };
+    report.designerProfile = { blockedPortfolioUrl: 400, portfolio: 200, publicProfile: 200 };
+
+    const blockedListingMediaUrl = await request({
+      port,
+      method: "PUT",
+      path: `/api/v1/seller/updateSellerListingMedia/${seed.listing._id}`,
+      token: designerToken,
+      body: { media: { zoomImages: ["https://cdn.example.com/zoom.jpg"] } },
+    });
+    assertStatus("blocked listing media URL", blockedListingMediaUrl, 400);
 
     const listingMedia = await request({
       port,
@@ -301,16 +318,26 @@ const main = async () => {
         occasion: "native",
         fabric: "silk",
         availability: "available",
-        media: {
-          fabricCloseups: ["https://cdn.example.com/fabric-close.jpg"],
-          videoPreviews: ["https://cdn.example.com/listing-preview.mp4"],
-          beforeAfterShowcases: ["https://cdn.example.com/before-after.jpg"],
-          styledLookPreviews: ["https://cdn.example.com/styled-look.jpg"],
-          zoomImages: ["https://cdn.example.com/zoom.jpg"],
-        },
+        media: {},
       },
     });
     assertStatus("listing media", listingMedia, 200);
+
+    const blockedCustomRequestUrl = await request({
+      port,
+      method: "POST",
+      path: "/api/v1/custom-orders/requests",
+      token: customerToken,
+      body: {
+        vendorName: "Newest Full Couture",
+        measurementProfileId,
+        inspirationImages: ["https://cdn.example.com/inspo.jpg"],
+        styleNotes: "Native agbada with subtle embroidery.",
+        fabricPreferences: ["silk", "aso oke"],
+        deliveryTimelinePreference: "Before June 1",
+      },
+    });
+    assertStatus("blocked custom request inspiration URL", blockedCustomRequestUrl, 400);
 
     const customRequest = await request({
       port,
@@ -320,7 +347,6 @@ const main = async () => {
       body: {
         vendorName: "Newest Full Couture",
         measurementProfileId,
-        inspirationImages: ["https://cdn.example.com/inspo.jpg"],
         styleNotes: "Native agbada with subtle embroidery.",
         fabricPreferences: ["silk", "aso oke"],
         deliveryTimelinePreference: "Before June 1",
@@ -488,6 +514,7 @@ const main = async () => {
     });
     assertStatus("designer escrow wallet", designerEscrowWallet, 200);
     report.customOrderEscrow = {
+      blockedInspirationUrl: 400,
       request: 201,
       designerResponse: 200,
       quote: 200,
@@ -531,10 +558,21 @@ const main = async () => {
       body: {
         topic: "measurement",
         content: "Please confirm the updated sleeve length.",
-        attachments: [{ type: "image", url: "https://cdn.example.com/sleeve.jpg", mimeType: "image/jpeg" }],
       },
     });
     assertStatus("valid message", validMessage, 201);
+
+    const blockedPastedAttachment = await request({
+      port,
+      method: "POST",
+      path: `/api/v1/messaging/conversations/${conversationId}/messages`,
+      token: customerToken,
+      body: {
+        content: "Please check this image.",
+        attachments: [{ type: "image", url: "https://cdn.example.com/sleeve.jpg", mimeType: "image/jpeg" }],
+      },
+    });
+    assertStatus("blocked pasted attachment URL", blockedPastedAttachment, 400);
 
     const blockedContact = await request({
       port,
@@ -552,11 +590,11 @@ const main = async () => {
       token: customerToken,
       body: {
         content: "Video",
-        attachments: [{ type: "video", url: "https://cdn.example.com/video.mp4", mimeType: "video/mp4" }],
+        attachments: [{ type: "video", mimeType: "video/mp4" }],
       },
     });
     assertStatus("blocked video message", blockedVideo, 400);
-    report.messaging = { eligibleThreads: 200, conversation: 201, validMessage: 201, blockedContact: 400, blockedVideo: 400 };
+    report.messaging = { eligibleThreads: 200, conversation: 201, validMessage: 201, blockedContact: 400, blockedPastedAttachment: 400, blockedVideo: 400 };
 
     const moodboard = await request({
       port,
@@ -567,6 +605,19 @@ const main = async () => {
     });
     assertStatus("moodboard", moodboard, 201);
     const moodboardId = moodboard.json.data._id;
+    const blockedMoodboardImageUrl = await request({
+      port,
+      method: "POST",
+      path: `/api/v1/moodboards/${moodboardId}/items`,
+      token: customerToken,
+      body: {
+        itemType: "image",
+        imageUrl: "https://cdn.example.com/inspo.jpg",
+        note: "This should be uploaded from device.",
+      },
+    });
+    assertStatus("blocked moodboard image URL", blockedMoodboardImageUrl, 400);
+
     const moodboardItem = await request({
       port,
       method: "POST",
@@ -576,11 +627,11 @@ const main = async () => {
         itemType: "listing",
         itemId: seed.listing._id,
         note: "Inspired by sleeve detail",
-        inspiredBy: { itemType: "image", imageUrl: "https://cdn.example.com/inspo.jpg" },
+        inspiredBy: { itemType: "listing", itemId: seed.listing._id },
       },
     });
     assertStatus("moodboard item", moodboardItem, 200);
-    report.moodboards = { create: 201, addItem: 200 };
+    report.moodboards = { create: 201, blockedImageUrl: 400, addItem: 200 };
 
     const filterListings = await request({
       port,
@@ -594,7 +645,7 @@ const main = async () => {
       token: customerToken,
     });
     assertStatus("auth discovery designers", filterDesigners, 200);
-    report.discovery = { listings: 200, designers: 200, listingMedia: 200 };
+    report.discovery = { listings: 200, designers: 200, blockedListingMediaUrl: 400, listingMedia: 200 };
 
     const tracking = await request({
       port,
@@ -672,7 +723,7 @@ const main = async () => {
     });
     assertStatus("support orders", supportOrders, 200);
 
-    const dispute = await request({
+    const blockedDisputeEvidenceUrl = await request({
       port,
       method: "POST",
       path: `/api/v1/disputes/support-orders/${customRequestId}`,
@@ -682,6 +733,20 @@ const main = async () => {
         title: "Sleeve length concern",
         description: "The sleeve needs adjustment.",
         evidence: ["https://cdn.example.com/fit-issue.jpg"],
+        requestedResolution: "revision",
+      },
+    });
+    assertStatus("blocked dispute evidence URL", blockedDisputeEvidenceUrl, 400);
+
+    const dispute = await request({
+      port,
+      method: "POST",
+      path: `/api/v1/disputes/support-orders/${customRequestId}`,
+      token: customerToken,
+      body: {
+        category: "fit_issue",
+        title: "Sleeve length concern",
+        description: "The sleeve needs adjustment.",
         requestedResolution: "revision",
       },
     });
@@ -696,7 +761,7 @@ const main = async () => {
       body: { status: "resolved", resolution: "Revision approved", adminNote: "Dummy admin resolved this ticket." },
     });
     assertStatus("dispute update", disputeUpdate, 200);
-    report.disputes = { supportOrders: 200, create: 201, adminList: 200, update: 200 };
+    report.disputes = { supportOrders: 200, blockedEvidenceUrl: 400, create: 201, adminList: 200, update: 200 };
 
     const analytics = await request({ port, path: "/api/v1/designer-tools/analytics", token: designerToken });
     assertStatus("designer analytics", analytics, 200);

@@ -1,6 +1,7 @@
 import MeasurementProfile from "../model/measurementProfile.model.js";
 import MeasurementRequest from "../model/measurementRequest.model.js";
 import CustomRequest from "../../customOrder/model/customRequest.model.js";
+import { rejectPastedMediaUrls } from "../../../utils/deviceUpload.utils.js";
 
 const canAccessProfile = (profile, userId) => String(profile.userId) === String(userId);
 
@@ -12,6 +13,7 @@ export const createMeasurementProfile = async (req, res, next) => {
     if (!profileName) {
       return res.status(400).json({ success: false, message: "profileName is required" });
     }
+    if (rejectPastedMediaUrls(res, { guideReferences })) return;
 
     const profile = await MeasurementProfile.create({
       userId: id,
@@ -65,6 +67,7 @@ export const updateMeasurementProfile = async (req, res, next) => {
       changedBy: id,
       note: req.body.note || "Profile updated",
     });
+    if (rejectPastedMediaUrls(res, { guideReferences: req.body.guideReferences })) return;
 
     for (const key of ["profileName", "fitType", "measurements", "guideReferences", "isDefault"]) {
       if (req.body[key] !== undefined) profile[key] = req.body[key];

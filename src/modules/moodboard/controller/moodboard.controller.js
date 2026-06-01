@@ -1,4 +1,5 @@
 import Moodboard from "../model/moodboard.model.js";
+import { rejectPastedMediaUrls, uploadedFileUrls } from "../../../utils/deviceUpload.utils.js";
 
 export const createMoodboard = async (req, res, next) => {
   try {
@@ -23,8 +24,10 @@ export const addMoodboardItem = async (req, res, next) => {
     const moodboard = await Moodboard.findOne({ _id: moodboardId, userId: id });
     if (!moodboard) return res.status(404).json({ success: false, message: "Moodboard not found" });
     if (!itemType) return res.status(400).json({ success: false, message: "itemType is required" });
+    if (rejectPastedMediaUrls(res, { imageUrl, inspiredBy })) return;
 
-    moodboard.items.push({ itemType, itemId, imageUrl, note, inspiredBy });
+    const [uploadedImageUrl] = uploadedFileUrls(req);
+    moodboard.items.push({ itemType, itemId, imageUrl: uploadedImageUrl, note, inspiredBy });
     await moodboard.save();
 
     return res.status(200).json({ success: true, message: "Moodboard item added successfully", data: moodboard });
@@ -60,4 +63,3 @@ export const removeMoodboardItem = async (req, res, next) => {
     next(error);
   }
 };
-

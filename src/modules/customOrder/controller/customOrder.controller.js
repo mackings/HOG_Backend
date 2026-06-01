@@ -4,6 +4,7 @@ import EscrowPayment from "../model/escrowPayment.model.js";
 import Vendor from "../../vendor/model/vendor.model.js";
 import User from "../../user/model/user.model.js";
 import crypto from "crypto";
+import { rejectPastedMediaUrls, uploadedFileUrls } from "../../../utils/deviceUpload.utils.js";
 
 const buildRegex = (value) => new RegExp(String(value || "").trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
 
@@ -86,6 +87,8 @@ export const createCustomRequest = async (req, res, next) => {
       deliveryTimelinePreference,
     } = req.body;
 
+    if (rejectPastedMediaUrls(res, { inspirationImages })) return;
+
     const resolved = await resolveDesigner({ designerId, vendorId, designerName, designerUsername, vendorName });
     if (!resolved.designerId) {
       return res.status(400).json({
@@ -99,7 +102,7 @@ export const createCustomRequest = async (req, res, next) => {
       designerId: resolved.designerId,
       vendorId: resolved.vendor?._id,
       measurementProfileId,
-      inspirationImages,
+      inspirationImages: uploadedFileUrls(req),
       styleNotes,
       fabricPreferences,
       deliveryTimelinePreference,

@@ -1,5 +1,6 @@
 import Dispute from "../model/dispute.model.js";
 import CustomRequest from "../../customOrder/model/customRequest.model.js";
+import { rejectPastedMediaUrls, uploadedFileUrls } from "../../../utils/deviceUpload.utils.js";
 
 export const createDispute = async (req, res, next) => {
   try {
@@ -9,6 +10,7 @@ export const createDispute = async (req, res, next) => {
     if (!orderId || !orderType || !category || !title || !description) {
       return res.status(400).json({ success: false, message: "orderId, orderType, category, title and description are required" });
     }
+    if (rejectPastedMediaUrls(res, { evidence })) return;
 
     const dispute = await Dispute.create({
       reporterId: id,
@@ -18,7 +20,7 @@ export const createDispute = async (req, res, next) => {
       category,
       title,
       description,
-      evidence,
+      evidence: uploadedFileUrls(req),
       requestedResolution,
     });
 
@@ -64,6 +66,7 @@ export const createDisputeFromOrder = async (req, res, next) => {
     const { id } = req.user;
     const { supportTargetId } = req.params;
     const { category, title, description, evidence, requestedResolution } = req.body;
+    if (rejectPastedMediaUrls(res, { evidence })) return;
 
     const request = await CustomRequest.findOne({
       _id: supportTargetId,
@@ -81,7 +84,7 @@ export const createDisputeFromOrder = async (req, res, next) => {
       category,
       title,
       description,
-      evidence,
+      evidence: uploadedFileUrls(req),
       requestedResolution,
     });
 

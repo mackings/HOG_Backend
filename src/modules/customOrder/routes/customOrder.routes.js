@@ -16,11 +16,12 @@ import {
   submitCustomQuote,
   updateOrderWorkflow,
 } from "../controller/customOrder.controller.js";
+import { imageUpload, optionalImageKitUpload } from "../../../utils/imagekit.js";
 
 const router = Router();
 
 router.use(isAuth);
-router.post("/requests", userCheckRole(["user", "admin"]), createCustomRequest);
+router.post("/requests", userCheckRole(["user", "admin"]), imageUpload, optionalImageKitUpload, createCustomRequest);
 router.get("/requests", userCheckRole(["user", "tailor", "admin"]), getMyCustomRequests);
 router.post("/requests/:requestId/designer-response", userCheckRole(["tailor", "admin"]), designerRespondToCustomRequest);
 router.post("/requests/:requestId/quote", userCheckRole(["tailor", "admin"]), submitCustomQuote);

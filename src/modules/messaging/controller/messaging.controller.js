@@ -4,6 +4,7 @@ import Vendor from "../../vendor/model/vendor.model.js";
 import User from "../../user/model/user.model.js";
 import CustomRequest from "../../customOrder/model/customRequest.model.js";
 import { blockRestrictedContact, validateMessageAttachments } from "../../../utils/contactMask.utils.js";
+import { rejectPastedMediaUrls, uploadedMessageAttachments } from "../../../utils/deviceUpload.utils.js";
 import { sendEmail } from "../../../utils/emailService.utils.js";
 
 const getRecipientId = (conversation, senderId) => {
@@ -135,7 +136,20 @@ export const sendMessage = async (req, res, next) => {
       });
     }
 
-    const attachmentValidation = validateMessageAttachments(attachments);
+    const bodyAttachmentValidation = validateMessageAttachments(attachments);
+    if (!bodyAttachmentValidation.valid) {
+      return res.status(400).json({ success: false, message: bodyAttachmentValidation.message });
+    }
+    if (rejectPastedMediaUrls(res, { attachments })) return;
+
+    const uploadedAttachments = uploadedMessageAttachments(req);
+    if (Array.isArray(attachments) && attachments.length > 0 && uploadedAttachments.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Upload message attachments from the device instead of submitting attachment URLs.",
+      });
+    }
+    const attachmentValidation = validateMessageAttachments(uploadedAttachments);
     if (!attachmentValidation.valid) {
       return res.status(400).json({ success: false, message: attachmentValidation.message });
     }

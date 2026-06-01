@@ -9,13 +9,14 @@ import {
   getSupportOrders,
   updateDispute,
 } from "../controller/dispute.controller.js";
+import { imageUpload, optionalImageKitUpload } from "../../../utils/imagekit.js";
 
 const router = Router();
 
 router.use(isAuth);
 router.get("/support-orders", userCheckRole(["user", "tailor", "admin"]), getSupportOrders);
-router.post("/", userCheckRole(["user", "tailor", "admin"]), createDispute);
-router.post("/support-orders/:supportTargetId", userCheckRole(["user", "tailor", "admin"]), createDisputeFromOrder);
+router.post("/", userCheckRole(["user", "tailor", "admin"]), imageUpload, optionalImageKitUpload, createDispute);
+router.post("/support-orders/:supportTargetId", userCheckRole(["user", "tailor", "admin"]), imageUpload, optionalImageKitUpload, createDisputeFromOrder);
 router.get("/mine", userCheckRole(["user", "tailor", "admin"]), getMyDisputes);
 router.get("/admin", userCheckRole(["admin", "superAdmin"]), getAllDisputes);
 router.put("/admin/:disputeId", userCheckRole(["admin", "superAdmin"]), updateDispute);

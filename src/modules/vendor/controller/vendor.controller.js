@@ -2,6 +2,23 @@ import User from "../../user/model/user.model.js";
 import Vendor from "../model/vendor.model.js";
 import Material from "../../material/model/material.model.js";
 import Review from "../../review/model/review.model.js";
+import { rejectPastedMediaUrls, uploadedFileUrls } from "../../../utils/deviceUpload.utils.js";
+
+const parseMaybeJson = (value, fallback) => {
+  if (value === undefined) return fallback;
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    return value;
+  }
+};
+
+const arrayValue = (value) => {
+  const parsed = parseMaybeJson(value, []);
+  if (Array.isArray(parsed)) return parsed;
+  return parsed === undefined || parsed === null || parsed === "" ? [] : [parsed];
+};
 
 
 export const createTailor = async (req, res, next) => {
@@ -149,13 +166,25 @@ export const updateDesignerPortfolio = async (req, res, next) => {
   try {
     const { id } = req.user;
     const { portfolioGallery, categorizedWorkSections } = req.body;
+    if (rejectPastedMediaUrls(res, { portfolioGallery, categorizedWorkSections })) return;
+
+    const uploadedUrls = uploadedFileUrls(req);
+    const captions = arrayValue(req.body.captions);
+    const categories = arrayValue(req.body.categories);
+    const uploadedPortfolioGallery = uploadedUrls.map((imageUrl, index) => ({
+      imageUrl,
+      caption: captions[index],
+      category: categories[index] || "other",
+    }));
+
+    const nextCategorizedWorkSections = parseMaybeJson(categorizedWorkSections, undefined);
 
     const tailor = await Vendor.findOneAndUpdate(
       { userId: id },
       {
         $set: {
-          ...(Array.isArray(portfolioGallery) ? { portfolioGallery } : {}),
-          ...(categorizedWorkSections ? { categorizedWorkSections } : {}),
+          ...(uploadedPortfolioGallery.length > 0 ? { portfolioGallery: uploadedPortfolioGallery } : {}),
+          ...(nextCategorizedWorkSections ? { categorizedWorkSections: nextCategorizedWorkSections } : {}),
         },
       },
       { new: true, runValidators: true }
@@ -297,4 +326,3 @@ export const getAllAssignedMaterials = async (req, res, next) => {
     next(error);
   }
 };
-

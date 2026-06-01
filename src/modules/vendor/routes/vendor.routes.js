@@ -4,7 +4,7 @@ import { createTailor, getTailor, updateTailor, deleteTailor, getAllAssignedMate
   } from '../controller/vendor.controller.js';
 import { isAuth } from '../../../middlewares/auth.middleware.js';
 import { userCheckRole } from '../../../middlewares/checkRole.middleware.js'
-import { imageUpload, imageKitUpload } from '../../../utils/imagekit.js';
+import { imageUpload, imageKitUpload, optionalImageKitUpload } from '../../../utils/imagekit.js';
 
 
 const router = Router();
@@ -15,7 +15,7 @@ router.use(userCheckRole(['tailor']));
 router.post('/createTailor', imageUpload, imageKitUpload, createTailor);
 router.get('/getTailor', getTailor);
 router.put('/updateTailor/:tailorId', updateTailor);
-router.put('/portfolio', updateDesignerPortfolio);
+router.put('/portfolio', imageUpload, optionalImageKitUpload, updateDesignerPortfolio);
 router.delete('/deleteTailor/:tailorId', deleteTailor);
 router.get('/getAllAssignedMaterials', getAllAssignedMaterials);
 

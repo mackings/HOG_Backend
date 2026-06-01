@@ -3,6 +3,7 @@ import Category from '../../category/model/category.model.js';
 import Listing from '../model/seller.model.js';
 import Transaction from '../../transaction/model/transaction.model.js';
 import Tracking from "../../tracking/model/tracking.model.js";
+import { rejectPastedMediaUrls } from "../../../utils/deviceUpload.utils.js";
 
 const formatListingModeration = (listing) => ({
   ...listing,
@@ -38,6 +39,19 @@ const normalizeMediaInput = (mediaInput = {}) => {
     styledLookPreviews: normalizeUrlArray(media.styledLookPreviews),
     zoomImages: normalizeUrlArray(media.zoomImages),
   };
+};
+
+const uploadedMediaInput = (req) => {
+  const slots = normalizeUrlArray(req.body.mediaSlots);
+  const base = normalizeMediaInput({});
+  const files = Array.isArray(req.uploadedFiles) ? req.uploadedFiles : [];
+
+  files.forEach((file, index) => {
+    const slot = slots[index] || (String(file.mimeType || "").startsWith("video/") ? "videoPreviews" : "zoomImages");
+    if (base[slot]) base[slot].push(file.url);
+  });
+
+  return base;
 };
 
 const validateVideoPreviewUrls = (urls = []) => {
@@ -88,6 +102,7 @@ export const sellerCreateListing = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Price must be a number" });
     }
 
+    if (rejectPastedMediaUrls(res, { media })) return;
     const normalizedMedia = normalizeMediaInput(media);
     const videoValidationError = validateVideoPreviewUrls(normalizedMedia.videoPreviews);
     if (videoValidationError) {
@@ -242,6 +257,7 @@ export const updateSellerListing = async (req, res, next) => {
     if (fabric !== undefined) updateData.fabric = fabric;
     if (availability !== undefined) updateData.availability = availability;
     if (media !== undefined) {
+      if (rejectPastedMediaUrls(res, { media })) return;
       const normalizedMedia = normalizeMediaInput(media);
       const videoValidationError = validateVideoPreviewUrls(normalizedMedia.videoPreviews);
       if (videoValidationError) {
@@ -319,7 +335,10 @@ export const updateSellerListingMedia = async (req, res, next) => {
     const { listingId } = req.params;
     const { media, gender, occasion, fabric, availability } = req.body;
 
-    const normalizedMedia = normalizeMediaInput(media || req.body);
+    if (rejectPastedMediaUrls(res, { media, fabricCloseups: req.body.fabricCloseups, videoPreviews: req.body.videoPreviews, beforeAfterShowcases: req.body.beforeAfterShowcases, styledLookPreviews: req.body.styledLookPreviews, zoomImages: req.body.zoomImages })) return;
+    const normalizedMedia = Array.isArray(req.uploadedFiles) && req.uploadedFiles.length > 0
+      ? uploadedMediaInput(req)
+      : normalizeMediaInput(media || req.body);
     const videoValidationError = validateVideoPreviewUrls(normalizedMedia.videoPreviews);
     if (videoValidationError) {
       return res.status(400).json({ success: false, message: videoValidationError });

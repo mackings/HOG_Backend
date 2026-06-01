@@ -25,31 +25,18 @@ const storage = multer.diskStorage({
 });
 
 export const imageUpload = multer({ storage }).array("images", 10);
-const normalizeImageUrls = (value) => {
-  if (!value) return null;
-  if (Array.isArray(value)) return value.filter(Boolean);
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) return parsed.filter(Boolean);
-    } catch (error) {
-      // Fall through for a single URL string.
-    }
-    return [trimmed];
-  }
-  return null;
-};
+export const fileUpload = multer({ storage }).array("files", 10);
 
-export const imageKitUpload = async (req, res, next) => {
-  const bodyUrls = normalizeImageUrls(req.body?.imageUrls || req.body?.imageUrl);
-  if (bodyUrls && (!req.files || req.files.length === 0)) {
-    req.imageUrls = bodyUrls;
-    return next();
+const uploadFilesToImageKit = async (req, res, next, { required }) => {
+  if (req.body?.imageUrls || req.body?.imageUrl) {
+    return res.status(400).json({
+      success: false,
+      message: "Upload files from the device instead of submitting image URLs.",
+    });
   }
 
   if (!req.files || req.files.length === 0) {
+    if (!required) return next();
     return res.status(400).json({ message: "No images provided" });
   }
 
@@ -73,12 +60,18 @@ export const imageKitUpload = async (req, res, next) => {
 
       fs.unlinkSync(file.path);
 
-      return response.data.url;
+      return {
+        url: response.data.url,
+        mimeType: file.mimetype || mime.lookup(file.originalname) || undefined,
+        originalName: file.originalname,
+        sizeBytes: file.size,
+      };
     });
 
-    const uploadedImages = await Promise.all(uploadPromises);
+    const uploadedFiles = await Promise.all(uploadPromises);
 
-    req.imageUrls = uploadedImages; 
+    req.uploadedFiles = uploadedFiles;
+    req.imageUrls = uploadedFiles.map((file) => file.url);
     next();
   } catch (error) {
     if (req.files) {
@@ -93,3 +86,6 @@ export const imageKitUpload = async (req, res, next) => {
     });
   }
 };
+
+export const imageKitUpload = (req, res, next) => uploadFilesToImageKit(req, res, next, { required: true });
+export const optionalImageKitUpload = (req, res, next) => uploadFilesToImageKit(req, res, next, { required: false });
