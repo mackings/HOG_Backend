@@ -94,7 +94,13 @@ export const getAlSellerListings = async (req, res, next) => {
 
 export const searchListings = async (req, res, next) => { 
   try {
-    const { query } = req.query;
+    const query = String(req.query.query || req.query.search || req.query.q || "").trim();
+    if (!query) {
+      return res.status(400).json({
+        success: false,
+        message: "Search query is required",
+      });
+    }
 
     const searchConditions = [
       { title: { $regex: query, $options: "i" } },
