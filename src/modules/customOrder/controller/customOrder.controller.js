@@ -3,10 +3,12 @@ import OrderWorkflow from "../model/orderWorkflow.model.js";
 import EscrowPayment from "../model/escrowPayment.model.js";
 import Vendor from "../../vendor/model/vendor.model.js";
 import User from "../../user/model/user.model.js";
+import mongoose from "mongoose";
 import crypto from "crypto";
 import { rejectPastedMediaUrls, uploadedFileUrls } from "../../../utils/deviceUpload.utils.js";
 
 const buildRegex = (value) => new RegExp(String(value || "").trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+const WORKFLOW_STATUSES = ["quote_received", "accepted", "not_started", "in_production", "ready", "shipped", "delivered", "delayed", "cancelled"];
 
 const resolveDesigner = async ({ designerId, vendorId, designerName, designerUsername, vendorName }) => {
   if (vendorId) {
@@ -268,6 +270,137 @@ export const acceptCustomQuote = async (req, res, next) => {
       success: true,
       message: "Quote accepted and payment protection record created",
       data: { request, workflow, escrow },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getDesignerWorkflows = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const workflows = await OrderWorkflow.find({ designerId: id })
+      .sort({ estimatedCompletionDate: 1, updatedAt: -1 })
+      .populate("customerId", "fullName image email")
+      .populate("designerId", "fullName image email")
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      message: "Designer workflows fetched successfully",
+      data: workflows,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createDesignerWorkflow = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const {
+      customerId,
+      customerName,
+      customerEmail,
+      attireName,
+      workflowTitle,
+      productionNotes,
+      estimatedCompletionDate,
+      status = "not_started",
+      note,
+    } = req.body;
+
+    if (!customerName && !customerId) {
+      return res.status(400).json({ success: false, message: "customerName or customerId is required" });
+    }
+    if (!attireName) {
+      return res.status(400).json({ success: false, message: "attireName is required" });
+    }
+    if (!estimatedCompletionDate) {
+      return res.status(400).json({ success: false, message: "estimatedCompletionDate is required" });
+    }
+    if (!WORKFLOW_STATUSES.includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid workflow status" });
+    }
+
+    const completionDate = new Date(estimatedCompletionDate);
+    if (Number.isNaN(completionDate.getTime())) {
+      return res.status(400).json({ success: false, message: "estimatedCompletionDate must be a valid date" });
+    }
+
+    const workflow = await OrderWorkflow.create({
+      orderId: new mongoose.Types.ObjectId(),
+      orderType: "manual",
+      customerId,
+      designerId: id,
+      customerName,
+      customerEmail,
+      attireName,
+      workflowTitle: workflowTitle || attireName,
+      productionNotes,
+      currentStatus: status,
+      estimatedCompletionDate: completionDate,
+      timeline: [
+        {
+          status,
+          note: note || "Designer created production workflow",
+          updatedBy: id,
+        },
+      ],
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Designer workflow created successfully",
+      data: workflow,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateDesignerWorkflowStatus = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const { workflowId } = req.params;
+    const { status, note, estimatedCompletionDate, deliveryTrackingNumber, delayReason } = req.body;
+
+    if (!WORKFLOW_STATUSES.includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid workflow status" });
+    }
+
+    const updates = {
+      currentStatus: status,
+    };
+    if (deliveryTrackingNumber !== undefined) updates.deliveryTrackingNumber = deliveryTrackingNumber;
+    if (delayReason !== undefined) updates.delayReason = delayReason;
+    if (status === "delayed") updates.delayNotifiedAt = new Date();
+
+    if (estimatedCompletionDate !== undefined) {
+      const completionDate = new Date(estimatedCompletionDate);
+      if (Number.isNaN(completionDate.getTime())) {
+        return res.status(400).json({ success: false, message: "estimatedCompletionDate must be a valid date" });
+      }
+      updates.estimatedCompletionDate = completionDate;
+    }
+
+    const workflow = await OrderWorkflow.findOneAndUpdate(
+      { _id: workflowId, designerId: id },
+      {
+        $set: updates,
+        $push: { timeline: { status, note, updatedBy: id } },
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!workflow) {
+      return res.status(404).json({ success: false, message: "Workflow not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Workflow status updated successfully",
+      data: workflow,
     });
   } catch (error) {
     next(error);

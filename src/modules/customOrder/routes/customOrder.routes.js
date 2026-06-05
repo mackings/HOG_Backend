@@ -5,8 +5,10 @@ import {
   acceptCustomQuote,
   convertCustomRequestToOrder,
   createCustomRequest,
+  createDesignerWorkflow,
   designerRespondToCustomRequest,
   getDesignerEscrowWallet,
+  getDesignerWorkflows,
   getMyCustomRequests,
   payCustomRequestMilestone,
   refundEscrowPayment,
@@ -14,6 +16,7 @@ import {
   releaseEscrowPayment,
   requestQuoteRevision,
   submitCustomQuote,
+  updateDesignerWorkflowStatus,
   updateOrderWorkflow,
 } from "../controller/customOrder.controller.js";
 import { imageUpload, optionalImageKitUpload } from "../../../utils/imagekit.js";
@@ -29,6 +32,9 @@ router.post("/requests/:requestId/revisions", userCheckRole(["user", "tailor", "
 router.post("/requests/:requestId/accept", userCheckRole(["user", "admin"]), acceptCustomQuote);
 router.post("/requests/:requestId/convert", userCheckRole(["user", "tailor", "admin"]), convertCustomRequestToOrder);
 router.post("/requests/:requestId/pay", userCheckRole(["user", "admin"]), payCustomRequestMilestone);
+router.get("/workflows", userCheckRole(["tailor", "admin"]), getDesignerWorkflows);
+router.post("/workflows", userCheckRole(["tailor", "admin"]), createDesignerWorkflow);
+router.put("/workflows/:workflowId/status", userCheckRole(["tailor", "admin"]), updateDesignerWorkflowStatus);
 router.put("/workflow", userCheckRole(["tailor", "admin", "superAdmin"]), updateOrderWorkflow);
 router.get("/designer/escrow-wallet", userCheckRole(["tailor", "admin"]), getDesignerEscrowWallet);
 router.post("/escrow/:escrowId/payments", userCheckRole(["user", "admin"]), recordEscrowPayment);

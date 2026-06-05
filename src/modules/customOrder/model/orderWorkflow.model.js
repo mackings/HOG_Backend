@@ -8,21 +8,25 @@ const orderWorkflowSchema = new mongoose.Schema(
     },
     orderType: {
       type: String,
-      enum: ["material", "listing", "customRequest", "review"],
+      enum: ["material", "listing", "customRequest", "review", "manual"],
       required: true,
     },
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
     },
     designerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    customerName: String,
+    customerEmail: String,
+    attireName: String,
+    workflowTitle: String,
+    productionNotes: String,
     currentStatus: {
       type: String,
-      enum: ["quote_received", "accepted", "in_production", "ready", "shipped", "delivered", "delayed", "cancelled"],
+      enum: ["quote_received", "accepted", "not_started", "in_production", "ready", "shipped", "delivered", "delayed", "cancelled"],
       default: "quote_received",
     },
     timeline: [
@@ -37,6 +41,10 @@ const orderWorkflowSchema = new mongoose.Schema(
     deliveryTrackingNumber: String,
     delayReason: String,
     delayNotifiedAt: Date,
+    reminderNotifications: {
+      oneWeekSentAt: Date,
+      threeDaysSentAt: Date,
+    },
   },
   { timestamps: true }
 );
@@ -44,4 +52,3 @@ const orderWorkflowSchema = new mongoose.Schema(
 orderWorkflowSchema.index({ orderId: 1, orderType: 1 }, { unique: true });
 
 export default mongoose.model("OrderWorkflow", orderWorkflowSchema);
-
