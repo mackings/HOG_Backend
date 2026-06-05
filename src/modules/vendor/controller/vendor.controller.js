@@ -20,6 +20,16 @@ const arrayValue = (value) => {
   return parsed === undefined || parsed === null || parsed === "" ? [] : [parsed];
 };
 
+const booleanValue = (value) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return undefined;
+};
+
 const normalizePortfolioCategory = (value) => {
   const raw = String(value || "").trim();
   const normalized = raw.toLowerCase().replace(/[\s-]+/g, "_");
@@ -220,10 +230,12 @@ export const updateDesignerPortfolio = async (req, res, next) => {
     const tailor = await Vendor.findOneAndUpdate(
       { userId: id },
       {
-        $set: {
-          ...(uploadedPortfolioGallery.length > 0 ? { portfolioGallery: uploadedPortfolioGallery } : {}),
-          ...(nextCategorizedWorkSections ? { categorizedWorkSections: nextCategorizedWorkSections } : {}),
-        },
+        ...(uploadedPortfolioGallery.length > 0
+          ? { $push: { portfolioGallery: { $each: uploadedPortfolioGallery } } }
+          : {}),
+        ...(nextCategorizedWorkSections
+          ? { $set: { categorizedWorkSections: nextCategorizedWorkSections } }
+          : {}),
       },
       { new: true, runValidators: true }
     );
@@ -242,13 +254,58 @@ export const updateDesignerPortfolio = async (req, res, next) => {
   }
 };
 
+export const updatePortfolioItem = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const { itemId } = req.params;
+    const { caption, category } = req.body;
+    const isVisible = booleanValue(req.body.isVisible);
+    const uploadedUrls = uploadedFileUrls(req);
+
+    if (req.body.isVisible !== undefined && isVisible === undefined) {
+      return res.status(400).json({ success: false, message: "isVisible must be a boolean" });
+    }
+
+    const tailor = await Vendor.findOne({ userId: id, "portfolioGallery._id": itemId });
+    if (!tailor) {
+      return res.status(404).json({ success: false, message: "Portfolio item not found" });
+    }
+
+    const portfolioItem = tailor.portfolioGallery.id(itemId);
+    const previousImageUrl = portfolioItem.imageUrl;
+
+    if (uploadedUrls.length > 0) portfolioItem.imageUrl = uploadedUrls[0];
+    if (caption !== undefined) portfolioItem.caption = caption;
+    if (category !== undefined) portfolioItem.category = normalizePortfolioCategory(category);
+    if (isVisible !== undefined) portfolioItem.isVisible = isVisible;
+
+    if (uploadedUrls.length > 0 && previousImageUrl && previousImageUrl !== portfolioItem.imageUrl) {
+      Object.keys(tailor.categorizedWorkSections || {}).forEach((section) => {
+        tailor.categorizedWorkSections[section] = tailor.categorizedWorkSections[section].filter(
+          (url) => url !== previousImageUrl
+        );
+      });
+    }
+
+    await tailor.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Portfolio item updated successfully",
+      data: tailor,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const updatePortfolioItemVisibility = async (req, res, next) => {
   try {
     const { id } = req.user;
     const { itemId } = req.params;
-    const { isVisible } = req.body;
+    const isVisible = booleanValue(req.body.isVisible);
 
-    if (typeof isVisible !== "boolean") {
+    if (isVisible === undefined) {
       return res.status(400).json({ success: false, message: "isVisible must be a boolean" });
     }
 
@@ -265,6 +322,40 @@ export const updatePortfolioItemVisibility = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: isVisible ? "Portfolio item is now visible" : "Portfolio item is now hidden",
+      data: tailor,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deletePortfolioItem = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const { itemId } = req.params;
+
+    const tailor = await Vendor.findOne({ userId: id, "portfolioGallery._id": itemId });
+    if (!tailor) {
+      return res.status(404).json({ success: false, message: "Portfolio item not found" });
+    }
+
+    const portfolioItem = tailor.portfolioGallery.id(itemId);
+    const deletedImageUrl = portfolioItem?.imageUrl;
+    tailor.portfolioGallery.pull({ _id: itemId });
+
+    if (deletedImageUrl) {
+      Object.keys(tailor.categorizedWorkSections || {}).forEach((section) => {
+        tailor.categorizedWorkSections[section] = tailor.categorizedWorkSections[section].filter(
+          (url) => url !== deletedImageUrl
+        );
+      });
+    }
+
+    await tailor.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Portfolio item deleted successfully",
       data: tailor,
     });
   } catch (error) {
