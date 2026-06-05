@@ -42,6 +42,21 @@ const normalizePortfolioCategory = (value) => {
   return aliases[normalized] || "other";
 };
 
+const publicDesignerPortfolio = (designer = {}) => {
+  const portfolioGallery = Array.isArray(designer.portfolioGallery)
+    ? designer.portfolioGallery.filter((item) => item?.isVisible !== false)
+    : [];
+  const visibleUrls = new Set(portfolioGallery.map((item) => item.imageUrl).filter(Boolean));
+  const categorizedWorkSections = Object.fromEntries(
+    Object.entries(designer.categorizedWorkSections || {}).map(([key, urls]) => [
+      key,
+      Array.isArray(urls) ? urls.filter((url) => visibleUrls.has(url)) : [],
+    ])
+  );
+
+  return { portfolioGallery, categorizedWorkSections };
+};
+
 
 export const createTailor = async (req, res, next) => {
   try {
@@ -197,6 +212,7 @@ export const updateDesignerPortfolio = async (req, res, next) => {
       imageUrl,
       caption: captions[index],
       category: normalizePortfolioCategory(categories[index]),
+      isVisible: true,
     }));
 
     const nextCategorizedWorkSections = parseMaybeJson(categorizedWorkSections, undefined);
@@ -226,6 +242,36 @@ export const updateDesignerPortfolio = async (req, res, next) => {
   }
 };
 
+export const updatePortfolioItemVisibility = async (req, res, next) => {
+  try {
+    const { id } = req.user;
+    const { itemId } = req.params;
+    const { isVisible } = req.body;
+
+    if (typeof isVisible !== "boolean") {
+      return res.status(400).json({ success: false, message: "isVisible must be a boolean" });
+    }
+
+    const tailor = await Vendor.findOneAndUpdate(
+      { userId: id, "portfolioGallery._id": itemId },
+      { $set: { "portfolioGallery.$.isVisible": isVisible } },
+      { new: true, runValidators: true }
+    );
+
+    if (!tailor) {
+      return res.status(404).json({ success: false, message: "Portfolio item not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: isVisible ? "Portfolio item is now visible" : "Portfolio item is now hidden",
+      data: tailor,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getDesignerPublicProfile = async (req, res, next) => {
   try {
     const { designerId } = req.params;
@@ -246,6 +292,7 @@ export const getDesignerPublicProfile = async (req, res, next) => {
       message: "Designer profile fetched successfully",
       data: {
         ...designer,
+        ...publicDesignerPortfolio(designer),
         socialProof: {
           completedOrders: designer.completedOrdersCount || 0,
           reviews: designer.reviewsCount || designer.totalRatings || 0,

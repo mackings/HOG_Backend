@@ -10,6 +10,21 @@ const approvedListingsFilter = {
 
 const buildRegex = (value) => ({ $regex: String(value), $options: "i" });
 
+const publicDesignerPortfolio = (designer = {}) => {
+  const portfolioGallery = Array.isArray(designer.portfolioGallery)
+    ? designer.portfolioGallery.filter((item) => item?.isVisible !== false)
+    : [];
+  const visibleUrls = new Set(portfolioGallery.map((item) => item.imageUrl).filter(Boolean));
+  const categorizedWorkSections = Object.fromEntries(
+    Object.entries(designer.categorizedWorkSections || {}).map(([key, urls]) => [
+      key,
+      Array.isArray(urls) ? urls.filter((url) => visibleUrls.has(url)) : [],
+    ])
+  );
+
+  return { ...designer, portfolioGallery, categorizedWorkSections };
+};
+
 export const discoverListings = async (req, res, next) => {
   try {
     const {
@@ -112,7 +127,11 @@ export const discoverDesigners = async (req, res, next) => {
       });
     }
 
-    return res.status(200).json({ success: true, message: "Designers discovered successfully", data: designers });
+    return res.status(200).json({
+      success: true,
+      message: "Designers discovered successfully",
+      data: designers.map(publicDesignerPortfolio),
+    });
   } catch (error) {
     next(error);
   }
@@ -137,7 +156,7 @@ export const getPublicDesignerById = async (req, res, next) => {
       success: true,
       message: "Designer fetched successfully",
       data: {
-        ...designer,
+        ...publicDesignerPortfolio(designer),
         socialProof: {
           completedOrders: designer.completedOrdersCount || 0,
           reviews: designer.reviewsCount || designer.totalRatings || 0,
