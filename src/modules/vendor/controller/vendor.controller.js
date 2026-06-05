@@ -20,6 +20,28 @@ const arrayValue = (value) => {
   return parsed === undefined || parsed === null || parsed === "" ? [] : [parsed];
 };
 
+const normalizePortfolioCategory = (value) => {
+  const raw = String(value || "").trim();
+  const normalized = raw.toLowerCase().replace(/[\s-]+/g, "_");
+  const aliases = {
+    bridal: "bridal",
+    nativewear: "native_wear",
+    native_wear: "native_wear",
+    native: "native_wear",
+    corporate: "corporate",
+    casual: "casual",
+    menswear: "menswear",
+    mens_wear: "menswear",
+    womenswear: "womenswear",
+    womens_wear: "womenswear",
+    womenwear: "womenswear",
+    women_wear: "womenswear",
+    other: "other",
+  };
+
+  return aliases[normalized] || "other";
+};
+
 
 export const createTailor = async (req, res, next) => {
   try {
@@ -174,7 +196,7 @@ export const updateDesignerPortfolio = async (req, res, next) => {
     const uploadedPortfolioGallery = uploadedUrls.map((imageUrl, index) => ({
       imageUrl,
       caption: captions[index],
-      category: categories[index] || "other",
+      category: normalizePortfolioCategory(categories[index]),
     }));
 
     const nextCategorizedWorkSections = parseMaybeJson(categorizedWorkSections, undefined);
