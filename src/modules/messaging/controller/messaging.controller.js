@@ -3,6 +3,8 @@ import Message from "../model/message.model.js";
 import Vendor from "../../vendor/model/vendor.model.js";
 import User from "../../user/model/user.model.js";
 import CustomRequest from "../../customOrder/model/customRequest.model.js";
+import Review from "../../review/model/review.model.js";
+import Material from "../../material/model/material.model.js";
 import { blockRestrictedContact, validateMessageAttachments } from "../../../utils/contactMask.utils.js";
 import { rejectPastedMediaUrls, uploadedMessageAttachments } from "../../../utils/deviceUpload.utils.js";
 import { sendEmail } from "../../../utils/emailService.utils.js";
@@ -19,10 +21,71 @@ const ensureParticipant = (conversation, userId) => {
 };
 
 const AGREED_CUSTOM_REQUEST_STATUSES = ["accepted", "converted_to_order"];
+const AGREED_REVIEW_STATUSES = ["part payment", "full payment"];
+
+const isEligibleReview = (review) =>
+  Boolean(review?.hasAcceptedOffer) ||
+  Number(review?.amountPaid || 0) > 0 ||
+  AGREED_REVIEW_STATUSES.includes(review?.status);
+
+const reviewCustomerId = (review) => review.materialId?.userId?._id || review.materialId?.userId;
+const reviewDesignerId = (review) => review.vendorId?.userId?._id || review.vendorId?.userId || review.userId?._id || review.userId;
+
+const mapCustomRequestThread = (request) => ({
+  threadId: request._id,
+  threadType: "customRequest",
+  title: request.vendorId?.businessName || request.designerId?.fullName || "Custom order",
+  subtitle: request.quote?.totalCost ? `Agreed quote: ${request.quote.currency || "NGN"} ${request.quote.totalCost}` : "Agreed quotation",
+  participants: {
+    customer: request.customerId,
+    designer: request.designerId,
+  },
+  status: request.status,
+});
+
+const mapReviewThread = (review) => ({
+  threadId: review._id,
+  threadType: "review",
+  title: review.vendorId?.businessName || review.userId?.fullName || "Quotation",
+  subtitle: review.totalCost ? `Quotation: NGN ${review.totalCost}` : "Accepted quotation",
+  participants: {
+    customer: review.materialId?.userId,
+    designer: review.vendorId?.userId || review.userId,
+  },
+  status: review.status,
+  hasAcceptedOffer: Boolean(review.hasAcceptedOffer),
+  amountPaid: review.amountPaid || 0,
+});
 
 const resolveConversationThread = async ({ orderType, orderId, userId }) => {
-  if (orderType !== "customRequest") {
+  if (!["customRequest", "review"].includes(orderType)) {
     return { error: "Messaging is only available for agreed custom order quotation threads" };
+  }
+
+  if (orderType === "review") {
+    const review = await Review.findById(orderId)
+      .populate("materialId", "userId attireType clothMaterial")
+      .populate("vendorId", "userId businessName")
+      .populate("userId", "fullName image")
+      .lean();
+
+    if (!review) return { error: "Agreed quotation thread not found" };
+    if (!isEligibleReview(review)) {
+      return { error: "Messaging opens only after both parties agree on the quotation or payment begins" };
+    }
+
+    const customerId = reviewCustomerId(review);
+    const designerId = reviewDesignerId(review);
+    if (![customerId, designerId].some((participantId) => String(participantId) === String(userId))) {
+      return { error: "You are not part of this quotation thread" };
+    }
+
+    return {
+      thread: review,
+      customerId,
+      designerId,
+      vendorId: review.vendorId?._id || review.vendorId,
+    };
   }
 
   const request = await CustomRequest.findById(orderId).populate("vendorId", "businessName").lean();
@@ -45,30 +108,61 @@ const resolveConversationThread = async ({ orderType, orderId, userId }) => {
 export const getEligibleMessageThreads = async (req, res, next) => {
   try {
     const { id } = req.user;
-    const requests = await CustomRequest.find({
-      status: { $in: AGREED_CUSTOM_REQUEST_STATUSES },
-      $or: [{ customerId: id }, { designerId: id }],
-    })
-      .sort({ updatedAt: -1 })
-      .populate("customerId", "fullName image")
-      .populate("designerId", "fullName image")
-      .populate("vendorId", "businessName")
-      .lean();
+    const vendor = await Vendor.findOne({ userId: id }).select("_id").lean();
+    const customerMaterials = await Material.find({ userId: id }).select("_id").lean();
+    const materialIds = customerMaterials.map((material) => material._id);
+
+    const reviewFilters = [];
+    if (vendor?._id) reviewFilters.push({ vendorId: vendor._id });
+    if (materialIds.length > 0) reviewFilters.push({ materialId: { $in: materialIds } });
+    reviewFilters.push({ userId: id });
+
+    const [requests, reviews] = await Promise.all([
+      CustomRequest.find({
+        status: { $in: AGREED_CUSTOM_REQUEST_STATUSES },
+        $or: [{ customerId: id }, { designerId: id }],
+      })
+        .sort({ updatedAt: -1 })
+        .populate("customerId", "fullName image")
+        .populate("designerId", "fullName image")
+        .populate("vendorId", "businessName")
+        .lean(),
+      Review.find({
+        $and: [
+          { $or: reviewFilters },
+          {
+            $or: [
+              { hasAcceptedOffer: true },
+              { amountPaid: { $gt: 0 } },
+              { status: { $in: AGREED_REVIEW_STATUSES } },
+            ],
+          },
+        ],
+      })
+        .sort({ updatedAt: -1 })
+        .populate({
+          path: "materialId",
+          select: "userId attireType clothMaterial",
+          populate: { path: "userId", select: "fullName image" },
+        })
+        .populate({
+          path: "vendorId",
+          select: "userId businessName",
+          populate: { path: "userId", select: "fullName image" },
+        })
+        .populate("userId", "fullName image")
+        .lean(),
+    ]);
+
+    const threads = [
+      ...requests.map(mapCustomRequestThread),
+      ...reviews.filter(isEligibleReview).map(mapReviewThread),
+    ];
 
     return res.status(200).json({
       success: true,
       message: "Eligible message threads fetched successfully",
-      data: requests.map((request) => ({
-        threadId: request._id,
-        threadType: "customRequest",
-        title: request.vendorId?.businessName || request.designerId?.fullName || "Custom order",
-        subtitle: request.quote?.totalCost ? `Agreed quote: ${request.quote.currency || "NGN"} ${request.quote.totalCost}` : "Agreed quotation",
-        participants: {
-          customer: request.customerId,
-          designer: request.designerId,
-        },
-        status: request.status,
-      })),
+      data: threads,
     });
   } catch (error) {
     next(error);
