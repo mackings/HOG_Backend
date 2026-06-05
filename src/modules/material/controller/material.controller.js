@@ -12,6 +12,7 @@ import mongoose from "mongoose";
 import Review from '../../review/model/review.model.js';
 import Tracking from '../../tracking/model/tracking.model.js';
 import { getPricingRates } from '../../../utils/pricingConfig.utils.js';
+import { markEscrowMilestonePaidByReference } from '../../../utils/escrowPayment.utils.js';
 
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -762,6 +763,20 @@ export const orderWebhook = async (req, res, next) => {
   }
 
   if(reference){
+    const escrowPayment = await markEscrowMilestonePaidByReference({
+      reference,
+      gatewayPayload: data,
+    });
+    if (escrowPayment) {
+      return res.status(200).json({
+        success: true,
+        message: escrowPayment.wasAlreadyPaid
+          ? "Escrow payment already processed"
+          : "Escrow payment successful and held",
+        escrow: escrowPayment.escrow,
+      });
+    }
+
     const order = await InitializedOrder.findOne({ paymentReference: reference });
     if (!order) {
       return res.status(200).json({

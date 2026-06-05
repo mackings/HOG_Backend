@@ -4,8 +4,10 @@ import EscrowPayment from "../model/escrowPayment.model.js";
 import Vendor from "../../vendor/model/vendor.model.js";
 import User from "../../user/model/user.model.js";
 import mongoose from "mongoose";
+import axios from "axios";
 import crypto from "crypto";
 import { rejectPastedMediaUrls, uploadedFileUrls } from "../../../utils/deviceUpload.utils.js";
+import { markEscrowMilestonePaidByReference } from "../../../utils/escrowPayment.utils.js";
 
 const buildRegex = (value) => new RegExp(String(value || "").trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
 const WORKFLOW_STATUSES = ["quote_received", "accepted", "not_started", "in_production", "ready", "shipped", "delivered", "delayed", "cancelled"];
@@ -472,10 +474,14 @@ export const payCustomRequestMilestone = async (req, res, next) => {
   try {
     const { id } = req.user;
     const { requestId } = req.params;
-    const { milestoneName } = req.body;
+    const { milestoneName, callbackUrl } = req.body;
 
-    const escrow = await EscrowPayment.findOne({ orderId: requestId, orderType: "customRequest", customerId: id });
+    const [escrow, user] = await Promise.all([
+      EscrowPayment.findOne({ orderId: requestId, orderType: "customRequest", customerId: id }),
+      User.findById(id).lean(),
+    ]);
     if (!escrow) return res.status(404).json({ success: false, message: "Payment protection record not found for this order" });
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
     const milestone = escrow.milestones.find((item) => item.name === milestoneName);
     if (!milestone) return res.status(404).json({ success: false, message: "Payment milestone not found" });
@@ -483,16 +489,125 @@ export const payCustomRequestMilestone = async (req, res, next) => {
       return res.status(409).json({ success: false, message: "This milestone has already been paid" });
     }
 
-    milestone.status = "paid";
-    milestone.reference = `HOG-${crypto.randomBytes(8).toString("hex").toUpperCase()}`;
-    milestone.paidAt = new Date();
-    escrow.status = escrow.milestones.every((item) => item.status === "paid") ? "fully_held" : "deposit_held";
+    const paymentReference = `HOG-ESC-${crypto.randomBytes(8).toString("hex").toUpperCase()}`;
+    milestone.reference = paymentReference;
     await escrow.save();
+
+    const paystackResponse = await axios.post(
+      "https://api.paystack.co/transaction/initialize",
+      {
+        email: user.email,
+        amount: Math.round(Number(milestone.amount || 0) * 100),
+        currency: escrow.currency || "NGN",
+        reference: paymentReference,
+        callback_url: callbackUrl || `${process.env.FRONTEND_URL}/payment-success`,
+        metadata: {
+          paymentType: "custom_order_escrow",
+          escrowId: escrow._id.toString(),
+          orderId: escrow.orderId.toString(),
+          orderType: escrow.orderType,
+          milestoneName: milestone.name,
+          customerId: escrow.customerId.toString(),
+          designerId: escrow.designerId.toString(),
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_MAIN_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (paystackResponse.status !== 200 || !paystackResponse.data?.data?.authorization_url) {
+      milestone.reference = undefined;
+      await escrow.save();
+      return res.status(400).json({
+        success: false,
+        message: "Escrow payment initialization failed",
+        error: paystackResponse.data?.message || "Unknown error",
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      message: "Payment received and held safely. The designer can see it as pending escrow.",
-      data: escrow,
+      message: "Escrow payment initialized successfully",
+      data: {
+        authorizationUrl: paystackResponse.data.data.authorization_url,
+        accessCode: paystackResponse.data.data.access_code,
+        paymentReference,
+        gateway: "Paystack",
+        amount: milestone.amount,
+        currency: escrow.currency || "NGN",
+        milestone: {
+          name: milestone.name,
+          amount: milestone.amount,
+          status: milestone.status,
+          reference: milestone.reference,
+        },
+        escrow,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const verifyEscrowMilestonePayment = async (req, res, next) => {
+  try {
+    const { id, role } = req.user;
+    const { paymentReference } = req.params;
+
+    const escrow = await EscrowPayment.findOne({ "milestones.reference": paymentReference });
+    if (!escrow) return res.status(404).json({ success: false, message: "Escrow payment reference not found" });
+    if (
+      String(escrow.customerId) !== String(id) &&
+      String(escrow.designerId) !== String(id) &&
+      !["admin", "superAdmin"].includes(role)
+    ) {
+      return res.status(403).json({ success: false, message: "You are not authorized to verify this escrow payment" });
+    }
+
+    const verifyResponse = await axios.get(
+      `https://api.paystack.co/transaction/verify/${paymentReference}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_MAIN_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const paystackData = verifyResponse.data?.data;
+    if (!verifyResponse.data?.status || paystackData?.status !== "success") {
+      return res.status(400).json({
+        success: false,
+        message: "Escrow payment has not been completed",
+        data: paystackData,
+      });
+    }
+
+    const result = await markEscrowMilestonePaidByReference({
+      reference: paymentReference,
+      gatewayPayload: paystackData,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: result.wasAlreadyPaid
+        ? "Escrow payment was already confirmed"
+        : "Escrow payment confirmed and held successfully",
+      data: {
+        escrow: result.escrow,
+        milestone: result.milestone,
+        gateway: {
+          provider: "Paystack",
+          status: paystackData.status,
+          reference: paystackData.reference,
+          amount: Number(paystackData.amount || 0) / 100,
+          currency: paystackData.currency,
+        },
+      },
     });
   } catch (error) {
     next(error);
