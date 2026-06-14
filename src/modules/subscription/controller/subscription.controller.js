@@ -7,6 +7,11 @@ import Stripe from "stripe";
 import Plan from "../model/plan.model.js";
 import Transactions from "../../transaction/model/transaction.model.js";
 import { sendSubscriptionEmail } from "../../../utils/emailService.utils.js";
+import {
+  formatPlanForUser,
+  getSubscriptionProvider,
+  normalizePlanBenefits,
+} from "../services/subscriptionPlan.service.js";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" })
@@ -18,10 +23,6 @@ const PLAN_NAME_MAP = {
   enterprise: "Enterprise",
 };
 const ALLOWED_DURATIONS = new Set(["monthly", "quarterly", "yearly"]);
-const NIGERIAN_COUNTRIES = new Set(["nigeria", "ng", "nigerian"]);
-const isNigerianCountry = (country) =>
-  NIGERIAN_COUNTRIES.has(String(country || "").trim().toLowerCase());
-
 const normalizePlanName = (value) => {
   const key = String(value || "").trim().toLowerCase();
   return PLAN_NAME_MAP[key] || null;
@@ -115,10 +116,12 @@ const finalizeSubscriptionOrder = async (order) => {
     subscriptionEndDate: order.subscriptionEndDate,
     subscriptionStartDate: order.subscriptionStartDate,
     plan: order.plan,
+    planId: order.planId || null,
+    planBenefits: order.planBenefits || [],
     billTerm: order.billTerm,
     paymentCurrency: order.amountPaidUSD > 0 ? "USD" : "NGN",
     orderStatus: order.paymentStatus,
-    amountPaid: order.amountPaid,
+    amountPaid: order.amountPaidUSD > 0 ? order.amountPaidUSD : order.amountPaid,
     vendorId: order.vendorId || null,
     materialId: order.materialId || null,
   });
@@ -164,11 +167,10 @@ export const subscriptionPayments = async (req, res, next) => {
     const { startDate, endDate } = calculateSubscriptionDates(selectedPlan.duration);
     const reference = crypto.randomBytes(12).toString("hex");
     const baseAmountNGN = Number(selectedPlan.amount);
-    const isNigerianTailor = NIGERIAN_COUNTRIES.has(
-      String(user.country || "").trim().toLowerCase()
-    );
+    const provider = getSubscriptionProvider(user.country);
+    const planBenefits = Array.isArray(selectedPlan.benefits) ? selectedPlan.benefits : [];
 
-    if (isNigerianTailor) {
+    if (provider === "paystack") {
       initializedOrder = await InitializedOrder.create({
         userId: user._id,
         totalAmount: baseAmountNGN,
@@ -179,6 +181,8 @@ export const subscriptionPayments = async (req, res, next) => {
         subscriptionEndDate: endDate,
         billTerm: selectedPlan.duration,
         plan: selectedPlan.name,
+        planId: selectedPlan._id,
+        planBenefits,
         paymentStatus: "subscription",
       });
 
@@ -212,6 +216,7 @@ export const subscriptionPayments = async (req, res, next) => {
         breakdown: {
           plan: selectedPlan.name,
           billTerm: selectedPlan.duration,
+          benefits: planBenefits,
           amountNGN: baseAmountNGN,
           currency: "NGN",
         },
@@ -233,6 +238,13 @@ export const subscriptionPayments = async (req, res, next) => {
         message: "Invalid subscription amount after conversion",
       });
     }
+    const amountInCents = Math.round(amountUSD * 100);
+    if (amountInCents < 50) {
+      return res.status(400).json({
+        success: false,
+        message: "International subscription amount must be at least USD 0.50",
+      });
+    }
 
     initializedOrder = await InitializedOrder.create({
       userId: user._id,
@@ -246,10 +258,11 @@ export const subscriptionPayments = async (req, res, next) => {
       subscriptionEndDate: endDate,
       billTerm: selectedPlan.duration,
       plan: selectedPlan.name,
+      planId: selectedPlan._id,
+      planBenefits,
       paymentStatus: "subscription",
     });
 
-    const amountInCents = Math.round(amountUSD * 100);
     const successUrl = `${process.env.FRONTEND_URL}/payment-success?reference=${reference}&provider=stripe`;
     const cancelUrl = `${process.env.FRONTEND_URL}/payment-cancelled?reference=${reference}&provider=stripe`;
 
@@ -262,7 +275,7 @@ export const subscriptionPayments = async (req, res, next) => {
             currency: "usd",
             product_data: {
               name: `${selectedPlan.name} Plan (${selectedPlan.duration})`,
-              description: selectedPlan.description,
+              description: [selectedPlan.description, ...planBenefits].join(" | ").slice(0, 500),
             },
             unit_amount: amountInCents,
           },
@@ -274,11 +287,15 @@ export const subscriptionPayments = async (req, res, next) => {
         paymentType: "subscription",
         plan: selectedPlan.name,
         billTerm: selectedPlan.duration,
+        planId: String(selectedPlan._id),
       },
       success_url: successUrl,
       cancel_url: cancelUrl,
       customer_email: user.email,
     });
+
+    initializedOrder.sessionId = session.id;
+    await initializedOrder.save();
 
     return res.status(201).json({
       success: true,
@@ -290,6 +307,7 @@ export const subscriptionPayments = async (req, res, next) => {
       breakdown: {
         plan: selectedPlan.name,
         billTerm: selectedPlan.duration,
+        benefits: planBenefits,
         amountNGN: baseAmountNGN,
         amountUSD,
         exchangeRate,
@@ -325,6 +343,15 @@ export const verifySubscriptionPayment = async (req, res, next) => {
     if (!order) {
       const existingTransaction = await Transactions.findOne({ paymentReference });
       if (existingTransaction) {
+        const requester = await User.findById(id).select("role");
+        const isOwner = String(existingTransaction.userId) === String(id);
+        const isAdmin = ["admin", "superAdmin"].includes(requester?.role);
+        if (!isOwner && !isAdmin) {
+          return res.status(403).json({
+            success: false,
+            message: "You are not authorized to view this subscription payment",
+          });
+        }
         return res.status(200).json({
           success: true,
           message: "Subscription already activated",
@@ -373,6 +400,43 @@ export const verifySubscriptionPayment = async (req, res, next) => {
           providerStatus: paystackData?.status || "unknown",
         });
       }
+
+      const expectedAmount = Math.round(Number(order.amountPaid || order.totalAmount) * 100);
+      if (
+        paystackData?.reference !== paymentReference ||
+        String(paystackData?.currency || "").toUpperCase() !== "NGN" ||
+        Number(paystackData?.amount) !== expectedAmount
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Paystack payment details do not match this subscription order",
+        });
+      }
+    }
+
+    if (order.paymentMethod === "Stripe") {
+      if (!stripe || !order.sessionId) {
+        return res.status(500).json({
+          success: false,
+          message: "Stripe verification is not available for this subscription",
+        });
+      }
+
+      const session = await stripe.checkout.sessions.retrieve(order.sessionId);
+      const expectedAmount = Math.round(Number(order.amountPaidUSD) * 100);
+      if (
+        session?.payment_status !== "paid" ||
+        session?.id !== order.sessionId ||
+        session?.metadata?.reference !== paymentReference ||
+        String(session?.currency || "").toLowerCase() !== "usd" ||
+        Number(session?.amount_total) !== expectedAmount
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Stripe payment has not been confirmed for this subscription",
+          providerStatus: session?.payment_status || "unknown",
+        });
+      }
     }
 
     const finalized = await finalizeSubscriptionOrder(order);
@@ -383,6 +447,7 @@ export const verifySubscriptionPayment = async (req, res, next) => {
         : "Subscription activated successfully",
       alreadyProcessed: finalized.alreadyProcessed,
       data: finalized.transaction,
+      planBenefits: finalized.transaction?.planBenefits || [],
       user: finalized.user
         ? {
             _id: finalized.user._id,
@@ -400,7 +465,7 @@ export const verifySubscriptionPayment = async (req, res, next) => {
 
 export const createSubscriptionPlan = async (req, res, next) => {
   try {
-    let { name, amount, duration, description } = req.body;
+    let { name, amount, duration, description, benefits } = req.body;
 
     if (!name || !amount || !duration || !description) {
       return res.status(400).json({ success: false, message: "All fields are required" });
@@ -422,6 +487,13 @@ export const createSubscriptionPlan = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid amount" });
     }
 
+    let normalizedBenefits;
+    try {
+      normalizedBenefits = normalizePlanBenefits(benefits, { required: true });
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+
     const existingPlan = await Plan.findOne({
       name: normalizedPlanName,
       duration: normalizedDuration,
@@ -438,6 +510,7 @@ export const createSubscriptionPlan = async (req, res, next) => {
       amount: parsedAmount,
       duration: normalizedDuration,
       description,
+      benefits: normalizedBenefits,
     });
 
     return res.status(201).json({
@@ -453,29 +526,9 @@ export const createSubscriptionPlan = async (req, res, next) => {
 export const getSubscriptionPlans = async (req, res, next) => {
   try {
     const plans = await Plan.find().sort({ name: 1, duration: 1 });
-    const isNigerianUser = isNigerianCountry(req.user?.country);
-    const exchangeRate = isNigerianUser ? null : await fetchUsdNgnRate();
-
-    const data = plans.map((plan) => {
-      const base = plan.toObject ? plan.toObject() : plan;
-      if (isNigerianUser || !exchangeRate) {
-        return {
-          ...base,
-          baseCurrency: "NGN",
-          displayCurrency: "NGN",
-          displayAmount: base.amount,
-        };
-      }
-
-      const displayAmount = Math.round((Number(base.amount) / exchangeRate) * 100) / 100;
-      return {
-        ...base,
-        baseCurrency: "NGN",
-        displayCurrency: "USD",
-        displayAmount,
-        exchangeRate,
-      };
-    });
+    const provider = getSubscriptionProvider(req.user?.country);
+    const exchangeRate = provider === "stripe" ? await fetchUsdNgnRate() : null;
+    const data = plans.map((plan) => formatPlanForUser({ plan, provider, exchangeRate }));
 
     return res.status(200).json({
       success: true,
@@ -500,27 +553,9 @@ export const getSubscriptionPlan = async (req, res, next) => {
     }
 
     const base = plan.toObject ? plan.toObject() : plan;
-    const isNigerianUser = isNigerianCountry(req.user?.country);
-    const exchangeRate = isNigerianUser ? null : await fetchUsdNgnRate();
-
-    let data;
-    if (isNigerianUser || !exchangeRate) {
-      data = {
-        ...base,
-        baseCurrency: "NGN",
-        displayCurrency: "NGN",
-        displayAmount: base.amount,
-      };
-    } else {
-      const displayAmount = Math.round((Number(base.amount) / exchangeRate) * 100) / 100;
-      data = {
-        ...base,
-        baseCurrency: "NGN",
-        displayCurrency: "USD",
-        displayAmount,
-        exchangeRate,
-      };
-    }
+    const provider = getSubscriptionProvider(req.user?.country);
+    const exchangeRate = provider === "stripe" ? await fetchUsdNgnRate() : null;
+    const data = formatPlanForUser({ plan: base, provider, exchangeRate });
 
     return res.status(200).json({
       success: true,
@@ -535,7 +570,7 @@ export const getSubscriptionPlan = async (req, res, next) => {
 export const updateSubscriptionPlan = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, amount, duration, description } = req.body;
+    const { name, amount, duration, description, benefits } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ success: false, message: "Invalid plan ID" });
@@ -577,6 +612,13 @@ export const updateSubscriptionPlan = async (req, res, next) => {
         return res.status(400).json({ success: false, message: "Description cannot be empty" });
       }
       updateFields.description = normalizedDescription;
+    }
+    if (benefits !== undefined) {
+      try {
+        updateFields.benefits = normalizePlanBenefits(benefits, { required: true });
+      } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+      }
     }
 
     if (Object.keys(updateFields).length === 0) {

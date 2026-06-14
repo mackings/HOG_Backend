@@ -720,6 +720,7 @@ export const webhookPaymentSuccess = async (req, res) => {
 
   try {
     let reference;
+    let checkoutSession;
 
     if (event.type === "payment_intent.succeeded") {
       const intent = event.data.object;
@@ -729,6 +730,7 @@ export const webhookPaymentSuccess = async (req, res) => {
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
+      checkoutSession = session;
       reference = session.metadata?.reference;
       console.log("🛒 Checkout Session Event - Reference:", reference);
       console.log("💰 Amount Total:", session.amount_total);
@@ -750,6 +752,22 @@ export const webhookPaymentSuccess = async (req, res) => {
       console.log("   2. Order was already deleted");
       console.log("   3. Payment reference mismatch");
       return res.status(200).json({ message: "Order not found" });
+    }
+
+    if (checkoutSession && order.paymentMethod === "Stripe") {
+      const expectedAmount = Math.round(Number(order.amountPaidUSD) * 100);
+      const stripePaymentMatches =
+        checkoutSession.payment_status === "paid" &&
+        checkoutSession.id === order.sessionId &&
+        String(checkoutSession.currency || "").toLowerCase() === "usd" &&
+        Number(checkoutSession.amount_total) === expectedAmount;
+
+      if (!stripePaymentMatches) {
+        console.error("Stripe checkout details do not match initialized order");
+        return res.status(400).json({
+          message: "Stripe payment details do not match initialized order",
+        });
+      }
     }
 
     console.log(`✅ Order found: ${order._id}`);
@@ -781,10 +799,12 @@ export const webhookPaymentSuccess = async (req, res) => {
       subscriptionEndDate: order.subscriptionEndDate,
       subscriptionStartDate: order.subscriptionStartDate,
       plan: order.plan,
+      planId: order.planId || null,
+      planBenefits: order.planBenefits || [],
       billTerm: order.billTerm,
-      paymentCurrency: "NGN",
+      paymentCurrency: order.amountPaidUSD > 0 ? "USD" : "NGN",
       orderStatus: order.paymentStatus,
-      amountPaid: order.amountPaid,
+      amountPaid: order.amountPaidUSD > 0 ? order.amountPaidUSD : order.amountPaid,
       vendorId: order.vendorId || null,
       materialId: order.materialId || null,
     });

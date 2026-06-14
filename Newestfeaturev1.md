@@ -369,6 +369,24 @@ Admin and super-admin invitation documentation:
 
 [`docs/ADMIN_INVITATION_API.md`](docs/ADMIN_INVITATION_API.md)
 
+### Subscription Plans And Benefits
+
+`POST /subscription/createSubscriptionPlan`
+
+`PUT /subscription/updateSubscriptionPlan/:id`
+
+`GET /subscription/getSubscriptionPlans`
+
+`GET /subscription/getSubscriptionPlan/:id`
+
+`POST /subscription/subscriptionPayments`
+
+`GET /subscription/verifySubscriptionPayment/:paymentReference`
+
+Subscription checklist, Paystack, and Stripe documentation:
+
+[`docs/SUBSCRIPTION_PLANS_API.md`](docs/SUBSCRIPTION_PLANS_API.md)
+
 Approval response:
 
 ```json

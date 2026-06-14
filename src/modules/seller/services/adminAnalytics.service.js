@@ -637,13 +637,14 @@ export const getAnalyticsTransactions = async (query = {}) => {
     .select(
       "userId vendorId materialId listingId totalAmount amountPaid paymentMethod " +
       "paymentReference paymentStatus paymentCurrency orderStatus title billTerm plan " +
-      "subscriptionStartDate subscriptionEndDate status reason sessionId transactionType " +
+      "planId planBenefits subscriptionStartDate subscriptionEndDate status reason sessionId transactionType " +
       "createdAt updatedAt"
     )
     .populate("userId", "fullName email username image role country")
     .populate("vendorId", "businessName businessEmail city state userId")
     .populate("materialId", "attireType clothMaterial color brand")
     .populate("listingId", "title price currency images availability approvalStatus")
+    .populate("planId", "name amount duration description benefits")
     .sort({ createdAt: -1, _id: -1 })
     .skip(skip)
     .limit(limit)

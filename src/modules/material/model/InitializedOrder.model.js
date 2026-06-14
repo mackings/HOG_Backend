@@ -123,6 +123,14 @@ const initializedOrderSchema = new mongoose.Schema({
   plan: {
   type: String,
   },
+  planId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Plan",
+  },
+  planBenefits: {
+      type: [String],
+      default: [],
+  },
   subscriptionStartDate: {
       type: Date,
   },

@@ -9,12 +9,12 @@ const router = Router();
 
 router.use(isAuth);
 
-// Tailor subscription payment endpoints
-router.use("/subscriptionPayments", userCheckRole(["tailor"]));
+// User and tailor subscription payment endpoints
+router.use("/subscriptionPayments", userCheckRole(["user", "tailor"]));
 router.post("/subscriptionPayments", subscriptionPayments);
 
 // Shared read endpoints
-router.use(userCheckRole(["tailor", "admin", "superAdmin"]));
+router.use(userCheckRole(["user", "tailor", "admin", "superAdmin"]));
 router.get("/getSubscriptionPlans", getSubscriptionPlans);
 router.get("/getSubscriptionPlan/:id", getSubscriptionPlan);
 router.get("/verifySubscriptionPayment/:paymentReference", verifySubscriptionPayment);
