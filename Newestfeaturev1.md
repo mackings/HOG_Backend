@@ -359,6 +359,16 @@ Detailed request and response documentation:
 
 [`docs/ADMIN_ANALYTICS_API.md`](docs/ADMIN_ANALYTICS_API.md)
 
+### Admin Invitations
+
+`POST /admin/invitations`
+
+`PUT /user/changeTemporaryPassword`
+
+Admin and super-admin invitation documentation:
+
+[`docs/ADMIN_INVITATION_API.md`](docs/ADMIN_INVITATION_API.md)
+
 Approval response:
 
 ```json

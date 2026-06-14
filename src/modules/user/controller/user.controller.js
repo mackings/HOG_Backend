@@ -7,12 +7,11 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto"
 import axios from "axios";
 
-const normalizeUserRole = (role) => {
+export const normalizePublicUserRole = (role) => {
   const value = String(role || "").trim().toLowerCase();
-  if (!value) return "user";
-  if (value === "buyer") return "user";
-  if (value === "vendor") return "tailor";
-  return value;
+  if (value === "user" || value === "buyer") return "user";
+  if (value === "tailor" || value === "vendor") return "tailor";
+  return null;
 };
 
 const logAuthResponse = (label, status, payload) => {
@@ -32,6 +31,14 @@ export const register = async (req, res, next) => {
             logAuthResponse("register", 400, payload);
             return res.status(400).json(payload);
         }
+        const normalizedRole = normalizePublicUserRole(role);
+        if (!normalizedRole) {
+            const payload = {
+              message: "Public registration only supports user or tailor roles",
+            };
+            logAuthResponse("register", 403, payload);
+            return res.status(403).json(payload);
+        }
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             const payload = { message: "User already exists, please login or use forgot password" };
@@ -40,7 +47,6 @@ export const register = async (req, res, next) => {
         }
         const hashedPassword = await bcrypt.hash(password, 10);
         const otp = crypto.randomInt(1000, 9999);
-        const normalizedRole = normalizeUserRole(role);
         const token = await Token.create({
            fullName, 
            email, 
@@ -82,7 +88,12 @@ export const verifyToken = async (req, res, next) => {
     }
 
     const { fullName, email, password, phoneNumber, role, address, country } = existingToken;
-    const normalizedRole = normalizeUserRole(role);
+    const normalizedRole = normalizePublicUserRole(role);
+    if (!normalizedRole) {
+      const payload = { message: "This role must be created through an administrator invitation" };
+      logAuthResponse("verifyToken", 403, payload);
+      return res.status(403).json(payload);
+    }
 
     const alreadyExists = await User.findOne({ email });
     if (alreadyExists) {
@@ -195,6 +206,10 @@ export const login = async (req, res, next) => {
         const userWithoutPassword = { ...user.toObject() };
         delete userWithoutPassword.password;
         const payload = { message: "Login successful", token, user: userWithoutPassword };
+        if (user.mustChangePassword) {
+          payload.passwordChangeRequired = true;
+          payload.message = "Login successful. You must change your temporary password.";
+        }
         logAuthResponse("login", 200, { message: payload.message, userId: user?._id });
         return res.status(200).json(payload);
     } catch (error) {
@@ -255,13 +270,58 @@ export const resetPassword = async (req, res, next) => {
         return res.status(404).json(payload);
     }
     const hashedPassword = await bcrypt.hash(password, 10);
-    await User.findByIdAndUpdate({ _id: user._id }, { password: hashedPassword });
+    await User.findByIdAndUpdate(
+      { _id: user._id },
+      { password: hashedPassword, mustChangePassword: false }
+    );
     const payload = { message: "Password reset successful" };
     logAuthResponse("resetPassword", 200, payload);
     return res.status(200).json(payload);
     } catch (error) {
     console.error("[AUTH] resetPassword error", error);
     next(error); 
+  }
+};
+
+export const changeTemporaryPassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body || {};
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        message: "Current password, new password, and password confirmation are required",
+      });
+    }
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: "New password and confirmation do not match" });
+    }
+    if (String(newPassword).length < 8) {
+      return res.status(400).json({ message: "New password must be at least 8 characters" });
+    }
+    if (currentPassword === newPassword) {
+      return res.status(400).json({
+        message: "New password must be different from the temporary password",
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const currentPasswordIsValid = await bcrypt.compare(currentPassword, user.password);
+    if (!currentPasswordIsValid) {
+      return res.status(401).json({ message: "Current password is incorrect" });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.mustChangePassword = false;
+    await user.save();
+
+    return res.status(200).json({
+      message: "Password changed successfully",
+      passwordChangeRequired: false,
+    });
+  } catch (error) {
+    next(error);
   }
 };
 

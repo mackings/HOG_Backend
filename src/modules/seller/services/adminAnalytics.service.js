@@ -272,8 +272,9 @@ export const getAnalyticsUsers = async (query = {}) => {
       .select(
         "fullName email username phoneNumber image role country wallet subscriptionPlan " +
         "subscriptionStartDate subscriptionEndDate billTerm isVerified isBlocked " +
-        "isVendorEnabled createdAt updatedAt"
+        "isVendorEnabled mustChangePassword invitedBy invitedAt createdAt updatedAt"
       )
+      .populate("invitedBy", "fullName email role")
       .sort({ createdAt: -1, _id: -1 })
       .skip(skip)
       .limit(limit)

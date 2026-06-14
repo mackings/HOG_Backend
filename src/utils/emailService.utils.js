@@ -4,7 +4,7 @@ import { sendVerifyTokenEmailTemplate, sendResetPasswordEmailTemplate, sendBankT
   sendTransactionEmailTemplate, sendSubscriptionEmailTemplate, sendReviewUpdateEmailTemplate,
   sendTransactionListingEmailTemplate, sendApprovalEmailTemplate, sendRejectionEmailTemplate, sendDeliveryEmailTemplate,
   sendPayoutNotificationEmailTemplate, sendPaymentReceivedEmailTemplate, sendDeliveryStartedEmailTemplate,
-  sendOfferDecisionEmailTemplate, sendOfferCreatedEmailTemplate
+  sendOfferDecisionEmailTemplate, sendOfferCreatedEmailTemplate, sendAdminInvitationEmailTemplate
  } from "../utils/emailTemplate.js";
 
 // Create Gmail transporter
@@ -128,6 +128,15 @@ export const sendResetPasswordEmail = async (account) => {
         htmlContent: sendResetPasswordEmailTemplate(account)
     });
 };
+
+export const buildAdminInvitationEmailPayload = (invitation) => ({
+  to: invitation.email,
+  subject: `You have been invited as ${invitation.role === "superAdmin" ? "Super Admin" : "Admin"} on HOG`,
+  htmlContent: sendAdminInvitationEmailTemplate(invitation),
+});
+
+export const sendAdminInvitationEmail = async (invitation) =>
+  sendEmail(buildAdminInvitationEmailPayload(invitation));
 
 
 export const sendBankTransferEmail = async (transaction, email) => {
@@ -292,7 +301,6 @@ export const sendPaymentReceivedEmail = async (user, amount, vendor, reference) 
     htmlContent: sendPaymentReceivedEmailTemplate(user, amount, vendor, reference),
   });
 };
-
 
 
 

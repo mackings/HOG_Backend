@@ -14,6 +14,13 @@ export const userCheckRole = (allowedRoles = []) => {
         return res.status(404).json({ message: "User not found" });
       }
 
+      if (user.mustChangePassword) {
+        return res.status(403).json({
+          message: "You must change your temporary password before accessing this resource",
+          code: "PASSWORD_CHANGE_REQUIRED",
+        });
+      }
+
       const userRoles = Array.isArray(user.role) ? user.role : [user.role].filter(Boolean);
 
       const hasRole = allowedRoles.some(role => userRoles.includes(role));

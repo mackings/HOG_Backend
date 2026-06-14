@@ -1,8 +1,21 @@
 import mongoose from 'mongoose';
+import bcrypt from "bcryptjs";
 import User from '../../user/model/user.model.js';
 import Listing from '../model/seller.model.js';
 import Fee from "../model/fee.model.js";
-import { sendApprovalEmail, sendRejectionEmail } from "../../../utils/emailService.utils.js";
+import {
+  sendAdminInvitationEmail,
+  sendApprovalEmail,
+  sendRejectionEmail,
+} from "../../../utils/emailService.utils.js";
+import {
+  canInviteAdminRole,
+  generateTemporaryPassword,
+  INVITABLE_ADMIN_ROLES,
+  normalizeInvitationEmail,
+  normalizeInvitationRole,
+  normalizeResponsibilities,
+} from "../services/adminInvitation.service.js";
 import {
   getAdminDashboardAnalytics,
   getAnalyticsEarnings,
@@ -763,6 +776,124 @@ export const getAdminAnalyticsEarnings = async (req, res, next) => {
       data,
     });
   } catch (error) {
+    next(error);
+  }
+};
+
+export const inviteAdministrator = async (req, res, next) => {
+  let createdUser;
+
+  try {
+    const fullName = String(req.body?.fullName || "").trim();
+    const email = normalizeInvitationEmail(req.body?.email);
+    const role = normalizeInvitationRole(req.body?.role);
+    const phoneNumber = String(req.body?.phoneNumber || "").trim() || undefined;
+    const country = String(req.body?.country || "").trim() || "Nigeria";
+    const address = String(req.body?.address || "").trim() || "Administrative account";
+    const responsibilities = normalizeResponsibilities(role, req.body?.responsibilities);
+
+    if (!fullName || !email || !role) {
+      return res.status(400).json({
+        success: false,
+        message: "Full name, email, and role are required",
+      });
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Provide a valid email address",
+      });
+    }
+
+    if (!INVITABLE_ADMIN_ROLES.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Role must be admin or superAdmin",
+      });
+    }
+
+    if (!canInviteAdminRole(req.user?.role, role)) {
+      return res.status(403).json({
+        success: false,
+        message:
+          role === "superAdmin"
+            ? "Only a superAdmin can invite another superAdmin"
+            : "You are not allowed to invite this role",
+      });
+    }
+
+    const existingUser = await User.findOne({ email }).select("_id role");
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "An account with this email already exists",
+      });
+    }
+
+    const temporaryPassword = generateTemporaryPassword();
+    const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
+
+    createdUser = await User.create({
+      fullName,
+      email,
+      password: hashedPassword,
+      phoneNumber,
+      role,
+      country,
+      address,
+      isVerified: true,
+      mustChangePassword: true,
+      invitedBy: req.user._id,
+      invitedAt: new Date(),
+    });
+
+    const emailResult = await sendAdminInvitationEmail({
+      fullName,
+      email,
+      temporaryPassword,
+      role,
+      inviterName: req.user.fullName,
+      responsibilities,
+    });
+
+    if (!emailResult?.success) {
+      await User.findByIdAndDelete(createdUser._id);
+      createdUser = null;
+      return res.status(502).json({
+        success: false,
+        message: "Invitation email could not be delivered. No account was created.",
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: `${role === "superAdmin" ? "Super admin" : "Admin"} invitation sent successfully`,
+      data: {
+        user: {
+          _id: createdUser._id,
+          fullName: createdUser.fullName,
+          email: createdUser.email,
+          role: createdUser.role,
+          isVerified: createdUser.isVerified,
+          mustChangePassword: createdUser.mustChangePassword,
+          invitedBy: createdUser.invitedBy,
+          invitedAt: createdUser.invitedAt,
+        },
+        responsibilities,
+        credentialsDeliveredByEmail: true,
+      },
+    });
+  } catch (error) {
+    if (createdUser?._id) {
+      await User.findByIdAndDelete(createdUser._id).catch(() => {});
+    }
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "An account with this email already exists",
+      });
+    }
     next(error);
   }
 };

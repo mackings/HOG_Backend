@@ -19,6 +19,63 @@ const resolveMaterialLabel = (material = {}) => {
   return parts.length > 0 ? parts.join(" • ") : "Attire order";
 };
 
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+
+export const sendAdminInvitationEmailTemplate = ({
+  fullName,
+  email,
+  temporaryPassword,
+  role,
+  inviterName,
+  responsibilities = [],
+}) => {
+  const roleLabel = role === "superAdmin" ? "Super Admin" : "Admin";
+  const loginUrl = `${process.env.FRONTEND_URL || ""}/login`;
+  const responsibilityItems = responsibilities
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join("");
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <body style="font-family: Arial, sans-serif; color: #172033; line-height: 1.6;">
+        <div style="max-width: 620px; margin: 0 auto; padding: 24px;">
+          <h2>You have been invited to HOG</h2>
+          <p>Hello ${escapeHtml(fullName)},</p>
+          <p>
+            ${escapeHtml(inviterName || "A platform administrator")} invited you to join
+            HOG as <strong>${roleLabel}</strong>.
+          </p>
+          <div style="background: #f4f7fb; border-radius: 8px; padding: 16px;">
+            <p><strong>Email:</strong> ${escapeHtml(email)}</p>
+            <p><strong>Temporary password:</strong> ${escapeHtml(temporaryPassword)}</p>
+            <p><strong>Role:</strong> ${roleLabel}</p>
+          </div>
+          <h3>Your responsibilities</h3>
+          <ul>${responsibilityItems}</ul>
+          <p>
+            Sign in with these credentials. You must replace the temporary password
+            before using privileged platform features.
+          </p>
+          <p>
+            <a href="${escapeHtml(loginUrl)}"
+               style="display: inline-block; background: #315bea; color: #fff; padding: 12px 20px; border-radius: 6px; text-decoration: none;">
+              Sign in to HOG
+            </a>
+          </p>
+          <p>If you were not expecting this invitation, contact the HOG platform owner.</p>
+        </div>
+      </body>
+    </html>
+  `;
+};
+
 const getFinalPayableAmount = (transaction) => {
   const totalAmount = Number(transaction?.totalAmount);
   const amountPaid = Number(transaction?.amountPaid);

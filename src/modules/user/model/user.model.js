@@ -43,6 +43,19 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    mustChangePassword: {
+        type: Boolean,
+        default: false
+    },
+    invitedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null
+    },
+    invitedAt: {
+        type: Date,
+        default: null
+    },
     image: {
         type: String,
     },
@@ -130,5 +143,6 @@ userSchema.index({ role: 1, createdAt: -1 });
 userSchema.index({ subscriptionPlan: 1, createdAt: -1 });
 userSchema.index({ isVerified: 1, createdAt: -1 });
 userSchema.index({ isBlocked: 1, createdAt: -1 });
+userSchema.index({ invitedBy: 1, invitedAt: -1 });
 
 export default mongoose.model('User', userSchema);
