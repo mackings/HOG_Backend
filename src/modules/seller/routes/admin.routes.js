@@ -3,7 +3,8 @@ import { getAllPendingSellerListings, getApprovedSellerListings, getRejectedSell
     getModeratedSellerListings, getSellerListingById, approveSellerListing, createListingFee,
     getListingFee, rejectSellerListing, totalUsers, totalNumberOfFreeAndPaidListings,
     adminTotalEarnings, totalTransactions, totalListings, getListingModerationHistory,
-    getAdminAnalytics,
+    getAdminAnalytics, getAdminAnalyticsUsers, getAdminAnalyticsListings,
+    getAdminAnalyticsTransactions, getAdminSuccessfulTransactions, getAdminAnalyticsEarnings,
  } from '../controller/admin.controller.js';
 import { isAuth } from '../../../middlewares/auth.middleware.js';
 import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
@@ -25,6 +26,11 @@ router.get("/getListingFee", getListingFee);
 router.put("/rejectSellerListing/:listingId", rejectSellerListing);
 router.get("/getListingModerationHistory", getListingModerationHistory);
 router.get("/analytics", getAdminAnalytics);
+router.get("/analytics/users", getAdminAnalyticsUsers);
+router.get("/analytics/listings", getAdminAnalyticsListings);
+router.get("/analytics/transactions", getAdminAnalyticsTransactions);
+router.get("/analytics/successful-transactions", getAdminSuccessfulTransactions);
+router.get("/analytics/earnings", getAdminAnalyticsEarnings);
 router.get("/totalUsers", totalUsers);
 router.get("/totalNumberOfFreeAndPaidListings", totalNumberOfFreeAndPaidListings);
 router.get("/adminTotalEarnings", adminTotalEarnings);

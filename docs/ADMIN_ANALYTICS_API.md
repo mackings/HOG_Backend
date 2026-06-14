@@ -146,6 +146,270 @@ Example `200 OK` response:
 The breakdown values above are examples. The API calculates them from the current
 database.
 
+## Drill-Down List Endpoints
+
+Use these endpoints for the dedicated pages opened from the dashboard cards. All list
+responses use the same pagination object. The default page size is `20`; the maximum is
+`100`.
+
+### Users List
+
+```http
+GET /api/v1/admin/analytics/users
+```
+
+Query parameters:
+
+- `page`, `limit`
+- `search`: name, email, username, or phone number
+- `role`: `user`, `tailor`, `admin`, or `superAdmin`
+- `subscriptionPlan`: `free`, `standard`, `premium`, or `enterprise`
+- `verification`: `verified` or `unverified`
+- `accountStatus`: `active` or `blocked`
+- `dateFrom`, `dateTo`: ISO date, for example `2026-06-01`
+
+Example:
+
+```http
+GET /api/v1/admin/analytics/users?page=1&limit=20&role=tailor
+```
+
+```json
+{
+  "success": true,
+  "message": "Analytics users fetched successfully",
+  "data": {
+    "summary": {
+      "totalUsers": 39,
+      "byRole": {
+        "admin": 1,
+        "superAdmin": 1,
+        "tailor": 7,
+        "user": 30
+      },
+      "bySubscriptionPlan": {
+        "free": 35,
+        "premium": 4
+      },
+      "verification": {
+        "verified": 31,
+        "unverified": 8
+      },
+      "accountStatus": {
+        "active": 38,
+        "blocked": 1
+      },
+      "registeredLast30Days": 6
+    },
+    "records": [
+      {
+        "_id": "685000000000000000000001",
+        "fullName": "Ada Designer",
+        "email": "ada@example.com",
+        "username": "adadesigns",
+        "phoneNumber": "+2348000000000",
+        "image": "https://ik.imagekit.io/example/profile.jpg",
+        "role": "tailor",
+        "country": "Nigeria",
+        "wallet": 250000,
+        "subscriptionPlan": "premium",
+        "subscriptionStartDate": "2026-05-01T00:00:00.000Z",
+        "subscriptionEndDate": "2026-06-30T23:59:59.999Z",
+        "billTerm": "monthly",
+        "isVerified": true,
+        "isBlocked": false,
+        "isVendorEnabled": true,
+        "createdAt": "2026-04-10T09:30:00.000Z",
+        "updatedAt": "2026-06-10T12:00:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "totalRecords": 7,
+      "totalPages": 1,
+      "hasNextPage": false,
+      "hasPreviousPage": false
+    },
+    "filters": {
+      "search": null,
+      "role": "tailor",
+      "subscriptionPlan": null,
+      "verification": null,
+      "accountStatus": null,
+      "dateFrom": null,
+      "dateTo": null
+    }
+  }
+}
+```
+
+Passwords and bank account fields are deliberately excluded.
+
+### Listings List
+
+```http
+GET /api/v1/admin/analytics/listings
+```
+
+Query parameters:
+
+- `page`, `limit`
+- `search`: title, description, condition, fabric, or occasion
+- `pricing`: `free`, `paid`, or `unpriced`
+- `approvalStatus`: `pending`, `approved`, or `rejected`
+- `availability`: `available`, `sold`, `made_to_order`, or `unavailable`
+- `featured`: `true` or `false`
+- `dateFrom`, `dateTo`
+
+Example:
+
+```http
+GET /api/v1/admin/analytics/listings?page=1&limit=20&approvalStatus=approved
+```
+
+`data.summary` contains the complete listing breakdown. Each item in `data.records` is
+the actual listing document, including images, media,
+price, moderation data, availability, views, saves, ratings, and timestamps. Related
+fields are populated:
+
+```json
+{
+  "_id": "685000000000000000000010",
+  "title": "Blue Corporate Suit",
+  "price": 150000,
+  "currency": "NGN",
+  "approvalStatus": "approved",
+  "availability": "available",
+  "images": ["https://ik.imagekit.io/example/suit.jpg"],
+  "userId": {
+    "_id": "685000000000000000000001",
+    "fullName": "Ada Designer",
+    "email": "ada@example.com",
+    "username": "adadesigns",
+    "role": "tailor",
+    "country": "Nigeria"
+  },
+  "categoryId": {
+    "_id": "685000000000000000000020",
+    "name": "Corporate",
+    "description": "Corporate fashion",
+    "image": "https://ik.imagekit.io/example/category.jpg"
+  },
+  "createdAt": "2026-06-10T12:00:00.000Z"
+}
+```
+
+The enclosing response uses the same `summary`, `records`, `pagination`, and `filters`
+structure shown in the users example.
+
+### Transactions List
+
+```http
+GET /api/v1/admin/analytics/transactions
+```
+
+Query parameters:
+
+- `page`, `limit`
+- `successful=true`: return only successful transactions
+- `search`: payment reference, title, reason, plan, or session ID
+- `paymentStatus`, `orderStatus`, `transactionStatus`, `transactionType`
+- `paymentMethod`, `currency`
+- `category`: `marketplace`, `subscription`, `wallet`, or `other`
+- `dateFrom`, `dateTo`
+
+All transactions:
+
+```http
+GET /api/v1/admin/analytics/transactions?page=1&limit=20
+```
+
+Successful-transactions page:
+
+```http
+GET /api/v1/admin/analytics/successful-transactions?page=1&limit=20
+```
+
+This dedicated route is equivalent to:
+
+```http
+GET /api/v1/admin/analytics/transactions?page=1&limit=20&successful=true
+```
+
+Example record:
+
+```json
+{
+  "_id": "685000000000000000000030",
+  "userId": {
+    "_id": "685000000000000000000031",
+    "fullName": "Buyer Name",
+    "email": "buyer@example.com",
+    "role": "user",
+    "country": "Nigeria"
+  },
+  "vendorId": {
+    "_id": "685000000000000000000032",
+    "businessName": "Ada Designs",
+    "businessEmail": "studio@example.com",
+    "city": "Lagos",
+    "state": "Lagos"
+  },
+  "materialId": {
+    "_id": "685000000000000000000033",
+    "attireType": "Suit",
+    "clothMaterial": "Wool",
+    "color": "Blue",
+    "brand": "Example"
+  },
+  "listingId": [
+    {
+      "_id": "685000000000000000000010",
+      "title": "Blue Corporate Suit",
+      "price": 150000,
+      "currency": "NGN",
+      "availability": "available",
+      "approvalStatus": "approved"
+    }
+  ],
+  "totalAmount": 150000,
+  "amountPaid": 150000,
+  "analyticsAmount": 150000,
+  "paymentMethod": "Paystack",
+  "paymentReference": "HOG-EXAMPLE-001",
+  "paymentStatus": "success",
+  "paymentCurrency": "NGN",
+  "orderStatus": "full payment",
+  "transactionType": null,
+  "createdAt": "2026-06-12T15:20:00.000Z"
+}
+```
+
+`data.summary` contains the complete transaction breakdown, including successful count,
+status groups, methods, categories, and currency totals.
+
+`analyticsAmount` uses `amountPaid` when it is greater than zero; otherwise it uses
+`totalAmount`. Bank account numbers and delivery addresses are excluded.
+
+### Earnings Details
+
+```http
+GET /api/v1/admin/analytics/earnings?page=1&limit=20
+```
+
+The response contains:
+
+- `data.earnings`: wallet, commission, tax, and other-credit breakdown.
+- `data.transactionSummary`: complete transaction analytics.
+- `data.transactionActivity`: paginated successful transaction records.
+- `data.transactionActivityNote`: explains that transaction activity is not a platform
+  earnings ledger.
+
+The current schema does not record every admin wallet credit/debit as a dedicated
+earnings event. Therefore the API does not falsely claim that successful transaction
+amounts reproduce the wallet balance.
+
 ## Existing Dashboard Endpoints
 
 These endpoints remain available. Their original `data` fields are unchanged for

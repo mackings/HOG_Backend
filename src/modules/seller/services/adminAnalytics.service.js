@@ -2,6 +2,12 @@ import Listing from "../model/seller.model.js";
 import Transaction from "../../transaction/model/transaction.model.js";
 import User from "../../user/model/user.model.js";
 
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
+const SUCCESSFUL_PAYMENT_STATUSES = ["success", "paid", "completed", "full payment"];
+const SUCCESSFUL_TRANSACTION_STATUSES = ["success", "successful", "successfull"];
+const SUCCESSFUL_ORDER_STATUSES = ["completed", "full payment"];
+
 const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
 const facetTotal = (facet = []) => facet[0]?.count || 0;
@@ -30,6 +36,119 @@ const numericTotalAmount = {
 const amountExpression = {
   $cond: [{ $gt: [numericAmountPaid, 0] }, numericAmountPaid, numericTotalAmount],
 };
+
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const cleanString = (value) => {
+  const cleaned = String(value || "").trim();
+  return cleaned || undefined;
+};
+
+export const parseAnalyticsPagination = (query = {}) => {
+  const requestedPage = Number.parseInt(query.page, 10);
+  const requestedLimit = Number.parseInt(query.limit, 10);
+  const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+    ? Math.min(requestedLimit, MAX_PAGE_SIZE)
+    : DEFAULT_PAGE_SIZE;
+
+  return { page, limit, skip: (page - 1) * limit };
+};
+
+export const buildPaginationMetadata = ({ page, limit, totalRecords }) => ({
+  page,
+  limit,
+  totalRecords,
+  totalPages: totalRecords === 0 ? 0 : Math.ceil(totalRecords / limit),
+  hasNextPage: page * limit < totalRecords,
+  hasPreviousPage: page > 1,
+});
+
+export const buildSuccessfulTransactionFilter = () => ({
+  $expr: {
+    $or: [
+      {
+        $in: [
+          { $toLower: { $ifNull: ["$paymentStatus", ""] } },
+          SUCCESSFUL_PAYMENT_STATUSES,
+        ],
+      },
+      {
+        $in: [
+          { $toLower: { $ifNull: ["$status", ""] } },
+          SUCCESSFUL_TRANSACTION_STATUSES,
+        ],
+      },
+      {
+        $in: [
+          { $toLower: { $ifNull: ["$orderStatus", ""] } },
+          SUCCESSFUL_ORDER_STATUSES,
+        ],
+      },
+    ],
+  },
+});
+
+export const getTransactionCategoryFilter = (category) => {
+  switch (cleanString(category)?.toLowerCase()) {
+    case "subscription":
+      return { plan: { $exists: true, $nin: [null, ""] } };
+    case "marketplace":
+      return {
+        plan: { $in: [null, ""] },
+        $or: [
+          { vendorId: { $exists: true, $ne: null } },
+          { materialId: { $exists: true, $ne: null } },
+          { "listingId.0": { $exists: true } },
+        ],
+      };
+    case "wallet":
+      return {
+        plan: { $in: [null, ""] },
+        vendorId: { $in: [null] },
+        materialId: { $in: [null] },
+        "listingId.0": { $exists: false },
+        transactionType: { $exists: true, $nin: [null, ""] },
+      };
+    case "other":
+      return {
+        plan: { $in: [null, ""] },
+        vendorId: { $in: [null] },
+        materialId: { $in: [null] },
+        "listingId.0": { $exists: false },
+        transactionType: { $in: [null, ""] },
+      };
+    default:
+      return {};
+  }
+};
+
+const buildCreatedAtFilter = (query) => {
+  const createdAt = {};
+  const dateFrom = cleanString(query.dateFrom);
+  const dateTo = cleanString(query.dateTo);
+
+  if (dateFrom) {
+    const parsed = new Date(dateFrom);
+    if (!Number.isNaN(parsed.getTime())) createdAt.$gte = parsed;
+  }
+
+  if (dateTo) {
+    const parsed = new Date(dateTo);
+    if (!Number.isNaN(parsed.getTime())) {
+      parsed.setUTCHours(23, 59, 59, 999);
+      createdAt.$lte = parsed;
+    }
+  }
+
+  return Object.keys(createdAt).length ? { createdAt } : {};
+};
+
+const buildListResponse = ({ records, page, limit, totalRecords, filters }) => ({
+  records,
+  pagination: buildPaginationMetadata({ page, limit, totalRecords }),
+  filters,
+});
 
 export const formatUserAnalytics = ([result = {}] = []) => ({
   totalUsers: facetTotal(result.total),
@@ -123,6 +242,62 @@ export const getUserAnalytics = async () => {
   return formatUserAnalytics(result);
 };
 
+export const getAnalyticsUsers = async (query = {}) => {
+  const { page, limit, skip } = parseAnalyticsPagination(query);
+  const filters = { ...buildCreatedAtFilter(query) };
+  const search = cleanString(query.search);
+  const role = cleanString(query.role);
+  const subscriptionPlan = cleanString(query.subscriptionPlan);
+  const verification = cleanString(query.verification)?.toLowerCase();
+  const accountStatus = cleanString(query.accountStatus)?.toLowerCase();
+
+  if (search) {
+    const regex = new RegExp(escapeRegex(search), "i");
+    filters.$or = [
+      { fullName: regex },
+      { email: regex },
+      { username: regex },
+      { phoneNumber: regex },
+    ];
+  }
+  if (role) filters.role = role;
+  if (subscriptionPlan) filters.subscriptionPlan = subscriptionPlan.toLowerCase();
+  if (verification === "verified") filters.isVerified = true;
+  if (verification === "unverified") filters.isVerified = { $ne: true };
+  if (accountStatus === "blocked") filters.isBlocked = true;
+  if (accountStatus === "active") filters.isBlocked = { $ne: true };
+
+  const [records, totalRecords] = await Promise.all([
+    User.find(filters)
+      .select(
+        "fullName email username phoneNumber image role country wallet subscriptionPlan " +
+        "subscriptionStartDate subscriptionEndDate billTerm isVerified isBlocked " +
+        "isVendorEnabled createdAt updatedAt"
+      )
+      .sort({ createdAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    User.countDocuments(filters),
+  ]);
+
+  return buildListResponse({
+    records,
+    page,
+    limit,
+    totalRecords,
+    filters: {
+      search: search || null,
+      role: role || null,
+      subscriptionPlan: subscriptionPlan || null,
+      verification: verification || null,
+      accountStatus: accountStatus || null,
+      dateFrom: cleanString(query.dateFrom) || null,
+      dateTo: cleanString(query.dateTo) || null,
+    },
+  });
+};
+
 export const getListingAnalytics = async () => {
   const result = await Listing.aggregate([
     {
@@ -195,6 +370,93 @@ export const getListingAnalytics = async () => {
   ]);
 
   return formatListingAnalytics(result);
+};
+
+export const getAnalyticsListings = async (query = {}) => {
+  const { page, limit, skip } = parseAnalyticsPagination(query);
+  const filters = { ...buildCreatedAtFilter(query) };
+  const search = cleanString(query.search);
+  const pricing = cleanString(query.pricing)?.toLowerCase();
+  const approvalStatus = cleanString(query.approvalStatus)?.toLowerCase();
+  const availability = cleanString(query.availability)?.toLowerCase();
+  const featured = cleanString(query.featured)?.toLowerCase();
+
+  if (search) {
+    const regex = new RegExp(escapeRegex(search), "i");
+    filters.$or = [
+      { title: regex },
+      { description: regex },
+      { condition: regex },
+      { fabric: regex },
+      { occasion: regex },
+    ];
+  }
+  if (pricing === "free") filters.price = 0;
+  if (pricing === "paid") filters.price = { $gt: 0 };
+  if (pricing === "unpriced") {
+    filters.$and = [
+      ...(filters.$and || []),
+      { $or: [{ price: { $exists: false } }, { price: null }, { price: { $lt: 0 } }] },
+    ];
+  }
+  if (approvalStatus === "approved") {
+    filters.$and = [
+      ...(filters.$and || []),
+      {
+        $or: [
+          { approvalStatus: "approved" },
+          { approvalStatus: { $exists: false }, isApproved: true },
+        ],
+      },
+    ];
+  }
+  if (approvalStatus === "pending") {
+    filters.$and = [
+      ...(filters.$and || []),
+      {
+        $or: [
+          { approvalStatus: "pending" },
+          { approvalStatus: { $exists: false }, isApproved: { $ne: true } },
+        ],
+      },
+    ];
+  }
+  if (approvalStatus === "rejected") filters.approvalStatus = "rejected";
+  if (availability) filters.availability = availability;
+  if (featured === "true") filters.isFeatured = true;
+  if (featured === "false") filters.isFeatured = { $ne: true };
+
+  const [records, totalRecords] = await Promise.all([
+    Listing.find(filters)
+      .populate("userId", "fullName email username image role country")
+      .populate("categoryId", "name description image")
+      .populate("approvedBy", "fullName email role")
+      .populate("rejectedBy", "fullName email role")
+      .sort({ createdAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Listing.countDocuments(filters),
+  ]);
+
+  return buildListResponse({
+    records: records.map((listing) => ({
+      ...listing,
+      approvalStatus: listing.approvalStatus || (listing.isApproved ? "approved" : "pending"),
+    })),
+    page,
+    limit,
+    totalRecords,
+    filters: {
+      search: search || null,
+      pricing: pricing || null,
+      approvalStatus: approvalStatus || null,
+      availability: availability || null,
+      featured: featured || null,
+      dateFrom: cleanString(query.dateFrom) || null,
+      dateTo: cleanString(query.dateTo) || null,
+    },
+  });
 };
 
 export const getTransactionAnalytics = async () => {
@@ -332,6 +594,91 @@ export const getTransactionAnalytics = async () => {
   return formatTransactionAnalytics(result);
 };
 
+export const getAnalyticsTransactions = async (query = {}) => {
+  const { page, limit, skip } = parseAnalyticsPagination(query);
+  const successful = String(query.successful || "").toLowerCase() === "true";
+  const conditions = [];
+  const baseFilters = { ...buildCreatedAtFilter(query) };
+  const search = cleanString(query.search);
+  const paymentStatus = cleanString(query.paymentStatus);
+  const orderStatus = cleanString(query.orderStatus);
+  const transactionStatus = cleanString(query.transactionStatus);
+  const transactionType = cleanString(query.transactionType);
+  const paymentMethod = cleanString(query.paymentMethod);
+  const currency = cleanString(query.currency);
+  const category = cleanString(query.category)?.toLowerCase();
+
+  if (search) {
+    const regex = new RegExp(escapeRegex(search), "i");
+    conditions.push({
+      $or: [
+        { paymentReference: regex },
+        { title: regex },
+        { reason: regex },
+        { plan: regex },
+        { sessionId: regex },
+      ],
+    });
+  }
+  if (successful) conditions.push(buildSuccessfulTransactionFilter());
+  if (paymentStatus) baseFilters.paymentStatus = paymentStatus;
+  if (orderStatus) baseFilters.orderStatus = orderStatus;
+  if (transactionStatus) baseFilters.status = transactionStatus;
+  if (transactionType) baseFilters.transactionType = transactionType;
+  if (paymentMethod) baseFilters.paymentMethod = paymentMethod;
+  if (currency) baseFilters.paymentCurrency = currency.toUpperCase();
+  if (["subscription", "marketplace", "wallet", "other"].includes(category)) {
+    conditions.push(getTransactionCategoryFilter(category));
+  }
+
+  const filters = conditions.length ? { ...baseFilters, $and: conditions } : baseFilters;
+  const queryBuilder = Transaction.find(filters)
+    .select(
+      "userId vendorId materialId listingId totalAmount amountPaid paymentMethod " +
+      "paymentReference paymentStatus paymentCurrency orderStatus title billTerm plan " +
+      "subscriptionStartDate subscriptionEndDate status reason sessionId transactionType " +
+      "createdAt updatedAt"
+    )
+    .populate("userId", "fullName email username image role country")
+    .populate("vendorId", "businessName businessEmail city state userId")
+    .populate("materialId", "attireType clothMaterial color brand")
+    .populate("listingId", "title price currency images availability approvalStatus")
+    .sort({ createdAt: -1, _id: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+  const [records, totalRecords] = await Promise.all([
+    queryBuilder,
+    Transaction.countDocuments(filters),
+  ]);
+
+  return buildListResponse({
+    records: records.map((transaction) => ({
+      ...transaction,
+      analyticsAmount: roundMoney(
+        Number(transaction.amountPaid) > 0 ? transaction.amountPaid : transaction.totalAmount
+      ),
+    })),
+    page,
+    limit,
+    totalRecords,
+    filters: {
+      search: search || null,
+      successful,
+      paymentStatus: paymentStatus || null,
+      orderStatus: orderStatus || null,
+      transactionStatus: transactionStatus || null,
+      transactionType: transactionType || null,
+      paymentMethod: paymentMethod || null,
+      currency: currency?.toUpperCase() || null,
+      category: category || null,
+      dateFrom: cleanString(query.dateFrom) || null,
+      dateTo: cleanString(query.dateTo) || null,
+    },
+  });
+};
+
 export const getEarningsAnalytics = (admin) => {
   const totalEarnings = roundMoney(admin?.wallet);
   const recordedCommission = roundMoney(admin?.commission);
@@ -361,6 +708,22 @@ export const getPlatformEarningsAnalytics = async () => {
   return admin ? getEarningsAnalytics(admin) : null;
 };
 
+export const getAnalyticsEarnings = async (query = {}) => {
+  const [earnings, transactionSummary, transactionActivity] = await Promise.all([
+    getPlatformEarningsAnalytics(),
+    getTransactionAnalytics(),
+    getAnalyticsTransactions({ ...query, successful: "true" }),
+  ]);
+
+  return {
+    earnings,
+    transactionSummary,
+    transactionActivity,
+    transactionActivityNote:
+      "These are successful platform transactions for investigation. They are not an earnings ledger and must not be summed to reproduce the admin wallet balance.",
+  };
+};
+
 export const getAdminDashboardAnalytics = async () => {
   const [users, listings, transactions, earnings] = await Promise.all([
     getUserAnalytics(),
@@ -374,6 +737,13 @@ export const getAdminDashboardAnalytics = async () => {
     listings,
     earnings,
     transactions,
+    drillDown: {
+      users: "/api/v1/admin/analytics/users",
+      listings: "/api/v1/admin/analytics/listings",
+      transactions: "/api/v1/admin/analytics/transactions",
+      successfulTransactions: "/api/v1/admin/analytics/successful-transactions",
+      earnings: "/api/v1/admin/analytics/earnings",
+    },
     generatedAt: new Date().toISOString(),
   };
 };

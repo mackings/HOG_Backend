@@ -333,6 +333,16 @@ Admin dashboard endpoints:
 
 `GET /admin/analytics` (recommended single-request dashboard endpoint)
 
+`GET /admin/analytics/users` (paginated account records)
+
+`GET /admin/analytics/listings` (paginated listing records)
+
+`GET /admin/analytics/transactions` (paginated transaction records)
+
+`GET /admin/analytics/successful-transactions` (successful transaction records)
+
+`GET /admin/analytics/earnings` (earnings breakdown and related transaction activity)
+
 `GET /admin/totalUsers`
 
 `GET /admin/totalNumberOfFreeAndPaidListings`

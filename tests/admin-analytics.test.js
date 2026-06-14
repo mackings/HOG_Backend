@@ -2,11 +2,60 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildPaginationMetadata,
+  buildSuccessfulTransactionFilter,
   formatListingAnalytics,
   formatTransactionAnalytics,
   formatUserAnalytics,
   getEarningsAnalytics,
+  getTransactionCategoryFilter,
+  parseAnalyticsPagination,
 } from "../src/modules/seller/services/adminAnalytics.service.js";
+
+test("analytics pagination applies defaults and caps large page sizes", () => {
+  assert.deepEqual(parseAnalyticsPagination({}), {
+    page: 1,
+    limit: 20,
+    skip: 0,
+  });
+  assert.deepEqual(parseAnalyticsPagination({ page: "3", limit: "500" }), {
+    page: 3,
+    limit: 100,
+    skip: 200,
+  });
+});
+
+test("pagination metadata reports page navigation", () => {
+  assert.deepEqual(
+    buildPaginationMetadata({ page: 2, limit: 20, totalRecords: 45 }),
+    {
+      page: 2,
+      limit: 20,
+      totalRecords: 45,
+      totalPages: 3,
+      hasNextPage: true,
+      hasPreviousPage: true,
+    }
+  );
+});
+
+test("successful transaction filter covers all stored success fields", () => {
+  const serialized = JSON.stringify(buildSuccessfulTransactionFilter());
+
+  assert.match(serialized, /paymentStatus/);
+  assert.match(serialized, /orderStatus/);
+  assert.match(serialized, /full payment/);
+  assert.match(serialized, /successfull/);
+});
+
+test("transaction categories build distinct database filters", () => {
+  assert.deepEqual(getTransactionCategoryFilter("subscription"), {
+    plan: { $exists: true, $nin: [null, ""] },
+  });
+  assert.equal(getTransactionCategoryFilter("marketplace").$or.length, 3);
+  assert.equal(getTransactionCategoryFilter("wallet").transactionType.$exists, true);
+  assert.deepEqual(getTransactionCategoryFilter("invalid"), {});
+});
 
 test("user analytics formats facet counts into dashboard breakdowns", () => {
   const analytics = formatUserAnalytics([

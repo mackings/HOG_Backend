@@ -125,4 +125,10 @@ const userSchema = new mongoose.Schema({
     }
 );
 
+userSchema.index({ createdAt: -1 });
+userSchema.index({ role: 1, createdAt: -1 });
+userSchema.index({ subscriptionPlan: 1, createdAt: -1 });
+userSchema.index({ isVerified: 1, createdAt: -1 });
+userSchema.index({ isBlocked: 1, createdAt: -1 });
+
 export default mongoose.model('User', userSchema);

@@ -152,4 +152,10 @@ const listingSchema = new mongoose.Schema({
     timestamps: true,
 });
 
+listingSchema.index({ createdAt: -1 });
+listingSchema.index({ approvalStatus: 1, createdAt: -1 });
+listingSchema.index({ availability: 1, createdAt: -1 });
+listingSchema.index({ price: 1, createdAt: -1 });
+listingSchema.index({ isFeatured: 1, createdAt: -1 });
+
 export default mongoose.model("Listing", listingSchema);

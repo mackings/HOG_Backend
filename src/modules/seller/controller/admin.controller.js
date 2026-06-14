@@ -5,6 +5,10 @@ import Fee from "../model/fee.model.js";
 import { sendApprovalEmail, sendRejectionEmail } from "../../../utils/emailService.utils.js";
 import {
   getAdminDashboardAnalytics,
+  getAnalyticsEarnings,
+  getAnalyticsListings,
+  getAnalyticsTransactions,
+  getAnalyticsUsers,
   getListingAnalytics,
   getPlatformEarningsAnalytics,
   getTransactionAnalytics,
@@ -673,6 +677,90 @@ export const getAdminAnalytics = async (req, res, next) => {
       success: true,
       message: "Admin analytics fetched successfully",
       data: analytics,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAdminAnalyticsUsers = async (req, res, next) => {
+  try {
+    const [summary, list] = await Promise.all([
+      getUserAnalytics(),
+      getAnalyticsUsers(req.query),
+    ]);
+    return res.status(200).json({
+      success: true,
+      message: "Analytics users fetched successfully",
+      data: { summary, ...list },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAdminAnalyticsListings = async (req, res, next) => {
+  try {
+    const [summary, list] = await Promise.all([
+      getListingAnalytics(),
+      getAnalyticsListings(req.query),
+    ]);
+    return res.status(200).json({
+      success: true,
+      message: "Analytics listings fetched successfully",
+      data: { summary, ...list },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAdminAnalyticsTransactions = async (req, res, next) => {
+  try {
+    const [summary, list] = await Promise.all([
+      getTransactionAnalytics(),
+      getAnalyticsTransactions(req.query),
+    ]);
+    return res.status(200).json({
+      success: true,
+      message: "Analytics transactions fetched successfully",
+      data: { summary, ...list },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAdminSuccessfulTransactions = async (req, res, next) => {
+  try {
+    const [summary, list] = await Promise.all([
+      getTransactionAnalytics(),
+      getAnalyticsTransactions({ ...req.query, successful: "true" }),
+    ]);
+    return res.status(200).json({
+      success: true,
+      message: "Successful transactions fetched successfully",
+      data: { summary, ...list },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAdminAnalyticsEarnings = async (req, res, next) => {
+  try {
+    const data = await getAnalyticsEarnings(req.query);
+    if (!data.earnings) {
+      return res.status(404).json({
+        success: false,
+        message: "Admin not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Analytics earnings details fetched successfully",
+      data,
     });
   } catch (error) {
     next(error);

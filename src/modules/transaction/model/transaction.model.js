@@ -109,4 +109,11 @@ const transactionSchema = new mongoose.Schema({
     }
 );
 
+transactionSchema.index({ createdAt: -1 });
+transactionSchema.index({ paymentStatus: 1, createdAt: -1 });
+transactionSchema.index({ orderStatus: 1, createdAt: -1 });
+transactionSchema.index({ status: 1, createdAt: -1 });
+transactionSchema.index({ transactionType: 1, createdAt: -1 });
+transactionSchema.index({ paymentCurrency: 1, createdAt: -1 });
+
 export default mongoose.model("Transactions", transactionSchema);
