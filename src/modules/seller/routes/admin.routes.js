@@ -3,6 +3,7 @@ import { getAllPendingSellerListings, getApprovedSellerListings, getRejectedSell
     getModeratedSellerListings, getSellerListingById, approveSellerListing, createListingFee,
     getListingFee, rejectSellerListing, totalUsers, totalNumberOfFreeAndPaidListings,
     adminTotalEarnings, totalTransactions, totalListings, getListingModerationHistory,
+    getAdminAnalytics,
  } from '../controller/admin.controller.js';
 import { isAuth } from '../../../middlewares/auth.middleware.js';
 import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
@@ -23,6 +24,7 @@ router.post("/createListingFee", createListingFee);
 router.get("/getListingFee", getListingFee);
 router.put("/rejectSellerListing/:listingId", rejectSellerListing);
 router.get("/getListingModerationHistory", getListingModerationHistory);
+router.get("/analytics", getAdminAnalytics);
 router.get("/totalUsers", totalUsers);
 router.get("/totalNumberOfFreeAndPaidListings", totalNumberOfFreeAndPaidListings);
 router.get("/adminTotalEarnings", adminTotalEarnings);

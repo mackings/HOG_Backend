@@ -1,9 +1,15 @@
 import mongoose from 'mongoose';
 import User from '../../user/model/user.model.js';
 import Listing from '../model/seller.model.js';
-import Transaction from '../../transaction/model/transaction.model.js';
 import Fee from "../model/fee.model.js";
 import { sendApprovalEmail, sendRejectionEmail } from "../../../utils/emailService.utils.js";
+import {
+  getAdminDashboardAnalytics,
+  getListingAnalytics,
+  getPlatformEarningsAnalytics,
+  getTransactionAnalytics,
+  getUserAnalytics,
+} from "../services/adminAnalytics.service.js";
 
 const MODERATOR_ROLES = ["admin", "superAdmin"];
 
@@ -565,20 +571,13 @@ export const getListingFee = async( req, res, next )=>{
 
 export const totalUsers = async (req, res, next) => {
   try {
-    const totalUsers = await User.countDocuments();
-
-    if (totalUsers === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No registered users found",
-        data: []
-      });
-    }
+    const analytics = await getUserAnalytics();
 
     return res.status(200).json({
       success: true,
       message: "Total users fetched successfully",
-      data: totalUsers
+      data: analytics.totalUsers,
+      breakdown: analytics,
     });
   } catch (error) {
     next(error);
@@ -590,15 +589,15 @@ export const totalUsers = async (req, res, next) => {
 
 export const totalNumberOfFreeAndPaidListings = async(req, res, next)=>{
   try {
-    const freeListingsCount = await Listing.countDocuments({ price: { $eq: 0 } });
-    const paidListingsCount = await Listing.countDocuments({ price: { $gt: 0 } });
+    const analytics = await getListingAnalytics();
     return res.status(200).json({
       success: true,
       message: "Total free and paid listings fetched successfully",
       data: {
-        freeListings: freeListingsCount,
-        paidListings: paidListingsCount
-      }
+        freeListings: analytics.freeListings,
+        paidListings: analytics.paidListings,
+      },
+      breakdown: analytics,
     });
   } catch (error) {
     next(error);
@@ -609,13 +608,14 @@ export const totalNumberOfFreeAndPaidListings = async(req, res, next)=>{
 
 export const totalTransactions = async(req, res, next)=>{
   try {
-    const totalTransaction = await Transaction.countDocuments();
+    const analytics = await getTransactionAnalytics();
     return res.status(200).json({
       success: true,
       message: "Total transactions fetched successfully",
       data: {
-        totalTransactions: totalTransaction
-      }
+        totalTransactions: analytics.totalTransactions,
+      },
+      breakdown: analytics,
     });
   } catch (error) {
     next(error);
@@ -626,13 +626,14 @@ export const totalTransactions = async(req, res, next)=>{
 
 export const totalListings = async(req, res, next)=>{
   try {
-    const totalListing = await Listing.countDocuments();
+    const analytics = await getListingAnalytics();
     return res.status(200).json({
       success: true,
       message: "Total listings fetched successfully",
       data: {
-        totalListings: totalListing
-      }
+        totalListings: analytics.totalListings,
+      },
+      breakdown: analytics,
     });
   } catch (error) {
     next(error);
@@ -642,25 +643,36 @@ export const totalListings = async(req, res, next)=>{
 
 export const adminTotalEarnings = async (req, res, next) => {
   try {
-    // Find the admin
-    const admin = await User.findOne({ role: 'admin' });
+    const analytics = await getPlatformEarningsAnalytics();
 
-    if (!admin) {
+    if (!analytics) {
       return res.status(404).json({
         success: false,
         message: "Admin not found",
       });
     }
 
-    // If admin exists, use wallet value or 0
-    const totalEarnings = admin.wallet || 0;
-
     return res.status(200).json({
       success: true,
       message: "Total earnings fetched successfully",
       data: {
-        totalEarnings
-      }
+        totalEarnings: analytics.totalEarnings,
+      },
+      breakdown: analytics,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAdminAnalytics = async (req, res, next) => {
+  try {
+    const analytics = await getAdminDashboardAnalytics();
+
+    return res.status(200).json({
+      success: true,
+      message: "Admin analytics fetched successfully",
+      data: analytics,
     });
   } catch (error) {
     next(error);

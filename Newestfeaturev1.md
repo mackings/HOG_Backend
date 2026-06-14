@@ -331,7 +331,11 @@ Product/listing video previews are allowed. Messaging video sharing is not suppo
 
 Admin dashboard endpoints:
 
+`GET /admin/analytics` (recommended single-request dashboard endpoint)
+
 `GET /admin/totalUsers`
+
+`GET /admin/totalNumberOfFreeAndPaidListings`
 
 `GET /admin/totalListings`
 
@@ -340,6 +344,10 @@ Admin dashboard endpoints:
 `GET /admin/adminTotalEarnings`
 
 `GET /admin/getListingFee`
+
+Detailed request and response documentation:
+
+[`docs/ADMIN_ANALYTICS_API.md`](docs/ADMIN_ANALYTICS_API.md)
 
 Approval response:
 
