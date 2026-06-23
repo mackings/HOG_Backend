@@ -7,6 +7,7 @@ import { sendVerifyTokenEmailTemplate, sendResetPasswordEmailTemplate, sendBankT
   sendOfferDecisionEmailTemplate, sendOfferCreatedEmailTemplate, sendAdminInvitationEmailTemplate
  } from "../utils/emailTemplate.js";
 
+
 // Create Gmail transporter
 const createTransporter = () => {
   return nodemailer.createTransport({
@@ -22,6 +23,7 @@ const createTransporter = () => {
     },
   });
 };
+
 
 const buildRecipientList = (to) => {
   if (Array.isArray(to)) return to.filter(Boolean).map((email) => ({ Email: email }));
@@ -60,7 +62,15 @@ const sendWithMailjet = async ({ to, subject, htmlContent }) => {
     auth: { username: apiKey, password: apiSecret },
   });
 
-  const messageId = response.data?.Messages?.[0]?.To?.[0]?.MessageID;
+  const message = response.data?.Messages?.[0];
+  const status = message?.Status;
+  const messageId = message?.To?.[0]?.MessageID;
+
+  if (status !== "success") {
+    const errors = message?.Errors?.map((e) => e.ErrorMessage).join(", ") || "Unknown Mailjet error";
+    throw new Error(`Mailjet rejected message: ${errors}`);
+  }
+
   return { success: true, messageId };
 };
 
