@@ -109,10 +109,7 @@ const main = async () => {
     throw new Error("JWT_SECRET is required to run dummy account API simulation");
   }
 
-  process.env.MAILJET_API_KEY = "";
-  process.env.MAILJET_API_SECRET = "";
-  process.env.SMTP_USER = "";
-  process.env.SMTP_PASS = "";
+  process.env.RESEND_API_KEY = "";
 
   await connectDB();
   await cleanup();

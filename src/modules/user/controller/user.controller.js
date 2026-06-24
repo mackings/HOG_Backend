@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto"
 import axios from "axios";
+import { TRIAL_DAYS, TRIAL_PLAN, PLAN_COMMISSION_RATES } from "../../subscription/services/subscriptionPlan.service.js";
 
 export const normalizePublicUserRole = (role) => {
   const value = String(role || "").trim().toLowerCase();
@@ -102,6 +103,12 @@ export const verifyToken = async (req, res, next) => {
       return res.status(409).json(payload);
     }
 
+    const isTailor = normalizedRole === "tailor";
+    const trialEndsAt = isTailor
+      ? new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000)
+      : null;
+    const trialCommissionRate = PLAN_COMMISSION_RATES[TRIAL_PLAN] ?? 12;
+
     const newUser = await User.create({
       fullName,
       email,
@@ -111,6 +118,11 @@ export const verifyToken = async (req, res, next) => {
       role: normalizedRole,
       address,
       country,
+      subscriptionPlan: "starter",
+      activeCommissionRate: isTailor ? trialCommissionRate : 15,
+      isOnTrial: isTailor,
+      trialEndsAt,
+      trialPlan: isTailor ? TRIAL_PLAN : null,
     });
 
     const nameParts = String(fullName || "").trim().split(/\s+/).filter(Boolean);

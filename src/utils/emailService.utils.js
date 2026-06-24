@@ -1,143 +1,80 @@
-import nodemailer from "nodemailer";
-import axios from "axios";
-import { sendVerifyTokenEmailTemplate, sendResetPasswordEmailTemplate, sendBankTransferEmailTemplate,
-  sendTransactionEmailTemplate, sendSubscriptionEmailTemplate, sendReviewUpdateEmailTemplate,
-  sendTransactionListingEmailTemplate, sendApprovalEmailTemplate, sendRejectionEmailTemplate, sendDeliveryEmailTemplate,
-  sendPayoutNotificationEmailTemplate, sendPaymentReceivedEmailTemplate, sendDeliveryStartedEmailTemplate,
-  sendOfferDecisionEmailTemplate, sendOfferCreatedEmailTemplate, sendAdminInvitationEmailTemplate
- } from "../utils/emailTemplate.js";
+import { Resend } from "resend";
+import {
+  sendVerifyTokenEmailTemplate,
+  sendResetPasswordEmailTemplate,
+  sendBankTransferEmailTemplate,
+  sendTransactionEmailTemplate,
+  sendSubscriptionEmailTemplate,
+  sendReviewUpdateEmailTemplate,
+  sendTransactionListingEmailTemplate,
+  sendApprovalEmailTemplate,
+  sendRejectionEmailTemplate,
+  sendDeliveryEmailTemplate,
+  sendDeliveryStartedEmailTemplate,
+  sendOfferDecisionEmailTemplate,
+  sendOfferCreatedEmailTemplate,
+  sendAdminInvitationEmailTemplate,
+  sendPayoutNotificationEmailTemplate,
+  sendPaymentReceivedEmailTemplate,
+} from "../utils/emailTemplate.js";
 
+const resend = new Resend(process.env.RESEND_API_KEY || "re_BZm8FKDF_87Yo5zmL9BY3N5UJkxYy8SQs");
 
-// Create Gmail transporter
-const createTransporter = () => {
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: false, // Use STARTTLS
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    tls: {
-      rejectUnauthorized: false,
-    },
-  });
-};
+const FROM_ADDRESS =
+  process.env.RESEND_FROM_EMAIL || "House of GLAME <onboarding@resend.dev>";
 
-
-const buildRecipientList = (to) => {
-  if (Array.isArray(to)) return to.filter(Boolean).map((email) => ({ Email: email }));
-  if (typeof to === "string") return [{ Email: to }];
+const normalizeRecipients = (to) => {
+  if (Array.isArray(to)) return to.filter(Boolean);
+  if (typeof to === "string" && to.trim()) return [to.trim()];
   return [];
 };
 
-const getMailjetFrom = () => {
-  const email = process.env.MAILJET_FROM_EMAIL || process.env.SMTP_USER;
-  const name = process.env.MAILJET_FROM_NAME || process.env.SMTP_FROM || "Hulex";
-  return email ? { Email: email, Name: name } : null;
-};
-
-const sendWithMailjet = async ({ to, subject, htmlContent }) => {
-  const apiKey = process.env.MAILJET_API_KEY;
-  const apiSecret = process.env.MAILJET_API_SECRET;
-  const from = getMailjetFrom();
-  const recipients = buildRecipientList(to);
-
-  if (!apiKey || !apiSecret || !from || recipients.length === 0) {
-    throw new Error("Mailjet credentials or sender/recipients missing");
-  }
-
-  const payload = {
-    Messages: [
-      {
-        From: from,
-        To: recipients,
-        Subject: subject,
-        HTMLPart: htmlContent,
-      },
-    ],
-  };
-
-  const response = await axios.post("https://api.mailjet.com/v3.1/send", payload, {
-    auth: { username: apiKey, password: apiSecret },
-  });
-
-  const message = response.data?.Messages?.[0];
-  const status = message?.Status;
-  const messageId = message?.To?.[0]?.MessageID;
-
-  if (status !== "success") {
-    const errors = message?.Errors?.map((e) => e.ErrorMessage).join(", ") || "Unknown Mailjet error";
-    throw new Error(`Mailjet rejected message: ${errors}`);
-  }
-
-  return { success: true, messageId };
-};
-
-export const sendEmail = async ({ to, subject, htmlContent, attachments = [] }) => {
+export const sendEmail = async ({ to, subject, htmlContent }) => {
   try {
     if (!to) throw new Error("Recipient email address is required");
     if (!subject) throw new Error("Email subject is required");
     if (!htmlContent) throw new Error("Email content is required");
 
-    if (attachments && attachments.length > 0 && process.env.MAILJET_API_KEY) {
-      console.warn("⚠️ Mailjet API selected; attachments are ignored unless explicitly mapped.");
-    }
+    const recipients = normalizeRecipients(to);
+    if (recipients.length === 0) throw new Error("No valid recipient email addresses");
 
-    if (process.env.MAILJET_API_KEY && process.env.MAILJET_API_SECRET) {
-      const result = await sendWithMailjet({ to, subject, htmlContent });
-      console.log(`✅ Email sent via Mailjet to ${Array.isArray(to) ? to.join(", ") : to}`);
-      return result;
-    }
-
-    // Fallback to SMTP if Mailjet isn't configured
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-      console.warn("⚠️ SMTP not configured. Email not sent:", { to, subject });
-      return { success: false, error: "SMTP credentials not configured" };
-    }
-
-    const transporter = createTransporter();
-
-    // Prepare message
-    const message = {
-      from: `"${process.env.SMTP_FROM || 'Hulex'}" <${process.env.SMTP_USER}>`,
-      to: Array.isArray(to) ? to.join(', ') : to,
+    const { data, error } = await resend.emails.send({
+      from: FROM_ADDRESS,
+      to: recipients,
       subject,
       html: htmlContent,
-      attachments: Array.isArray(attachments) ? attachments : [],
-    };
+    });
 
-    // Send email
-    const info = await transporter.sendMail(message);
+    if (error) {
+      console.error("❌ Resend error:", error.message || error);
+      return { success: false, error: error.message || String(error) };
+    }
 
-    console.log(`✅ Email sent: ${info.messageId} to ${to}`);
-    return { success: true, messageId: info.messageId };
-  } catch (error) {
-    console.error("❌ Email sending failed:", error.message);
-    // Don't throw - just log and return error
-    return { success: false, error: error.message };
+    console.log(`✅ Email sent via Resend to ${recipients.join(", ")} — id: ${data?.id}`);
+    return { success: true, messageId: data?.id };
+  } catch (err) {
+    console.error("❌ Email sending failed:", err.message);
+    return { success: false, error: err.message };
   }
 };
 
+// ── Auth ─────────────────────────────────────────────────────────────────────
 
-// Email templates
+export const sendVerifyTokenEmail = (account) =>
+  sendEmail({
+    to: account.email,
+    subject: "Welcome to HOG - Verify Your Email",
+    htmlContent: sendVerifyTokenEmailTemplate(account),
+  });
 
-export const sendVerifyTokenEmail = async (account) => {
-    return sendEmail({
-        to: account.email,
-        subject: "Welcome to HOG - Verify Your Email",
-        htmlContent: sendVerifyTokenEmailTemplate(account)
-    });
-};
+export const sendResetPasswordEmail = (account) =>
+  sendEmail({
+    to: account.email,
+    subject: "Reset Your Password",
+    htmlContent: sendResetPasswordEmailTemplate(account),
+  });
 
-
-export const sendResetPasswordEmail = async (account) => {
-    return sendEmail({
-        to: account.email,
-        subject: "Reset Your Password",
-        htmlContent: sendResetPasswordEmailTemplate(account)
-    });
-};
+// ── Admin invitation ──────────────────────────────────────────────────────────
 
 export const buildAdminInvitationEmailPayload = (invitation) => ({
   to: invitation.email,
@@ -145,81 +82,74 @@ export const buildAdminInvitationEmailPayload = (invitation) => ({
   htmlContent: sendAdminInvitationEmailTemplate(invitation),
 });
 
-export const sendAdminInvitationEmail = async (invitation) =>
+export const sendAdminInvitationEmail = (invitation) =>
   sendEmail(buildAdminInvitationEmailPayload(invitation));
 
+// ── Transactions ─────────────────────────────────────────────────────────────
 
-export const sendBankTransferEmail = async (transaction, email) => {
-    return sendEmail({
-        to: email,
-        subject: "Bank Transfer",
-        htmlContent: sendBankTransferEmailTemplate(transaction)
-    });
-};
+export const sendBankTransferEmail = (transaction, email) =>
+  sendEmail({
+    to: email,
+    subject: "Bank Transfer",
+    htmlContent: sendBankTransferEmailTemplate(transaction),
+  });
 
-
-export const sendTransactionEmail = async (user, vendor, transaction, material) => {
-  return sendEmail({
+export const sendTransactionEmail = (user, vendor, transaction, material) =>
+  sendEmail({
     to: [user.email, vendor],
     subject: "Transaction Successful",
     htmlContent: sendTransactionEmailTemplate(user, transaction, material),
   });
-};
 
+export const sendTransactionListingEmail = (vendor, email, transaction) =>
+  sendEmail({
+    to: [vendor?.email, email],
+    subject: `Payment for ${transaction.cartItems?.[0]?.title}`,
+    htmlContent: sendTransactionListingEmailTemplate(vendor, transaction),
+  });
 
-export const sendSubscriptionEmail = async(user, amount)=>{
-  return sendEmail({
+// ── Subscription ──────────────────────────────────────────────────────────────
+
+export const sendSubscriptionEmail = (user, amount) =>
+  sendEmail({
     to: user.email,
     subject: "Subscription Successful",
     htmlContent: sendSubscriptionEmailTemplate(user, amount),
   });
 
-}
+// ── Listings moderation ───────────────────────────────────────────────────────
 
-
-export const sendReviewUpdateEmail = async (review) => {
-  return sendEmail({
-    to: [ review.userId.email, review.vendorId.businessEmail ],
-    subject: "Review Update",
-    htmlContent: sendReviewUpdateEmailTemplate(review),
-  });
-};
-
-
-export const sendTransactionListingEmail = async (vendor, email, transaction) => {
-  return sendEmail({
-    to: [ vendor?.email, email ],
-    subject: `Payment for ${transaction.cartItems?.[0]?.title}`,
-    htmlContent: sendTransactionListingEmailTemplate(vendor, transaction),
-  });
-};
-
-
-export const sendApprovalEmail = async (email, name, title) => {
-  return sendEmail({
+export const sendApprovalEmail = (email, name, title) =>
+  sendEmail({
     to: email,
     subject: "Your listing has been approved",
     htmlContent: sendApprovalEmailTemplate(name, title),
   });
-};
 
-
-export const sendRejectionEmail = async (email, name, title, reasons) => {
-  return sendEmail({
+export const sendRejectionEmail = (email, name, title, reasons) =>
+  sendEmail({
     to: email,
     subject: "Your listing has been rejected",
     htmlContent: sendRejectionEmailTemplate(name, title, reasons),
   });
-};
 
+// ── Reviews ───────────────────────────────────────────────────────────────────
 
-export const sendDeliveryEmail = async (listingOwner, fee, netAmount, trackingNumber) => {
-  return sendEmail({
+export const sendReviewUpdateEmail = (review) =>
+  sendEmail({
+    to: [review.userId.email, review.vendorId.businessEmail],
+    subject: "Review Update",
+    htmlContent: sendReviewUpdateEmailTemplate(review),
+  });
+
+// ── Delivery ──────────────────────────────────────────────────────────────────
+
+export const sendDeliveryEmail = (listingOwner, fee, netAmount, trackingNumber) =>
+  sendEmail({
     to: listingOwner.email,
-    subject: "Your order has been delivered-Wallet Credited",
+    subject: "Your order has been delivered - Wallet Credited",
     htmlContent: sendDeliveryEmailTemplate(listingOwner, fee, netAmount, trackingNumber),
   });
-};
 
 export const buildDeliveryStartedEmailPayload = ({ user, vendorUser, vendorProfile, material, tracking }) => ({
   to: user?.email,
@@ -234,9 +164,10 @@ export const buildDeliveryStartedEmailPayload = ({ user, vendorUser, vendorProfi
   }),
 });
 
-export const sendDeliveryStartedEmail = async ({ user, vendorUser, vendorProfile, material, tracking }) => {
-  return sendEmail(buildDeliveryStartedEmailPayload({ user, vendorUser, vendorProfile, material, tracking }));
-};
+export const sendDeliveryStartedEmail = (payload) =>
+  sendEmail(buildDeliveryStartedEmailPayload(payload));
+
+// ── Offers ────────────────────────────────────────────────────────────────────
 
 export const buildOfferDecisionEmailPayload = ({
   recipientEmail,
@@ -265,9 +196,8 @@ export const buildOfferDecisionEmailPayload = ({
   }),
 });
 
-export const sendOfferDecisionEmail = async (payload) => {
-  return sendEmail(buildOfferDecisionEmailPayload(payload));
-};
+export const sendOfferDecisionEmail = (payload) =>
+  sendEmail(buildOfferDecisionEmailPayload(payload));
 
 export const buildOfferCreatedEmailPayload = ({
   recipientEmail,
@@ -290,33 +220,21 @@ export const buildOfferCreatedEmailPayload = ({
   }),
 });
 
-export const sendOfferCreatedEmail = async (payload) => {
-  return sendEmail(buildOfferCreatedEmailPayload(payload));
-};
+export const sendOfferCreatedEmail = (payload) =>
+  sendEmail(buildOfferCreatedEmailPayload(payload));
 
+// ── Payouts ───────────────────────────────────────────────────────────────────
 
-export const sendPayoutNotificationEmail = async (vendor, vendorUser, amount, reference) => {
-  return sendEmail({
+export const sendPayoutNotificationEmail = (vendor, vendorUser, amount, reference) =>
+  sendEmail({
     to: vendorUser.email,
     subject: "💰 Payment Received - Wallet Credited",
     htmlContent: sendPayoutNotificationEmailTemplate(vendor, amount, reference),
   });
-};
 
-
-export const sendPaymentReceivedEmail = async (user, amount, vendor, reference) => {
-  return sendEmail({
+export const sendPaymentReceivedEmail = (user, amount, vendor, reference) =>
+  sendEmail({
     to: user.email,
     subject: "✅ Payment Successful - Order Confirmed",
     htmlContent: sendPaymentReceivedEmailTemplate(user, amount, vendor, reference),
   });
-};
-
-
-
-
-
-
-
-
-

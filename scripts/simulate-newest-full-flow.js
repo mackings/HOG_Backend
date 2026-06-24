@@ -202,10 +202,7 @@ const main = async () => {
   if (!process.env.MONGODB_URL) throw new Error("MONGODB_URL is required");
   if (!process.env.JWT_SECRET) throw new Error("JWT_SECRET is required");
 
-  process.env.MAILJET_API_KEY = "";
-  process.env.MAILJET_API_SECRET = "";
-  process.env.SMTP_USER = "";
-  process.env.SMTP_PASS = "";
+  process.env.RESEND_API_KEY = "";
 
   await connectDB();
   await cleanup();

@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import { type } from "os";
 
 const userSchema = new mongoose.Schema({
     fullName: {
@@ -79,9 +78,29 @@ const userSchema = new mongoose.Schema({
     },
     subscriptionPlan: {
         type: String,
-        enum: ['free', 'premium', 'standard', 'enterprise'],
-        default: 'free'
-    },  
+        enum: ['starter', 'free', 'standard', 'premium', 'elite', 'enterprise'],
+        default: 'starter',
+    },
+    activeCommissionRate: {
+        type: Number,
+        default: 15,
+    },
+    isOnTrial: {
+        type: Boolean,
+        default: false,
+    },
+    trialEndsAt: {
+        type: Date,
+        default: null,
+    },
+    trialPlan: {
+        type: String,
+        default: null,
+    },
+    scheduledDowngrade: {
+        plan: { type: String, default: null },
+        effectiveDate: { type: Date, default: null },
+    },
     subscriptionStartDate: {
         type: Date,
     },

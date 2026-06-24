@@ -7,6 +7,7 @@ import Review from '../../review/model/review.model.js';
 import mongoose from "mongoose";
 import { sendReviewUpdateEmail } from "../../../utils/emailService.utils.js";
 import { getPricingRates } from "../../../utils/pricingConfig.utils.js";
+import { getCommissionRate } from "../../subscription/services/subscriptionPlan.service.js";
 
 export const createReview = async (req, res, next) => {
   try {
@@ -134,7 +135,8 @@ export const createReview = async (req, res, next) => {
 
     const { quotationTaxRate, quotationTaxPercent, vatPercent } = await getPricingRates();
     const tax = Math.round(subTotalCost * quotationTaxRate);
-    const commission = 0;
+    const commissionRatePct = getCommissionRate(user);
+    const commission = Math.round(subTotalCost * (commissionRatePct / 100));
     const totalCost = Number(subTotalCost) + Number(tax) + Number(commission);
 
     // Calculate USD total if conversion happened
@@ -429,7 +431,8 @@ export const updateReview = async (req, res, next) => {
     const { quotationTaxRate, quotationTaxPercent } = await getPricingRates();
     const subTotalCost = Number(materialTotalCost) + Number(workmanshipTotalCost);
     const tax = Math.round(subTotalCost * quotationTaxRate);
-    const commission = 0;
+    const commissionRatePct = getCommissionRate(user);
+    const commission = Math.round(subTotalCost * (commissionRatePct / 100));
     const totalCost = Number(subTotalCost) + Number(tax) + Number(commission);
 
     // Update numeric fields safely

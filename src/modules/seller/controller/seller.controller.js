@@ -4,6 +4,7 @@ import Listing from '../model/seller.model.js';
 import Transaction from '../../transaction/model/transaction.model.js';
 import Tracking from "../../tracking/model/tracking.model.js";
 import { rejectPastedMediaUrls } from "../../../utils/deviceUpload.utils.js";
+import { getListingLimit, getPreLoveLimit } from '../../subscription/services/subscriptionPlan.service.js';
 
 const formatListingModeration = (listing) => ({
   ...listing,
@@ -113,6 +114,47 @@ export const sellerCreateListing = async (req, res, next) => {
     if (images.length === 0) {
       return res.status(400).json({ success: false, message: "At least one image is required" });
     }
+
+    // ── Subscription listing limit enforcement ─────────────────────────────
+    const isPreLoved = /pre.?loved|used/i.test(String(condition || ""));
+    if (isPreLoved) {
+      const preLoveLimit = getPreLoveLimit(user);
+      if (preLoveLimit !== null) {
+        const preLoveCount = await Listing.countDocuments({
+          userId: user._id,
+          approvalStatus: { $ne: "rejected" },
+          condition: { $regex: /pre.?loved|used/i },
+        });
+        if (preLoveCount >= preLoveLimit) {
+          return res.status(403).json({
+            success: false,
+            message: `Your current plan allows up to ${preLoveLimit} pre-loved listings. Upgrade to list more.`,
+            listingType: "pre-loved",
+            used: preLoveCount,
+            limit: preLoveLimit,
+          });
+        }
+      }
+    } else {
+      const listingLimit = getListingLimit(user);
+      if (listingLimit !== null) {
+        const activeCount = await Listing.countDocuments({
+          userId: user._id,
+          approvalStatus: { $ne: "rejected" },
+          condition: { $not: /pre.?loved|used/i },
+        });
+        if (activeCount >= listingLimit) {
+          return res.status(403).json({
+            success: false,
+            message: `Your current plan allows up to ${listingLimit} active listings. Upgrade to list more.`,
+            listingType: "standard",
+            used: activeCount,
+            limit: listingLimit,
+          });
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     const countryCurrencyMapping = {
       nigeria: "NGN",
