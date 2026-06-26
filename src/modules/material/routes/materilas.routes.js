@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createMaterial, getAllMaterials, getMaterialById, updateMaterial, deleteMaterial, createPaymentOnline,
-  createPartPaymentOnline, orderWebhook, searchMaterials, getMaterialCategory, getVendorDetails, deleteAllMaterial
+  createPartPaymentOnline, searchMaterials, getMaterialCategory, getVendorDetails, deleteAllMaterial
   } from '../controller/material.controller.js';
 import { isAuth } from '../../../middlewares/auth.middleware.js';
 import { imageUpload, imageKitUpload } from '../../../utils/imagekit.js';
@@ -9,7 +9,6 @@ import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
 
 const router = Router();
 
-router.post("/orderWebhook", orderWebhook);
 router.delete("/deleteAllMaterial", deleteAllMaterial);
 router.use(isAuth);
 router.use(userCheckRole(["user", "admin", "tailor"]));

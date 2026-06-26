@@ -18,7 +18,8 @@ import {
   sendPaymentReceivedEmailTemplate,
 } from "../utils/emailTemplate.js";
 
-const resend = new Resend(process.env.RESEND_API_KEY || "re_BZm8FKDF_87Yo5zmL9BY3N5UJkxYy8SQs");
+if (!process.env.RESEND_API_KEY) throw new Error("RESEND_API_KEY environment variable is not set");
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const FROM_ADDRESS =
   process.env.RESEND_FROM_EMAIL || "House of GLAME <onboarding@resend.dev>";

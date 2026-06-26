@@ -1,6 +1,7 @@
 import PricingConfig from "../model/pricingConfig.model.js";
 import {
   DEFAULT_QUOTATION_TAX_RATE,
+  DEFAULT_COMMISSION_RATE,
   DEFAULT_VAT_RATE,
   normalizeRateInput,
   toPercent,
@@ -11,16 +12,19 @@ export const getPricingConfig = async (req, res, next) => {
     const config = await PricingConfig.findOne({ key: "default" }).lean();
 
     const quotationTaxRate = config?.quotationTaxRate ?? DEFAULT_QUOTATION_TAX_RATE;
-    const vatRate = config?.vatRate ?? DEFAULT_VAT_RATE;
+    const commissionRate   = config?.commissionRate   ?? DEFAULT_COMMISSION_RATE;
+    const vatRate          = config?.vatRate          ?? DEFAULT_VAT_RATE;
 
     return res.status(200).json({
       success: true,
       message: "Pricing configuration fetched successfully",
       data: {
         quotationTaxRate,
+        commissionRate,
         vatRate,
         quotationTaxPercent: toPercent(quotationTaxRate),
-        vatPercent: toPercent(vatRate),
+        commissionPercent:   toPercent(commissionRate),
+        vatPercent:          toPercent(vatRate),
         updatedAt: config?.updatedAt || null,
       },
     });
@@ -31,22 +35,22 @@ export const getPricingConfig = async (req, res, next) => {
 
 export const upsertPricingConfig = async (req, res, next) => {
   try {
-    const { quotationTaxRate, quotationTaxPercent, vatRate, vatPercent } = req.body;
+    const {
+      quotationTaxRate, quotationTaxPercent,
+      commissionRate,   commissionPercent,
+      vatRate,          vatPercent,
+    } = req.body;
 
-    const normalizedQuotationTaxRate = normalizeRateInput(
-      quotationTaxRate ?? quotationTaxPercent,
-      DEFAULT_QUOTATION_TAX_RATE
-    );
-    const normalizedVatRate = normalizeRateInput(
-      vatRate ?? vatPercent,
-      DEFAULT_VAT_RATE
-    );
+    const normalizedTaxRate        = normalizeRateInput(quotationTaxRate ?? quotationTaxPercent, DEFAULT_QUOTATION_TAX_RATE);
+    const normalizedCommissionRate = normalizeRateInput(commissionRate   ?? commissionPercent,   DEFAULT_COMMISSION_RATE);
+    const normalizedVatRate        = normalizeRateInput(vatRate          ?? vatPercent,          DEFAULT_VAT_RATE);
 
     const config = await PricingConfig.findOneAndUpdate(
       { key: "default" },
       {
-        quotationTaxRate: normalizedQuotationTaxRate,
-        vatRate: normalizedVatRate,
+        quotationTaxRate: normalizedTaxRate,
+        commissionRate:   normalizedCommissionRate,
+        vatRate:          normalizedVatRate,
         updatedBy: req.user?._id,
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -57,9 +61,11 @@ export const upsertPricingConfig = async (req, res, next) => {
       message: "Pricing configuration updated successfully",
       data: {
         quotationTaxRate: config.quotationTaxRate,
-        vatRate: config.vatRate,
+        commissionRate:   config.commissionRate,
+        vatRate:          config.vatRate,
         quotationTaxPercent: toPercent(config.quotationTaxRate),
-        vatPercent: toPercent(config.vatRate),
+        commissionPercent:   toPercent(config.commissionRate),
+        vatPercent:          toPercent(config.vatRate),
         updatedAt: config.updatedAt,
       },
     });

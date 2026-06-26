@@ -14,6 +14,12 @@ const pricingConfigSchema = new mongoose.Schema(
       min: 0,
       max: 1,
     },
+    commissionRate: {
+      type: Number,
+      default: 0.1,
+      min: 0,
+      max: 1,
+    },
     vatRate: {
       type: Number,
       default: 0.1,

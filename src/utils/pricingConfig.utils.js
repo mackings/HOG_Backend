@@ -1,6 +1,7 @@
 import PricingConfig from "../modules/pricing/model/pricingConfig.model.js";
 
 export const DEFAULT_QUOTATION_TAX_RATE = 0.1;
+export const DEFAULT_COMMISSION_RATE = 0.1;
 export const DEFAULT_VAT_RATE = 0.1;
 
 export const normalizeRateInput = (value, fallbackRate) => {
@@ -22,13 +23,16 @@ export const toPercent = (rate) => Math.round((Number(rate) || 0) * 10000) / 100
 export const getPricingRates = async () => {
   const config = await PricingConfig.findOne({ key: "default" }).lean();
   const quotationTaxRate = config?.quotationTaxRate ?? DEFAULT_QUOTATION_TAX_RATE;
-  const vatRate = config?.vatRate ?? DEFAULT_VAT_RATE;
+  const commissionRate   = config?.commissionRate   ?? DEFAULT_COMMISSION_RATE;
+  const vatRate          = config?.vatRate          ?? DEFAULT_VAT_RATE;
 
   return {
     quotationTaxRate,
+    commissionRate,
     vatRate,
     quotationTaxPercent: toPercent(quotationTaxRate),
-    vatPercent: toPercent(vatRate),
+    commissionPercent:   toPercent(commissionRate),
+    vatPercent:          toPercent(vatRate),
   };
 };
 

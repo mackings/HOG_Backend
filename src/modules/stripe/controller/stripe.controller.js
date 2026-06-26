@@ -16,10 +16,18 @@ import StripePayoutRetry from '../model/stripePayoutRetry.model.js';
 
 
 
-// const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" })
-  : null;
+// Lazy singleton — resolves after dotenv has injected env vars
+let _stripe = null;
+const stripe = new Proxy({}, {
+  get(_, prop) {
+    if (!_stripe) {
+      const key = process.env.STRIPE_SECRET_KEY;
+      if (!key) throw new Error("STRIPE_SECRET_KEY is not set");
+      _stripe = new Stripe(key, { apiVersion: "2024-06-20" });
+    }
+    return _stripe[prop];
+  },
+});
 
 const normalizeAddressForGeocode = (rawAddress, country) => {
   let address = String(rawAddress || "").trim();
@@ -666,11 +674,14 @@ export const createStripePayment = async (req, res, next) => {
       },
     });
 
+    // Save the Stripe session ID so the webhook can validate it
+    await InitializedOrder.findByIdAndUpdate(order._id, { sessionId: session.id });
+
     return res.status(201).json({
       success: true,
       message: "Stripe checkout created successfully.",
       data: {
-        order,
+        order: { ...order.toObject(), sessionId: session.id },
         checkoutUrl: session.url,
         breakdown: {
           currency: "USD",
@@ -755,15 +766,19 @@ export const webhookPaymentSuccess = async (req, res) => {
     }
 
     if (checkoutSession && order.paymentMethod === "Stripe") {
-      const expectedAmount = Math.round(Number(order.amountPaidUSD) * 100);
+      // Use totalCostUSD from metadata — it includes product + delivery, matching what Stripe charged
+      const metadataTotalUSD = parseFloat(checkoutSession.metadata?.totalCostUSD || "0");
+      const expectedAmountCents = Math.round(metadataTotalUSD * 100);
       const stripePaymentMatches =
         checkoutSession.payment_status === "paid" &&
         checkoutSession.id === order.sessionId &&
         String(checkoutSession.currency || "").toLowerCase() === "usd" &&
-        Number(checkoutSession.amount_total) === expectedAmount;
+        Number(checkoutSession.amount_total) === expectedAmountCents;
 
       if (!stripePaymentMatches) {
         console.error("Stripe checkout details do not match initialized order");
+        console.error(`  session.id=${checkoutSession.id} order.sessionId=${order.sessionId}`);
+        console.error(`  amount_total=${checkoutSession.amount_total} expected=${expectedAmountCents}`);
         return res.status(400).json({
           message: "Stripe payment details do not match initialized order",
         });
@@ -861,23 +876,25 @@ export const webhookPaymentSuccess = async (req, res) => {
 
         const platformFeeNGN = (review.tax || 0) + (review.commission || 0);
 
+        // Always compute the USD equivalent of the platform fee (Stripe = USD)
+        const platformFeeUSD = order.exchangeRate
+          ? Math.round((platformFeeNGN / order.exchangeRate) * 100) / 100
+          : 0;
+
         // Determine amount to credit based on vendor type
         let amountToCredit;
         let currencyLabel;
 
         if (isInternationalVendor) {
           // Credit USD amount
-          const feeUSD = order.exchangeRate
-            ? Math.round((platformFeeNGN / order.exchangeRate) * 100) / 100
-            : 0;
           const grossUSD = order.amountPaidUSD || order.amountPaid;
           amountToCredit = order.paymentStatus === "full payment"
-            ? Math.max(0, grossUSD - feeUSD)
+            ? Math.max(0, grossUSD - platformFeeUSD)
             : grossUSD;
           currencyLabel = 'USD';
           console.log(`   Amount Paid (NGN): ₦${order.amountPaid}`);
           console.log(`   Amount Paid (USD): $${grossUSD}`);
-          console.log(`   Platform Fee (USD): $${feeUSD}`);
+          console.log(`   Platform Fee (USD): $${platformFeeUSD}`);
           console.log(`   Vendor Credit (USD): $${amountToCredit}`);
           console.log(`   Exchange Rate: ${order.exchangeRate}`);
         } else {
@@ -893,9 +910,10 @@ export const webhookPaymentSuccess = async (req, res) => {
 
         console.log(`   Amount to credit: ${currencyLabel === 'USD' ? '$' : '₦'}${amountToCredit}`);
 
-        // 💰 Credit vendor's wallet in database
+        // 💰 Credit vendor's wallet — USD field for international, NGN field for Nigerian
+        const vendorWalletField = isInternationalVendor ? "walletUSD" : "wallet";
         const updatedVendor = await User.findByIdAndUpdate(vendor.userId, {
-          $inc: { wallet: amountToCredit },
+          $inc: { [vendorWalletField]: amountToCredit },
         }, { new: true });
 
         console.log(`✅ VENDOR WALLET CREDITED!`);
@@ -904,7 +922,7 @@ export const webhookPaymentSuccess = async (req, res) => {
         console.log(`   New Balance: $${updatedVendor.wallet}`);
 
         // 💸 If vendor has Stripe connected account, transfer funds
-        if (vendorUser.stripeId && stripe && isInternationalVendor) {
+        if (vendorUser.stripeId && process.env.STRIPE_SECRET_KEY && isInternationalVendor) {
           console.log(`\n💸 Initiating Stripe transfer to connected account...`);
           console.log(`   Stripe Account ID: ${vendorUser.stripeId}`);
           try {
@@ -1020,23 +1038,24 @@ export const webhookPaymentSuccess = async (req, res) => {
         console.log(`✅ Review updated successfully`);
 
         // 💼 Credit platform commission (only on full payment)
+        // Stripe payments are always USD — platform fee stays in walletUSD
         if (order.paymentStatus === "full payment") {
-          console.log(`\n💼 Crediting platform commission...`);
-          console.log(`   Commission: ${review.commission}`);
-          console.log(`   Tax: ${review.tax}`);
+          console.log(`\n💼 Crediting platform commission (USD)...`);
+          console.log(`   Commission (NGN): ${review.commission} → USD: $${platformFeeUSD}`);
+          console.log(`   Tax (NGN): ${review.tax}`);
 
           await User.updateMany(
             { role: { $in: ["admin", "superAdmin"] } },
             {
               $inc: {
-                wallet: platformFeeNGN,
+                walletUSD: platformFeeUSD,
                 commission: review.commission,
                 tax: review.tax,
               },
             }
           );
 
-          console.log(`✅ Platform commission credited to admins`);
+          console.log(`✅ Platform commission credited to admins (walletUSD += $${platformFeeUSD})`);
         }
 
         console.log(`\n✅ MARKETPLACE PAYMENT COMPLETE!`);

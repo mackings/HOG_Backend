@@ -721,7 +721,21 @@ export const createPartPaymentOnline = async (req, res, next) => {
 
 export const orderWebhook = async (req, res, next) => {
   try {
-    const { data, event } = req.body;
+    // Verify Paystack HMAC-SHA512 signature
+    const signature = req.headers["x-paystack-signature"];
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+    const expectedSig = crypto
+      .createHmac("sha512", process.env.PAYSTACK_MAIN_KEY || "")
+      .update(rawBody)
+      .digest("hex");
+
+    if (!signature || signature !== expectedSig) {
+      console.error("❌ Paystack webhook signature mismatch");
+      return res.status(401).json({ message: "Invalid webhook signature" });
+    }
+
+    const payload = JSON.parse(rawBody.toString());
+    const { data, event } = payload;
 
     if (event !== "charge.success") {
       return res.status(200).json({ message: "Unhandled event" });

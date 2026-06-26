@@ -25,6 +25,7 @@ import stripeRouter from './src/modules/stripe/routes/stripe.routes.js';
 import rapydRouter from './src/modules/rapyd/routes/rapyd.routes.js';
 import { rapydWebhook } from './src/modules/rapyd/controller/rapyd.controller.js';
 import { webhookPaymentSuccess } from './src/modules/stripe/controller/stripe.controller.js';
+import { orderWebhook } from './src/modules/material/controller/material.controller.js';
 import feeRouter from './src/modules/commission/routes/commission.routes.js'
 import conversionRouter from './src/modules/conversion/routes/conversion.routes.js';
 import imagekitRouter from './src/modules/imagekit/routes/imagekit.routes.js';
@@ -47,6 +48,7 @@ const app = express();
 // Webhook routes BEFORE body parsing middleware (they need raw body)
 // Also include DB connection middleware
 app.post('/api/v1/stripe/webhook', express.raw({ type: 'application/json' }), ensureDbConnection, webhookPaymentSuccess);
+app.post('/api/v1/material/orderWebhook', express.raw({ type: 'application/json' }), ensureDbConnection, orderWebhook);
 app.post("/api/v1/rapyd/webhook", express.json({ type: 'application/json' }), ensureDbConnection, rapydWebhook);
 
 // connectDB(); // Moved to index.js to ensure env vars are loaded first
