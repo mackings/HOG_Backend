@@ -2,6 +2,16 @@ export const MAX_PLAN_BENEFITS = 20;
 export const TRIAL_PLAN = "premium";
 export const TRIAL_DAYS = 7;
 
+// Numeric rank for plan tier comparison (higher = more features)
+export const PLAN_ORDER = {
+  starter: 0,
+  free: 0,
+  standard: 1,
+  premium: 2,
+  elite: 3,
+  enterprise: 4,
+};
+
 // Commission rates per plan (percentage, e.g. 15 = 15%)
 export const PLAN_COMMISSION_RATES = {
   starter: 15,

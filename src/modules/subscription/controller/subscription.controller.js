@@ -1,6 +1,7 @@
 import User from "../../user/model/user.model.js";
 import InitializedOrder from "../../material/model/InitializedOrder.model.js";
 import Listing from "../../seller/model/seller.model.js";
+import Vendor from "../../vendor/model/vendor.model.js";
 import axios from "axios";
 import crypto from "crypto";
 import mongoose from "mongoose";
@@ -31,6 +32,19 @@ const PLAN_NAME_MAP = {
   premium: "Premium",
   elite: "Elite",
   enterprise: "Enterprise",
+};
+
+const ELITE_PLANS = new Set(["elite", "enterprise"]);
+
+// Keeps isVerifiedDesigner in sync with the user's active plan tier
+const syncVerifiedBadge = async (userId, planKey) => {
+  const isElitePlus = ELITE_PLANS.has(planKey);
+  await Vendor.findOneAndUpdate(
+    { userId },
+    isElitePlus
+      ? { $set: { isVerifiedDesigner: true, verifiedAt: new Date() } }
+      : { $set: { isVerifiedDesigner: false } }
+  );
 };
 const PAID_PLANS = new Set(["Starter", "Standard", "Premium", "Elite", "Enterprise"]);
 const ALLOWED_DURATIONS = new Set(["monthly", "quarterly", "yearly"]);
@@ -169,6 +183,7 @@ const finalizeSubscriptionOrder = async (order) => {
   );
 
   if (updatedUser) {
+    await syncVerifiedBadge(updatedUser._id, planKey);
     await sendSubscriptionEmail(updatedUser, order.totalAmount);
   }
 
@@ -675,6 +690,8 @@ export const cancelSubscription = async (req, res, next) => {
       { new: true, select: "subscriptionPlan activeCommissionRate isOnTrial" }
     );
 
+    await syncVerifiedBadge(id, "starter");
+
     return res.status(200).json({
       success: true,
       message: "Subscription cancelled. You have been moved to the Starter plan.",
@@ -787,6 +804,8 @@ export const applyScheduledDowngrade = async (userId) => {
       "scheduledDowngrade.effectiveDate": null,
     },
   });
+
+  await syncVerifiedBadge(userId, plan);
 };
 
 // ─── Designer Dashboard ───────────────────────────────────────────────────────
@@ -1384,6 +1403,8 @@ export const adminSetUserPlan = async (req, res, next) => {
       new: true,
       select: "fullName email subscriptionPlan activeCommissionRate subscriptionEndDate",
     });
+
+    await syncVerifiedBadge(userId, normalizedPlan);
 
     return res.status(200).json({
       success: true,
