@@ -11,7 +11,8 @@ const router = Router();
 router.use(isAuth);
 router.get("/getPricingConfig", getPricingConfig);
 
-router.use(userCheckRole(["admin", "superAdmin"]));
+// Finance role can also set billing rates alongside admin/superAdmin
+router.use(userCheckRole(["admin", "superAdmin", "finance"]));
 router.put("/updatePricingConfig", upsertPricingConfig);
 
 export default router;

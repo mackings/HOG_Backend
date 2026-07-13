@@ -77,9 +77,17 @@ export const sendResetPasswordEmail = (account) =>
 
 // ── Admin invitation ──────────────────────────────────────────────────────────
 
+const INVITE_ROLE_LABELS = {
+  superAdmin: "Super Admin",
+  admin: "Admin",
+  finance: "Finance",
+  customerService: "Customer Service",
+  listingManager: "Listing Manager",
+};
+
 export const buildAdminInvitationEmailPayload = (invitation) => ({
   to: invitation.email,
-  subject: `You have been invited as ${invitation.role === "superAdmin" ? "Super Admin" : "Admin"} on HOG`,
+  subject: `You have been invited as ${INVITE_ROLE_LABELS[invitation.role] || "Team Member"} on HOG`,
   htmlContent: sendAdminInvitationEmailTemplate(invitation),
 });
 

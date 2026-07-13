@@ -35,8 +35,8 @@ router.get("/getSubscriptionPlan/:id", getSubscriptionPlan);
 router.get("/verifySubscriptionPayment/:paymentReference", verifySubscriptionPayment);
 router.get("/mySubscription", getMySubscription);
 
-// ── Admin ─────────────────────────────────────────────────────────────────────
-router.use(userCheckRole(["admin", "superAdmin"]));
+// ── Admin / Finance (subscription plan management & billing) ─────────────────
+router.use(userCheckRole(["admin", "superAdmin", "finance"]));
 router.post("/createSubscriptionPlan", createSubscriptionPlan);
 router.put("/updateSubscriptionPlan/:id", updateSubscriptionPlan);
 router.delete("/deleteSubscriptionPlan/:id", deleteSubscriptionPlan);

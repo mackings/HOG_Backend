@@ -143,7 +143,7 @@ const userSchema = new mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ['user', 'admin', 'superAdmin', 'tailor'],
+        enum: ['user', 'admin', 'superAdmin', 'tailor', 'finance', 'customerService', 'listingManager'],
         default: 'user'
     },
     isVendorEnabled: {

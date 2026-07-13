@@ -75,6 +75,7 @@ const geocodeWithFallback = async (address) => {
   return null;
 };
 
+
 const buildPayoutBreakdown = (review) => {
   if (!review) return null;
   const quotationBase = Number(review.quotationTotalCost ?? review.subTotalCost ?? 0);

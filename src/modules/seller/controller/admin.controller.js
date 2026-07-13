@@ -11,6 +11,7 @@ import {
 import {
   canInviteAdminRole,
   generateTemporaryPassword,
+  getRoleLabel,
   INVITABLE_ADMIN_ROLES,
   normalizeInvitationEmail,
   normalizeInvitationRole,
@@ -809,7 +810,7 @@ export const inviteAdministrator = async (req, res, next) => {
     if (!INVITABLE_ADMIN_ROLES.includes(role)) {
       return res.status(400).json({
         success: false,
-        message: "Role must be admin or superAdmin",
+        message: `Invalid role. Must be one of: ${INVITABLE_ADMIN_ROLES.join(", ")}`,
       });
     }
 
@@ -819,7 +820,9 @@ export const inviteAdministrator = async (req, res, next) => {
         message:
           role === "superAdmin"
             ? "Only a superAdmin can invite another superAdmin"
-            : "You are not allowed to invite this role",
+            : role === "admin"
+            ? "Only a superAdmin can invite another admin"
+            : "You are not authorised to invite team members",
       });
     }
 
@@ -868,7 +871,7 @@ export const inviteAdministrator = async (req, res, next) => {
 
     return res.status(201).json({
       success: true,
-      message: `${role === "superAdmin" ? "Super admin" : "Admin"} invitation sent successfully`,
+      message: `${getRoleLabel(role)} invitation sent successfully`,
       data: {
         user: {
           _id: createdUser._id,

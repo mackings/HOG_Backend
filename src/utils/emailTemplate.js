@@ -35,7 +35,14 @@ export const sendAdminInvitationEmailTemplate = ({
   inviterName,
   responsibilities = [],
 }) => {
-  const roleLabel = role === "superAdmin" ? "Super Admin" : "Admin";
+  const ROLE_LABELS = {
+    superAdmin: "Super Admin",
+    admin: "Admin",
+    finance: "Finance",
+    customerService: "Customer Service",
+    listingManager: "Listing Manager",
+  };
+  const roleLabel = ROLE_LABELS[role] || "Team Member";
   const loginUrl = `${process.env.FRONTEND_URL || ""}/login`;
   const responsibilityItems = responsibilities
     .map((item) => `<li>${escapeHtml(item)}</li>`)
