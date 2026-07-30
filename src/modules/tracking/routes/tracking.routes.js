@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { createTracking, deleteTracking, getTracking, updateMaterialThroughTracking, getAllTracking
+import { createTracking, deleteTracking, getTracking, updateMaterialThroughTracking, getAllTracking,
+  createCarrierShipment, trackCarrierShipment
   } from '../controller/tracking.controller.js';
 import { isAuth } from '../../../middlewares/auth.middleware.js';
 import { userCheckRole} from '../../../middlewares/checkRole.middleware.js';
@@ -14,6 +15,9 @@ router.delete("/deleteTracking", deleteTracking );
 router.get("/getTracking", getTracking );
 router.get("/getAllTracking", getAllTracking );
 router.put("/updateMaterialThroughTracking", updateMaterialThroughTracking );
+// Carrier-integrated endpoints
+router.post("/createCarrierShipment", createCarrierShipment );
+router.get("/carrier/:carrierTrackingNumber", trackCarrierShipment );
 
 
 

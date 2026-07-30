@@ -6,6 +6,9 @@ import Review from '../../review/model/review.model.js';
 import Vendor from '../../vendor/model/vendor.model.js';
 import PickupCountry from '../model/pickupCountry.model.js';
 import { expressCalculateCost, cargoCalculateCost, regularCalculateCost, resolveDeliveryCurrency } from '../../../utils/shipmentCalcu.distance.js';
+import { fedexGetRates } from '../../../utils/carriers/fedex.service.js';
+import { dhlGetRates } from '../../../utils/carriers/dhl.service.js';
+import { toISOCode } from '../../../utils/carriers/countryCode.utils.js';
 
 const normalizeAddressForGeocode = (rawAddress, country) => {
   let addr = String(rawAddress || "").trim();
@@ -319,6 +322,128 @@ export const getPickupHierarchy = async (req, res, next) => {
   }
 };
 
+
+
+/**
+ * POST /delivery/carrier-rates/:reviewId
+ *
+ * Fetches live shipping rates from FedEx and/or DHL for a given order.
+ * Pulls sender (vendor) and recipient (buyer) from the review's linked records.
+ *
+ * Body:
+ *   packages   — [{ weight: 2, dimensions: { length: 30, width: 20, height: 10 } }]
+ *   carriers   — ["fedex", "dhl"] (optional, defaults to both)
+ *   currency   — "USD" | "NGN" (optional, defaults to USD for international)
+ */
+export const getCarrierRates = async (req, res, next) => {
+  try {
+    const { reviewId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(reviewId)) {
+      return res.status(400).json({ success: false, message: "Invalid review ID" });
+    }
+
+    const { packages, carriers = ["fedex", "dhl"], currency } = req.body;
+    if (!packages?.length) {
+      return res.status(400).json({ success: false, message: "packages array is required" });
+    }
+
+    const review = await Review.findById(reviewId);
+    if (!review) {
+      return res.status(404).json({ success: false, message: "Review not found" });
+    }
+
+    const vendor = await Vendor.findById(review.vendorId).populate("userId");
+    const buyer = await User.findById(review.userId);
+    if (!vendor || !buyer) {
+      return res.status(404).json({ success: false, message: "Vendor or buyer not found" });
+    }
+
+    const vendorUser = vendor.userId;
+    const resolvedCurrency = currency || resolveDeliveryCurrency(buyer.country, vendorUser?.country || vendor.country);
+
+    // FedEx-format addresses (shared with DHL via toISOCode)
+    const senderAddress = {
+      streetLines: [vendor.address || ""],
+      city: vendor.city || "",
+      stateOrProvinceCode: vendor.state?.substring(0, 2).toUpperCase() || "",
+      postalCode: vendor.postalCode || "100001",
+      countryCode: toISOCode(vendorUser?.country),
+    };
+
+    const recipientAddress = {
+      streetLines: [buyer.address || ""],
+      city: buyer.city || "",
+      stateOrProvinceCode: buyer.state?.substring(0, 2).toUpperCase() || "",
+      postalCode: buyer.postalCode || "100001",
+      countryCode: toISOCode(buyer.country),
+    };
+
+    // DHL-format shippers (different schema)
+    const dhlShipper = {
+      postalCode: senderAddress.postalCode,
+      cityName: senderAddress.city,
+      countryCode: senderAddress.countryCode,
+      addressLine1: senderAddress.streetLines[0],
+      typeCode: "business",
+    };
+    const dhlReceiver = {
+      postalCode: recipientAddress.postalCode,
+      cityName: recipientAddress.city,
+      countryCode: recipientAddress.countryCode,
+      addressLine1: recipientAddress.streetLines[0],
+      typeCode: "private",
+    };
+
+    const fedexPackages = packages.map((pkg) => ({
+      weight: { units: "KG", value: pkg.weight || 1 },
+      dimensions: {
+        length: pkg.dimensions?.length || 10,
+        width: pkg.dimensions?.width || 10,
+        height: pkg.dimensions?.height || 10,
+        units: "CM",
+      },
+    }));
+
+    const dhlPackages = packages.map((pkg) => ({
+      weight: pkg.weight || 1,
+      dimensions: {
+        length: pkg.dimensions?.length || 10,
+        width: pkg.dimensions?.width || 10,
+        height: pkg.dimensions?.height || 10,
+      },
+    }));
+
+    // Call enabled carriers in parallel; catch per-carrier errors gracefully
+    const results = await Promise.allSettled([
+      carriers.includes("fedex")
+        ? fedexGetRates({ senderAddress, recipientAddress, packages: fedexPackages, currency: resolvedCurrency === "NGN" ? "USD" : resolvedCurrency })
+        : Promise.resolve([]),
+      carriers.includes("dhl")
+        ? dhlGetRates({ shipperDetails: dhlShipper, receiverDetails: dhlReceiver, packages: dhlPackages })
+        : Promise.resolve([]),
+    ]);
+
+    const [fedexResult, dhlResult] = results;
+
+    const rates = [
+      ...(fedexResult.status === "fulfilled" ? fedexResult.value : []),
+      ...(dhlResult.status === "fulfilled" ? dhlResult.value : []),
+    ];
+
+    const errors = {};
+    if (fedexResult.status === "rejected") errors.fedex = fedexResult.reason?.response?.data?.errors?.[0]?.message || fedexResult.reason?.message;
+    if (dhlResult.status === "rejected") errors.dhl = dhlResult.reason?.response?.data?.title || dhlResult.reason?.message;
+
+    return res.status(200).json({
+      success: true,
+      message: rates.length > 0 ? "Carrier rates fetched successfully" : "No rates available from the selected carriers",
+      rates,
+      ...(Object.keys(errors).length > 0 && { carrierErrors: errors }),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 
 export const createDeliveryRate = async (req, res, next) => {

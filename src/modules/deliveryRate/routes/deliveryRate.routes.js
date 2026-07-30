@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { createDeliveryRate, getDeliveryRates, updateDeliveryRate, deleteDeliveryRate,
     deliveryCost, createPickupCountry, addPickupState, addPickupLocation, getPickupCountries,
-    getPickupStatesByCountry, getPickupLocationsByState, getPickupHierarchy
+    getPickupStatesByCountry, getPickupLocationsByState, getPickupHierarchy, getCarrierRates
  } from '../controller/deliveryRate.controller.js';
 import { isAuth } from '../../../middlewares/auth.middleware.js';
 import { userCheckRole } from '../../../middlewares/checkRole.middleware.js';
@@ -13,6 +13,7 @@ const router = Router();
 router.use(isAuth);
 router.get("/getDeliveryRates", getDeliveryRates);
 router.post("/deliveryCost/:reviewId", deliveryCost);
+router.post("/carrier-rates/:reviewId", getCarrierRates);
 router.get("/pickup/countries", getPickupCountries);
 router.get("/pickup/countries/:countryId/states", getPickupStatesByCountry);
 router.get("/pickup/countries/:countryId/states/:stateId/locations", getPickupLocationsByState);

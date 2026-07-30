@@ -35,6 +35,30 @@ const trackingSchema = new mongoose.Schema({
     },
     listingId: [{ type: mongoose.Schema.Types.ObjectId, ref: "Listing" }],
 
+    // Carrier integration fields (FedEx / DHL)
+    carrier: {
+        type: String,
+        enum: ["fedex", "dhl", "internal"],
+        default: "internal",
+    },
+    carrierTrackingNumber: {
+        type: String, // official carrier tracking number
+    },
+    serviceType: {
+        type: String, // e.g. "FEDEX_EXPRESS_SAVER" or DHL product code "P"
+    },
+    labelBase64: {
+        type: String, // base64-encoded shipping label
+    },
+    labelFormat: {
+        type: String,
+        enum: ["PDF", "PNG", "ZPLII", "pdf", "zpl"],
+        default: "PDF",
+    },
+    shipmentCreatedAt: {
+        type: Date,
+    },
+
 },{
     timestamps: true
 });

@@ -450,8 +450,6 @@ export const getAllusers = async (req, res, next) => {
 
 
 
-
-
 export const getAllTailor = async (req, res, next) => {
   try {
     const tailor = await Vendor.find()
@@ -474,6 +472,7 @@ export const getAllTailor = async (req, res, next) => {
     next(error);
   }
 };
+
 
 
 export const getUserCurrency = async (req, res, next) => {
