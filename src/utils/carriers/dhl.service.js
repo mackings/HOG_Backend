@@ -1,13 +1,21 @@
 import axios from "axios";
 
+// DHL Express (MyDHL API) — rates and shipment creation
+// Requires separate DHL Express business credentials (DHL_API_KEY, DHL_API_SECRET, DHL_ACCOUNT_NUMBER)
 const BASE_URL =
   process.env.DHL_ENV === "production"
     ? "https://express.api.dhl.com/mydhlapi"
     : "https://express.api.dhl.com/mydhlapi/test";
 
+// DHL Unified Tracking API — developer.dhl.com (DHL_TRACKING_API_KEY)
 const TRACKING_URL = "https://api-eu.dhl.com/track/shipments";
 
 const authHeader = () => {
+  if (!process.env.DHL_API_KEY || !process.env.DHL_API_SECRET) {
+    throw new Error(
+      "DHL Express credentials not configured. Set DHL_API_KEY and DHL_API_SECRET (requires a DHL Express business account)."
+    );
+  }
   const encoded = Buffer.from(
     `${process.env.DHL_API_KEY}:${process.env.DHL_API_SECRET}`
   ).toString("base64");
@@ -159,11 +167,14 @@ export const dhlCreateShipment = async ({
  * Uses DHL_TRACKING_API_KEY env var; falls back to "demo-key" for testing.
  */
 export const dhlTrackShipment = async (trackingNumber) => {
+  const trackingKey = process.env.DHL_TRACKING_API_KEY;
+  if (!trackingKey) {
+    throw new Error("DHL_TRACKING_API_KEY not configured. Add it from your developer.dhl.com app credentials.");
+  }
+
   const { data } = await axios.get(TRACKING_URL, {
     params: { trackingNumber },
-    headers: {
-      "DHL-API-Key": process.env.DHL_TRACKING_API_KEY || "demo-key",
-    },
+    headers: { "DHL-API-Key": trackingKey },
   });
 
   const shipment = data.shipments?.[0];
