@@ -94,39 +94,53 @@ export const fedexCreateShipment = async ({
   packages,
   serviceType,
   labelFormat = "PDF",
+  customsClearanceDetail = null,
 }) => {
   const headers = await authHeaders();
 
-  const { data } = await axios.post(
-    `${BASE_URL}/ship/v1/shipments`,
-    {
-      labelResponseOptions: "LABEL",
-      accountNumber: { value: process.env.FEDEX_ACCOUNT_NUMBER },
-      requestedShipment: {
-        shipper: { address: senderAddress, contact: senderContact },
-        recipients: [{ address: recipientAddress, contact: recipientContact }],
-        pickupType: "DROPOFF_AT_FEDEX_LOCATION",
-        serviceType,
-        packagingType: "YOUR_PACKAGING",
-        shippingChargesPayment: {
-          paymentType: "SENDER",
-          payor: {
-            responsibleParty: {
-              accountNumber: { value: process.env.FEDEX_ACCOUNT_NUMBER },
+  const isInternational = senderAddress.countryCode !== recipientAddress.countryCode;
+
+  let resp;
+  try {
+    resp = await axios.post(
+      `${BASE_URL}/ship/v1/shipments`,
+      {
+        labelResponseOptions: "LABEL",
+        accountNumber: { value: process.env.FEDEX_ACCOUNT_NUMBER },
+        requestedShipment: {
+          shipper: { address: senderAddress, contact: senderContact },
+          recipients: [{ address: recipientAddress, contact: recipientContact }],
+          pickupType: "DROPOFF_AT_FEDEX_LOCATION",
+          serviceType,
+          packagingType: "YOUR_PACKAGING",
+          shippingChargesPayment: {
+            paymentType: "SENDER",
+            payor: {
+              responsibleParty: {
+                accountNumber: { value: process.env.FEDEX_ACCOUNT_NUMBER },
+              },
             },
           },
+          labelSpecification: {
+            imageType: labelFormat,
+            labelStockType: "PAPER_85X11_TOP_HALF_LABEL",
+          },
+          requestedPackageLineItems: packages,
+          ...(isInternational && customsClearanceDetail && { customsClearanceDetail }),
         },
-        labelSpecification: {
-          imageType: labelFormat,
-          labelStockType: "PAPER_85X11_TOP_HALF_LABEL",
-        },
-        requestedPackageLineItems: packages,
       },
-    },
-    { headers }
-  );
+      { headers }
+    );
+  } catch (err) {
+    const fedexMsg = err.response?.data?.errors?.[0]?.message || err.message;
+    const fedexCode = err.response?.data?.errors?.[0]?.code;
+    const e = new Error(fedexMsg);
+    e.status = err.response?.status || 500;
+    if (fedexCode) e.fedexCode = fedexCode;
+    throw e;
+  }
 
-  const shipment = data.output?.transactionShipments?.[0];
+  const shipment = resp.data.output?.transactionShipments?.[0];
   const pieceResponse = shipment?.pieceResponses?.[0];
 
   return {
@@ -190,14 +204,25 @@ export const fedexValidateAddress = async (addresses) => {
 export const fedexTrackShipment = async (trackingNumber) => {
   const headers = await authHeaders();
 
-  const { data } = await axios.post(
-    `${BASE_URL}/track/v1/trackingnumbers`,
-    {
-      trackingInfo: [{ trackingNumberInfo: { trackingNumber } }],
-      includeDetailedScans: true,
-    },
-    { headers }
-  );
+  let trackResp;
+  try {
+    trackResp = await axios.post(
+      `${BASE_URL}/track/v1/trackingnumbers`,
+      {
+        trackingInfo: [{ trackingNumberInfo: { trackingNumber } }],
+        includeDetailedScans: true,
+      },
+      { headers }
+    );
+  } catch (err) {
+    const fedexMsg = err.response?.data?.errors?.[0]?.message || err.message;
+    const fedexCode = err.response?.data?.errors?.[0]?.code;
+    const e = new Error(fedexMsg);
+    e.status = err.response?.status || 500;
+    if (fedexCode) e.fedexCode = fedexCode;
+    throw e;
+  }
+  const data = trackResp.data;
 
   const result =
     data.output?.completeTrackResults?.[0]?.trackResults?.[0];

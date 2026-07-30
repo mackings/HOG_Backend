@@ -3,6 +3,7 @@ import Material from "../../material/model/material.model.js";
 import crypto from "crypto";
 import User from "../../user/model/user.model.js";
 import Vendor from "../../vendor/model/vendor.model.js";
+import Review from "../../review/model/review.model.js";
 import { sendDeliveryStartedEmail } from "../../../utils/emailService.utils.js";
 import { fedexCreateShipment, fedexTrackShipment } from "../../../utils/carriers/fedex.service.js";
 import { dhlCreateShipment, dhlTrackShipment } from "../../../utils/carriers/dhl.service.js";
@@ -307,6 +308,52 @@ export const createCarrierShipment = async (req, res, next) => {
     let shipmentResult;
 
     if (carrier === "fedex") {
+      const isIntl = senderAddress.countryCode !== recipientAddress.countryCode;
+      let customsClearanceDetail = null;
+
+      if (isIntl) {
+        // Look up the review to get the USD customs value
+        const review = await Review.findOne({ materialId: material._id }).sort({ createdAt: -1 }).lean();
+        const totalWeightKg = normalizedPackages.reduce((s, p) => s + (p.weight?.value || 1), 0);
+        const customsAmountUSD = review?.amountToPayUSD || review?.totalCostUSD || 200;
+        const customsAmount = customsAmountUSD > 0 ? customsAmountUSD : (review?.totalCost ? review.totalCost / (review?.exchangeRate || 1500) : 200);
+
+        customsClearanceDetail = {
+          dutiesPayment: {
+            paymentType: "SENDER",
+            payor: {
+              responsibleParty: {
+                accountNumber: { value: process.env.FEDEX_ACCOUNT_NUMBER },
+              },
+            },
+          },
+          totalCustomsValue: {
+            amount: parseFloat(customsAmount.toFixed(2)),
+            currency: "USD",
+          },
+          commodities: [
+            {
+              description: contentDescription || "Clothing and fashion garments",
+              countryOfManufacture: senderAddress.countryCode,
+              quantity: 1,
+              quantityUnits: "PCS",
+              unitPrice: {
+                amount: parseFloat(customsAmount.toFixed(2)),
+                currency: "USD",
+              },
+              customsValue: {
+                amount: parseFloat(customsAmount.toFixed(2)),
+                currency: "USD",
+              },
+              weight: {
+                units: "KG",
+                value: totalWeightKg,
+              },
+            },
+          ],
+        };
+      }
+
       shipmentResult = await fedexCreateShipment({
         senderAddress,
         senderContact,
@@ -315,6 +362,7 @@ export const createCarrierShipment = async (req, res, next) => {
         packages: normalizedPackages,
         serviceType,
         labelFormat,
+        customsClearanceDetail,
       });
     } else {
       // DHL uses a slightly different address shape

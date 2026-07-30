@@ -153,7 +153,19 @@ const userSchema = new mongoose.Schema({
     country: {
         type: String,
         default: 'Nigeria'
-    }
+    },
+    city: {
+        type: String,
+        default: null,
+    },
+    state: {
+        type: String,
+        default: null,
+    },
+    postalCode: {
+        type: String,
+        default: null,
+    },
 
 },
     {

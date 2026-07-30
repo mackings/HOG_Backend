@@ -4,6 +4,7 @@ import axios from 'axios';
 import mongoose from 'mongoose';
 import Review from '../../review/model/review.model.js';
 import Vendor from '../../vendor/model/vendor.model.js';
+import Material from '../../material/model/material.model.js';
 import PickupCountry from '../model/pickupCountry.model.js';
 import { expressCalculateCost, cargoCalculateCost, regularCalculateCost, resolveDeliveryCurrency } from '../../../utils/shipmentCalcu.distance.js';
 import { fedexGetRates } from '../../../utils/carriers/fedex.service.js';
@@ -353,7 +354,9 @@ export const getCarrierRates = async (req, res, next) => {
     }
 
     const vendor = await Vendor.findById(review.vendorId).populate("userId");
-    const buyer = await User.findById(review.userId);
+    // review.userId = designer (tailor who created the quote); buyer = material owner
+    const material = await Material.findById(review.materialId);
+    const buyer = await User.findById(material?.userId);
     if (!vendor || !buyer) {
       return res.status(404).json({ success: false, message: "Vendor or buyer not found" });
     }
@@ -431,7 +434,9 @@ export const getCarrierRates = async (req, res, next) => {
     ];
 
     const errors = {};
-    if (fedexResult.status === "rejected") errors.fedex = fedexResult.reason?.response?.data?.errors?.[0]?.message || fedexResult.reason?.message;
+    if (fedexResult.status === "rejected") {
+      errors.fedex = fedexResult.reason?.response?.data?.errors?.[0]?.message || fedexResult.reason?.message;
+    }
     if (dhlResult.status === "rejected") errors.dhl = dhlResult.reason?.response?.data?.title || dhlResult.reason?.message;
 
     return res.status(200).json({
@@ -551,7 +556,9 @@ export const deliveryCost = async (req, res, next) => {
     if (!vendor) {
       return res.status(404).json({ success: false, message: "Vendor not found" });
     }
-    const buyer = await User.findById(review.userId);
+    // review.userId = designer (tailor who created the quote); buyer = material owner
+    const reviewMaterial = await Material.findById(review.materialId);
+    const buyer = await User.findById(reviewMaterial?.userId);
     if (!buyer) {
       return res.status(404).json({ success: false, message: "Buyer not found" });
     }

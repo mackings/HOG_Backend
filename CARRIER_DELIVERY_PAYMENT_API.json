@@ -1,0 +1,398 @@
+{
+  "title": "HOG — Carrier Delivery & Payment API Reference",
+  "version": "1.1.0",
+  "baseUrl": "/api/v1",
+  "testedOn": "2026-07-30",
+  "environment": "FedEx Sandbox · Paystack Test · Stripe Test",
+  "testAccounts": {
+    "ngDesigner": { "email": "ng.designer.test@hogtest.dev", "country": "Nigeria", "city": "Lagos" },
+    "ngBuyer":    { "email": "ng.buyer.test@hogtest.dev",   "country": "Nigeria", "city": "Abuja" },
+    "usBuyer":    { "email": "us.buyer.test@hogtest.dev",   "country": "United States", "city": "New York" }
+  },
+
+  "flow": [
+    { "step": 1, "action": "Get carrier rates",         "actor": "Buyer",            "endpoint": "POST /deliveryRate/carrier-rates/:reviewId",  "note": "Shows live FedEx (and DHL if configured) rates" },
+    { "step": 2, "action": "Get distance-based cost",   "actor": "Buyer",            "endpoint": "POST /deliveryRate/deliveryCost/:reviewId",    "note": "Fallback when carrier rates[] is empty" },
+    { "step": 3, "action": "Pay (Paystack or Stripe)",  "actor": "Buyer",            "endpoint": "See payment section below",                   "note": "Gateway chosen automatically based on buyer country" },
+    { "step": 4, "action": "Create shipment",           "actor": "Designer",         "endpoint": "POST /tracking/createCarrierShipment",        "note": "FedEx or DHL. Returns tracking number + PDF label." },
+    { "step": 5, "action": "Track live",                "actor": "Buyer + Designer", "endpoint": "GET /tracking/carrier/:trackingNumber",       "note": "Poll every 2–4 hours. FedEx sandbox blocks tracking (403 FORBIDDEN); works on production." }
+  ],
+
+  "gatewayMatrix": {
+    "description": "Gateway and currency are resolved from the buyer's country stored on their profile. Do NOT hard-code.",
+    "rule": "buyer.country === 'Nigeria' → Paystack + NGN; all other countries → Stripe + USD",
+    "routes": [
+      {
+        "designerCountry": "Nigeria",
+        "buyerCountry": "Nigeria",
+        "currency": "NGN",
+        "gateway": "Paystack",
+        "fedexAvailable": false,
+        "fedexNote": "FedEx does not serve NG domestic. Haversine fallback is used.",
+        "liveDeliveryCosts": {
+          "express": { "amount": 1345249, "currency": "NGN" },
+          "regular": { "amount": 538100,  "currency": "NGN" },
+          "cargo":   { "amount": 807150,  "currency": "NGN" }
+        }
+      },
+      {
+        "designerCountry": "Nigeria",
+        "buyerCountry": "United States",
+        "currency": "USD",
+        "gateway": "Stripe",
+        "fedexAvailable": true,
+        "liveDeliveryCosts": {
+          "express": { "amount": 16943, "currency": "USD" }
+        },
+        "liveFedExRates": [
+          { "serviceType": "INTERNATIONAL_FIRST",                    "serviceName": "FedEx International First®",           "amount": 530.02, "currency": "USD" },
+          { "serviceType": "FEDEX_INTERNATIONAL_PRIORITY_EXPRESS",   "serviceName": "FedEx International Priority Express",  "amount": 488.02, "currency": "USD" },
+          { "serviceType": "FEDEX_INTERNATIONAL_PRIORITY",           "serviceName": "FedEx International Priority®",         "amount": 465.28, "currency": "USD" },
+          { "serviceType": "INTERNATIONAL_ECONOMY",                  "serviceName": "FedEx International Economy®",          "amount": 447.86, "currency": "USD" }
+        ]
+      },
+      {
+        "designerCountry": "Nigeria",
+        "buyerCountry": "United Kingdom",
+        "currency": "USD",
+        "gateway": "Stripe",
+        "fedexAvailable": false,
+        "fedexNote": "FedEx sandbox restriction on this lane. Production account will serve NG→GB."
+      },
+      {
+        "designerCountry": "United States",
+        "buyerCountry": "Nigeria",
+        "currency": "USD",
+        "gateway": "Stripe",
+        "fedexAvailable": false,
+        "fedexNote": "FedEx sandbox restriction. Live account will activate US→NG international routes."
+      }
+    ]
+  },
+
+  "endpoints": {
+
+    "carrierRates": {
+      "method": "POST",
+      "path": "/deliveryRate/carrier-rates/:reviewId",
+      "auth": "Bearer token (buyer or designer)",
+      "description": "Returns live FedEx (and DHL when configured) shipping rate options. Resolves shipper/buyer addresses from the linked vendor and material records.",
+      "request": {
+        "body": {
+          "carriers":  { "type": "string[]", "options": ["fedex", "dhl"], "example": ["fedex"] },
+          "packages":  {
+            "type": "array",
+            "items": {
+              "weight":     { "type": "number", "unit": "kg",   "example": 1.5 },
+              "dimensions": {
+                "length": { "type": "number", "unit": "cm", "example": 35 },
+                "width":  { "type": "number", "unit": "cm", "example": 25 },
+                "height": { "type": "number", "unit": "cm", "example": 5 }
+              }
+            }
+          },
+          "currency": { "type": "string", "optional": true, "note": "Auto-resolved from country pair if omitted", "example": "USD" }
+        },
+        "example": {
+          "carriers": ["fedex"],
+          "packages": [{ "weight": 1.5, "dimensions": { "length": 35, "width": 25, "height": 5 } }]
+        }
+      },
+      "response_200": {
+        "success": true,
+        "message": "Carrier rates fetched successfully",
+        "rates": [
+          { "carrier": "fedex", "serviceType": "INTERNATIONAL_FIRST",                  "serviceName": "FedEx International First®",          "estimatedDeliveryDate": null, "transitDays": null, "amount": 530.02, "currency": "USD" },
+          { "carrier": "fedex", "serviceType": "FEDEX_INTERNATIONAL_PRIORITY_EXPRESS", "serviceName": "FedEx International Priority Express", "estimatedDeliveryDate": null, "transitDays": null, "amount": 488.02, "currency": "USD" },
+          { "carrier": "fedex", "serviceType": "FEDEX_INTERNATIONAL_PRIORITY",         "serviceName": "FedEx International Priority®",        "estimatedDeliveryDate": null, "transitDays": null, "amount": 465.28, "currency": "USD" },
+          { "carrier": "fedex", "serviceType": "INTERNATIONAL_ECONOMY",                "serviceName": "FedEx International Economy®",         "estimatedDeliveryDate": null, "transitDays": null, "amount": 447.86, "currency": "USD" }
+        ]
+      },
+      "response_noRates": {
+        "success": true,
+        "message": "No rates available from the selected carriers",
+        "rates": [],
+        "carrierErrors": {
+          "fedex": "We are unable to process this request. Please try again later or contact FedEx Customer Service."
+        }
+      },
+      "mobileGuidance": "If rates[] is empty, immediately call /deliveryRate/deliveryCost. Do NOT show an empty carrier list to the user without offering the fallback."
+    },
+
+    "deliveryCost": {
+      "method": "POST",
+      "path": "/deliveryRate/deliveryCost/:reviewId",
+      "auth": "Bearer token (buyer or designer)",
+      "description": "Haversine distance-based delivery cost. Use when carrier rates[] is empty, or to show cost estimate alongside carrier options.",
+      "request": {
+        "body": {
+          "shipmentMethod": { "type": "string", "options": ["express", "regular", "cargo"], "example": "express" },
+          "address": { "type": "string", "optional": true, "note": "Override delivery address. Uses buyer's stored address if omitted." }
+        },
+        "example": { "shipmentMethod": "express" }
+      },
+      "response_200": {
+        "success": true,
+        "message": "Delivery cost calculated successfully",
+        "cost": 1345249,
+        "currency": "NGN",
+        "selectedPickupLocation": null
+      },
+      "liveTestedValues": {
+        "NG_to_NG_express": { "cost": 1345249, "currency": "NGN" },
+        "NG_to_NG_regular": { "cost": 538100,  "currency": "NGN" },
+        "NG_to_NG_cargo":   { "cost": 807150,  "currency": "NGN" },
+        "NG_to_US_express": { "cost": 16943,   "currency": "USD" }
+      }
+    },
+
+    "paystackInitialize": {
+      "method": "POST",
+      "path": "/material/createPaymentOnline/:reviewId",
+      "auth": "Bearer token (buyer)",
+      "gateway": "Paystack",
+      "usedFor": "Nigerian buyers ONLY (buyer.country === 'Nigeria')",
+      "description": "Initialises a Paystack transaction. Open authorizationUrl in a WebView or browser to complete payment. Paystack webhooks update the order status on success.",
+      "request": {
+        "body": {
+          "amount":         { "type": "number", "unit": "NGN",    "note": "Total including delivery", "example": 1395249 },
+          "shipmentMethod": { "type": "string", "options": ["express", "regular", "cargo"], "example": "express" },
+          "address":        { "type": "string", "optional": true, "example": "22 Wuse Zone 5, Abuja" },
+          "paymentStatus":  { "type": "string", "options": ["full", "installment"],         "example": "full" }
+        },
+        "example": {
+          "amount": 1395249,
+          "shipmentMethod": "express",
+          "address": "22 Wuse Zone 5, Abuja",
+          "paymentStatus": "full"
+        }
+      },
+      "response_200": {
+        "success": true,
+        "message": "Payment initialized successfully",
+        "authorizationUrl": "https://checkout.paystack.com/47vi67g6asf4rxo",
+        "payment": {
+          "_id": "6a6b4e920d4aeb1e88f773e9",
+          "userId": "...",
+          "vendorId": "...",
+          "materialId": "...",
+          "reviewId": "...",
+          "totalAmount": 48000,
+          "orderStatus": "Not Processed",
+          "paymentMethod": "Paystack",
+          "paymentReference": "a7e87f6a3a",
+          "deliveryAddress": "22 Wuse Zone 5, Abuja, Nigeria",
+          "paymentStatus": "full",
+          "amountPaid": 1395249,
+          "amountPaidUSD": 0,
+          "exchangeRate": 0
+        },
+        "breakdown": {
+          "currency": "NGN",
+          "productCost": 50000,
+          "deliveryFee": 1345249,
+          "total": 1395249,
+          "deliveryMethod": "express"
+        },
+        "payoutBreakdown": {
+          "quotationBase": 40000,
+          "agreedBase": 40000,
+          "buyerMarkdown": 0,
+          "payoutBaseUsed": 40000,
+          "commissionDeducted": 4000,
+          "designerNetCredit": 36000
+        }
+      },
+      "mobileGuidance": "Open response.authorizationUrl in a WebView. Listen for the redirect URL to detect payment completion. Poll /transaction/getTransactions for status update. Do NOT call for non-Nigerian buyers."
+    },
+
+    "stripeCreatePayment": {
+      "method": "POST",
+      "path": "/stripe/make-payment/:reviewId",
+      "auth": "Bearer token (buyer)",
+      "gateway": "Stripe",
+      "usedFor": "International buyers ONLY (buyer.country !== 'Nigeria')",
+      "description": "Creates a Stripe Checkout Session. Open checkoutUrl in a browser/WebView to complete payment. The order is updated via Stripe webhooks on success.",
+      "importantNote": "This endpoint uses Stripe Checkout Sessions — NOT PaymentIntents. There is no client_secret. The mobile app must redirect the user to checkoutUrl.",
+      "request": {
+        "body": {
+          "amount":         { "type": "number", "unit": "USD",    "note": "Total including delivery (USD)", "example": 465 },
+          "shipmentMethod": { "type": "string", "options": ["express", "regular", "cargo"],                  "example": "express" },
+          "address":        { "type": "string", "optional": true, "example": "456 5th Avenue, Manhattan" },
+          "paymentStatus":  { "type": "string", "options": ["full payment", "installment"],                  "example": "full payment", "IMPORTANT": "Value must be 'full payment' (with space), NOT 'full'" }
+        },
+        "example": {
+          "amount": 465,
+          "shipmentMethod": "express",
+          "address": "456 5th Avenue, Manhattan",
+          "paymentStatus": "full payment"
+        }
+      },
+      "response_200": {
+        "success": true,
+        "message": "Stripe checkout created successfully.",
+        "data": {
+          "order": {
+            "_id": "6a6b4e950d4aeb1e88f773f3",
+            "userId": "...",
+            "vendorId": "...",
+            "materialId": "...",
+            "reviewId": "...",
+            "totalAmount": 240000,
+            "orderStatus": "Not Processed",
+            "paymentMethod": "Stripe",
+            "paymentReference": "79b74e64b23810c8",
+            "deliveryAddress": "456 5th Avenue, Manhattan",
+            "paymentStatus": "full payment",
+            "amountPaid": 0,
+            "amountPaidUSD": 0,
+            "exchangeRate": 1365.7636,
+            "sessionId": "cs_test_b1LQYxOkzpyWdO2zZ0xXMXLwb38XAfsMJOBkECVA5EC069sIFOinPrM08q"
+          },
+          "checkoutUrl": "https://checkout.stripe.com/c/pay/cs_test_...",
+          "breakdown": {
+            "currency": "USD",
+            "productCost": 0,
+            "deliveryFee": 16942.78,
+            "total": 16942.78,
+            "deliveryType": "Express"
+          }
+        }
+      },
+      "mobileGuidance": "Open data.checkoutUrl in a browser or WebView. On successful payment, Stripe redirects back and fires a webhook that updates the order. Do NOT use Stripe mobile SDK Payment Sheet — this endpoint uses Checkout, not PaymentIntents. Do NOT call for Nigerian buyers."
+    },
+
+    "createCarrierShipment": {
+      "method": "POST",
+      "path": "/tracking/createCarrierShipment",
+      "auth": "Bearer token (designer/tailor only)",
+      "description": "Creates a real FedEx or DHL shipment. Pulls shipper/recipient addresses from vendor profile and buyer profile. For international orders, customs clearance detail is automatically built from the review's quoted price. Returns a tracking number and base64-encoded PDF shipping label.",
+      "internationalNote": "For international orders (different sender/recipient countries), the backend auto-constructs customsClearanceDetail for FedEx using the review's quoted USD value.",
+      "request": {
+        "body": {
+          "materialId":          { "type": "string",   "note": "Order's material ID",                       "example": "6a6b3340c6cbb134afcf1245" },
+          "carrier":             { "type": "string",   "options": ["fedex", "dhl"],                         "example": "fedex" },
+          "serviceType":         { "type": "string",   "note": "serviceType from carrier-rates response",   "example": "FEDEX_INTERNATIONAL_PRIORITY" },
+          "packages":            { "type": "array",    "items": { "weight": { "unit": "kg" }, "dimensions": { "unit": "cm" } } },
+          "labelFormat":         { "type": "string",   "options": ["PDF", "PNG", "ZPLII"], "default": "PDF", "example": "PDF" },
+          "contentDescription":  { "type": "string",   "optional": true,                                    "example": "Fashion garments — bridal wear" }
+        },
+        "example": {
+          "materialId": "6a6b3340c6cbb134afcf1245",
+          "carrier": "fedex",
+          "serviceType": "FEDEX_INTERNATIONAL_PRIORITY",
+          "packages": [{ "weight": 1.5, "dimensions": { "length": 35, "width": 25, "height": 5 } }],
+          "labelFormat": "PDF",
+          "contentDescription": "Fashion garments"
+        }
+      },
+      "response_200": {
+        "success": true,
+        "message": "FEDEX shipment created successfully",
+        "data": {
+          "trackingId": "6a6b509a138bce0ef675e943",
+          "carrier": "fedex",
+          "carrierTrackingNumber": "794847210054",
+          "serviceType": "INTERNATIONAL_PRIORITY",
+          "labelBase64": "[base64-encoded PDF — ~200KB raw, ~202KB base64]",
+          "labelBase64Note": "Decode and render as PDF to display or print the FedEx shipping label.",
+          "labelFormat": "PDF"
+        }
+      },
+      "liveTestResult": {
+        "trackingNumber": "794847210054",
+        "labelBase64Length": 202264,
+        "serviceType": "INTERNATIONAL_PRIORITY",
+        "route": "Lagos NG → New York US"
+      }
+    },
+
+    "trackCarrierShipment": {
+      "method": "GET",
+      "path": "/tracking/carrier/:carrierTrackingNumber",
+      "auth": "Bearer token (buyer or designer)",
+      "queryParams": {
+        "carrier": { "type": "string", "required": true, "options": ["fedex", "dhl"], "example": "fedex" }
+      },
+      "description": "Returns live tracking events from FedEx or DHL. Internally updates the order's delivery status on each call.",
+      "sandboxBehavior": "FedEx sandbox returns 403 FORBIDDEN for tracking calls — this is expected and is not a bug. Tracking works on production with real shipment numbers.",
+      "pollingRecommendation": "Every 2–4 hours. Increase to every 30 min once status changes to IN_TRANSIT.",
+      "response_200": {
+        "success": true,
+        "message": "Tracking info fetched successfully",
+        "data": {
+          "carrier": "fedex",
+          "trackingNumber": "794847210054",
+          "status": "IN_TRANSIT",
+          "statusDescription": "On FedEx vehicle for delivery",
+          "estimatedDelivery": "2026-08-05T23:59:00",
+          "events": [
+            { "timestamp": "2026-08-03T14:22:00", "description": "Departed FedEx hub",    "location": "Lagos, NG" },
+            { "timestamp": "2026-08-02T09:10:00", "description": "Picked up",             "location": "Lagos, NG" }
+          ]
+        }
+      }
+    }
+  },
+
+  "fedexServiceTypes": {
+    "international": [
+      { "serviceType": "INTERNATIONAL_FIRST",                    "name": "FedEx International First®",           "transit": "1 day",    "live_NG_US_price_USD": 530.02 },
+      { "serviceType": "FEDEX_INTERNATIONAL_PRIORITY_EXPRESS",   "name": "FedEx International Priority Express", "transit": "1–3 days", "live_NG_US_price_USD": 488.02 },
+      { "serviceType": "FEDEX_INTERNATIONAL_PRIORITY",           "name": "FedEx International Priority®",        "transit": "1–3 days", "live_NG_US_price_USD": 465.28 },
+      { "serviceType": "INTERNATIONAL_ECONOMY",                  "name": "FedEx International Economy®",         "transit": "2–5 days", "live_NG_US_price_USD": 447.86 },
+      { "serviceType": "FEDEX_INTERNATIONAL_CONNECT_PLUS",       "name": "FedEx International Connect Plus",     "transit": "2–5 days", "live_NG_US_price_USD": null }
+    ],
+    "usDomestic": [
+      { "serviceType": "FIRST_OVERNIGHT",       "name": "FedEx First Overnight®",     "transit": "Next day AM"  },
+      { "serviceType": "PRIORITY_OVERNIGHT",    "name": "FedEx Priority Overnight®",  "transit": "Next day 10:30" },
+      { "serviceType": "STANDARD_OVERNIGHT",    "name": "FedEx Standard Overnight®",  "transit": "Next day PM"  },
+      { "serviceType": "FEDEX_2_DAY",           "name": "FedEx 2Day®",                "transit": "2 days"       },
+      { "serviceType": "FEDEX_EXPRESS_SAVER",   "name": "FedEx Express Saver®",       "transit": "3 days"       },
+      { "serviceType": "FEDEX_GROUND",          "name": "FedEx Ground®",              "transit": "1–5 days"     },
+      { "serviceType": "GROUND_HOME_DELIVERY",  "name": "FedEx Home Delivery®",       "transit": "1–7 days"     }
+    ]
+  },
+
+  "dhlProductCodes": {
+    "note": "DHL Express requires a separate DHL Express (MyDHL API) business account — different from the developer.dhl.com tracking API key. Tracking also requires subscribing the app to the 'Shipment Tracking' API on developer.dhl.com.",
+    "trackingApiKey": "Set DHL_TRACKING_API_KEY in .env. Subscribe app to 'Shipment Tracking' API on developer.dhl.com.",
+    "products": [
+      { "productCode": "P", "name": "DHL Express Worldwide",     "coverage": "international" },
+      { "productCode": "U", "name": "DHL Express USA",           "coverage": "US inbound/outbound" },
+      { "productCode": "K", "name": "DHL Express 9:00",          "coverage": "international premium" },
+      { "productCode": "T", "name": "DHL Express 12:00",         "coverage": "international priority" },
+      { "productCode": "D", "name": "DHL Express Worldwide B2C", "coverage": "international B2C" }
+    ]
+  },
+
+  "knownSandboxLimitations": {
+    "fedexNGtoNG": "FedEx sandbox returns SYSTEM.UNAVAILABLE.EXCEPTION for NG domestic routes. Backend correctly falls back to haversine pricing.",
+    "fedexTracking": "FedEx sandbox returns 403 FORBIDDEN for tracking calls. Works on live production account.",
+    "dhlTracking": "DHL tracking returns 401 if the app has not been subscribed to the 'Shipment Tracking' API on developer.dhl.com.",
+    "stripeWebhook": "Stripe sandbox fires webhooks; test the payment flow end-to-end in Stripe test mode before going live."
+  },
+
+  "bugsFounds_and_fixed": [
+    {
+      "bug": "review.userId was being used as the buyer, but it is actually the designer (tailor who created the quote). Buyer is material.userId.",
+      "impact": "Carrier rates and delivery cost were computing NG→NG routes even when the buyer was in the US.",
+      "fix": "Both deliveryRate and tracking controllers now look up buyer via Material.findById(review.materialId).userId."
+    },
+    {
+      "bug": "User schema did not include city, state, postalCode fields.",
+      "impact": "Carrier address had empty city/state and defaulted to postalCode '100001' (Lagos) for all buyers.",
+      "fix": "Added optional city, state, postalCode fields to User schema. FedEx NG→US now correctly resolves NY 10001 as recipient."
+    },
+    {
+      "bug": "FedEx international shipment missing customsClearanceDetail.",
+      "impact": "FedEx returned TOTALCUSTOMSVALUE.REQUIRED for all international shipment creation attempts.",
+      "fix": "Tracking controller now auto-builds customsClearanceDetail for international routes by looking up the review's quoted USD price."
+    },
+    {
+      "bug": "FedEx shipment error body was lost through the error middleware (only err.message was passed).",
+      "impact": "Error responses showed 'Request failed with status code 400' instead of the actual FedEx error code and message.",
+      "fix": "fedexCreateShipment now catches axios errors and re-throws with err.status and err.fedexCode. Error middleware passes fedexCode through."
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:developer.fedex.com)",
+      "WebFetch(domain:developer.dhl.com)",
+      "WebFetch(domain:atoship.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:shipping-helpcenter.aftership.com)",
+      "WebFetch(domain:www.ecomplugins.com)",
+      "WebFetch(domain:support.aftership.com)",
+      "WebFetch(domain:portal.nbox.qa)",
+      "WebFetch(domain:www.postman.com)",
+      "Bash(curl -s -X POST https://apis-sandbox.fedex.com/oauth/token -H 'Content-Type: application/x-www-form-urlencoded' -d 'grant_type=client_credentials&client_id=l72d6d1122b7c54e2ab5a7623c8cd6069e&client_secret=3c5ad64c0e50435b8da9c8702d8a6aaa')",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s --compressed https://api-eu.dhl.com/track/shipments?trackingNumber=1234567890 -H 'DHL-API-Key: 7ug9p1YWwCUJU8fi1usEv29kafrCZkVn')"
+    ]
+  }
+}

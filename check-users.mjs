@@ -1,0 +1,10 @@
+import { config } from "@dotenvx/dotenvx";
+config({ path: "/Users/mac/Backend Projects/hog/.env" });
+import mongoose from "mongoose";
+await mongoose.connect(process.env.MONGODB_URL);
+const User = mongoose.model("U", new mongoose.Schema({}, { strict: false, collection: "users" }));
+const u = await User.findOne({ email: "us.buyer.test@hogtest.dev" }).lean();
+console.log("US buyer:", JSON.stringify({ city: u?.city, state: u?.state, postalCode: u?.postalCode, country: u?.country, address: u?.address }));
+const n = await User.findOne({ email: "ng.buyer.test@hogtest.dev" }).lean();
+console.log("NG buyer:", JSON.stringify({ city: n?.city, state: n?.state, postalCode: n?.postalCode, country: n?.country, address: n?.address }));
+await mongoose.disconnect();
