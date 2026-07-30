@@ -350,7 +350,15 @@ export const getCarrierRates = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid review ID" });
     }
 
-    const { packages, carriers = ["fedex", "dhl"], currency } = req.body;
+    const {
+      packages,
+      carriers = ["fedex", "dhl"],
+      currency,
+      senderPostalCode,
+      recipientPostalCode,
+      senderCity,
+      recipientCity,
+    } = req.body;
     if (!packages?.length) {
       return res.status(400).json({ success: false, message: "packages array is required" });
     }
@@ -371,15 +379,14 @@ export const getCarrierRates = async (req, res, next) => {
     const vendorUser = vendor.userId;
     const resolvedCurrency = currency || resolveDeliveryCurrency(buyer.country, vendorUser?.country || vendor.country);
 
-    // FedEx-format addresses (shared with DHL via toISOCode)
-    // resolveCarrierAddress fills missing postalCode/city via OpenCage geocoding
+    // FedEx-format addresses — body overrides take precedence over profile/geocoded values
     const [senderAddress, recipientAddress] = await Promise.all([
       resolveCarrierAddress(
         {
           streetLines: [vendor.address || ""],
-          city: vendor.city || "",
+          city: senderCity || vendor.city || "",
           stateOrProvinceCode: vendor.state?.substring(0, 2).toUpperCase() || "",
-          postalCode: vendor.postalCode || null,
+          postalCode: senderPostalCode || vendor.postalCode || null,
           countryCode: toISOCode(vendorUser?.country),
         },
         `${vendor.address}, ${vendor.city || ""}, ${vendorUser?.country || ""}`
@@ -387,9 +394,9 @@ export const getCarrierRates = async (req, res, next) => {
       resolveCarrierAddress(
         {
           streetLines: [buyer.address || ""],
-          city: buyer.city || "",
+          city: recipientCity || buyer.city || "",
           stateOrProvinceCode: buyer.state?.substring(0, 2).toUpperCase() || "",
-          postalCode: buyer.postalCode || null,
+          postalCode: recipientPostalCode || buyer.postalCode || null,
           countryCode: toISOCode(buyer.country),
         },
         `${buyer.address}, ${buyer.city || ""}, ${buyer.country || ""}`
