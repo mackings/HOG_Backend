@@ -8,6 +8,7 @@ import { sendDeliveryStartedEmail } from "../../../utils/emailService.utils.js";
 import { fedexCreateShipment, fedexTrackShipment } from "../../../utils/carriers/fedex.service.js";
 import { dhlCreateShipment, dhlTrackShipment } from "../../../utils/carriers/dhl.service.js";
 import { toISOCode } from "../../../utils/carriers/countryCode.utils.js";
+import { resolveCarrierAddress } from "../../../utils/carriers/geocode.utils.js";
 
 
 
@@ -264,22 +265,29 @@ export const createCarrierShipment = async (req, res, next) => {
       return res.status(403).json({ success: false, message: "Vendor profile not found" });
     }
 
-    // Build structured addresses for carriers
-    const senderAddress = {
-      streetLines: [vendorProfile.address || ""],
-      city: vendorProfile.city || "",
-      stateOrProvinceCode: vendorProfile.state?.substring(0, 2).toUpperCase() || "",
-      postalCode: vendorProfile.postalCode || "100001",
-      countryCode: toISOCode(vendorUser?.country),
-    };
-
-    const recipientAddress = {
-      streetLines: [buyer?.address || ""],
-      city: buyer?.city || "",
-      stateOrProvinceCode: buyer?.state?.substring(0, 2).toUpperCase() || "",
-      postalCode: buyer?.postalCode || "100001",
-      countryCode: toISOCode(buyer?.country),
-    };
+    // Build structured addresses for carriers; geocode fills missing postalCode/city
+    const [senderAddress, recipientAddress] = await Promise.all([
+      resolveCarrierAddress(
+        {
+          streetLines: [vendorProfile.address || ""],
+          city: vendorProfile.city || "",
+          stateOrProvinceCode: vendorProfile.state?.substring(0, 2).toUpperCase() || "",
+          postalCode: vendorProfile.postalCode || null,
+          countryCode: toISOCode(vendorUser?.country),
+        },
+        `${vendorProfile.address}, ${vendorProfile.city || ""}, ${vendorUser?.country || ""}`
+      ),
+      resolveCarrierAddress(
+        {
+          streetLines: [buyer?.address || ""],
+          city: buyer?.city || "",
+          stateOrProvinceCode: buyer?.state?.substring(0, 2).toUpperCase() || "",
+          postalCode: buyer?.postalCode || null,
+          countryCode: toISOCode(buyer?.country),
+        },
+        `${buyer?.address}, ${buyer?.city || ""}, ${buyer?.country || ""}`
+      ),
+    ]);
 
     const senderContact = {
       personName: vendorUser?.fullName || vendorProfile.businessName,

@@ -10,6 +10,7 @@ import { expressCalculateCost, cargoCalculateCost, regularCalculateCost, resolve
 import { fedexGetRates } from '../../../utils/carriers/fedex.service.js';
 import { dhlGetRates } from '../../../utils/carriers/dhl.service.js';
 import { toISOCode } from '../../../utils/carriers/countryCode.utils.js';
+import { resolveCarrierAddress } from '../../../utils/carriers/geocode.utils.js';
 
 const normalizeAddressForGeocode = (rawAddress, country) => {
   let addr = String(rawAddress || "").trim();
@@ -40,16 +41,22 @@ const geocodeWithOpenCage = async (address) => {
     },
   });
 
-  const geometry = response.data?.results?.[0]?.geometry;
+  const result = response.data?.results?.[0];
+  const geometry = result?.geometry;
   if (!geometry || geometry.lat == null || geometry.lng == null) {
     return null;
   }
 
+  const comp = result.components || {};
   return {
     latitude: parseFloat(geometry.lat),
     longitude: parseFloat(geometry.lng),
+    postalCode: comp.postcode || comp.postal_code || null,
+    city: comp.city || comp.town || comp.village || null,
+    state: comp.state_code || comp.state || null,
   };
 };
+
 
 const normalizeName = (value) => String(value || "").trim().replace(/\s+/g, " ");
 const canonicalName = (value) =>
@@ -365,21 +372,29 @@ export const getCarrierRates = async (req, res, next) => {
     const resolvedCurrency = currency || resolveDeliveryCurrency(buyer.country, vendorUser?.country || vendor.country);
 
     // FedEx-format addresses (shared with DHL via toISOCode)
-    const senderAddress = {
-      streetLines: [vendor.address || ""],
-      city: vendor.city || "",
-      stateOrProvinceCode: vendor.state?.substring(0, 2).toUpperCase() || "",
-      postalCode: vendor.postalCode || "100001",
-      countryCode: toISOCode(vendorUser?.country),
-    };
-
-    const recipientAddress = {
-      streetLines: [buyer.address || ""],
-      city: buyer.city || "",
-      stateOrProvinceCode: buyer.state?.substring(0, 2).toUpperCase() || "",
-      postalCode: buyer.postalCode || "100001",
-      countryCode: toISOCode(buyer.country),
-    };
+    // resolveCarrierAddress fills missing postalCode/city via OpenCage geocoding
+    const [senderAddress, recipientAddress] = await Promise.all([
+      resolveCarrierAddress(
+        {
+          streetLines: [vendor.address || ""],
+          city: vendor.city || "",
+          stateOrProvinceCode: vendor.state?.substring(0, 2).toUpperCase() || "",
+          postalCode: vendor.postalCode || null,
+          countryCode: toISOCode(vendorUser?.country),
+        },
+        `${vendor.address}, ${vendor.city || ""}, ${vendorUser?.country || ""}`
+      ),
+      resolveCarrierAddress(
+        {
+          streetLines: [buyer.address || ""],
+          city: buyer.city || "",
+          stateOrProvinceCode: buyer.state?.substring(0, 2).toUpperCase() || "",
+          postalCode: buyer.postalCode || null,
+          countryCode: toISOCode(buyer.country),
+        },
+        `${buyer.address}, ${buyer.city || ""}, ${buyer.country || ""}`
+      ),
+    ]);
 
     // DHL-format shippers (different schema)
     const dhlShipper = {
