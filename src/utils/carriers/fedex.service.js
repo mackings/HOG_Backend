@@ -58,23 +58,23 @@ export const fedexGetRates = async ({
         recipient: { address: recipientAddress },
         pickupType: "DROPOFF_AT_FEDEX_LOCATION",
         preferredCurrency: currency,
+        rateRequestType: ["ACCOUNT", "LIST"],
         requestedPackageLineItems: packages,
       },
-      rateRequestType: ["ACCOUNT", "LIST"],
     },
     { headers }
   );
 
   return (data.output?.rateReplyDetails || []).map((detail) => {
-    const charge = detail.ratedShipmentDetails?.[0]?.totalNetCharge;
+    const rateDetail = detail.ratedShipmentDetails?.[0];
     return {
       carrier: "fedex",
       serviceType: detail.serviceType,
       serviceName: detail.serviceName,
       estimatedDeliveryDate: detail.commit?.dateDetail?.dayFormat || null,
       transitDays: detail.commit?.transitDays?.toString() || null,
-      amount: charge ? Number(charge.amount) : null,
-      currency: charge?.currency || currency,
+      amount: rateDetail?.totalNetCharge ?? null,
+      currency: rateDetail?.currency || currency,
     };
   });
 };
@@ -136,6 +136,51 @@ export const fedexCreateShipment = async ({
     labelFormat,
     serviceType,
   };
+};
+
+/**
+ * Validate and resolve up to 100 addresses against FedEx reference data.
+ * POST /address/v1/addresses/resolve
+ *
+ * Each address:
+ *   { streetLines: ["123 Main St"], city, stateOrProvinceCode, postalCode, countryCode }
+ *
+ * Returns an array of resolved addresses with classification and validity flags.
+ */
+export const fedexValidateAddress = async (addresses) => {
+  const headers = await authHeaders();
+
+  const { data } = await axios.post(
+    `${BASE_URL}/address/v1/addresses/resolve`,
+    {
+      addressesToValidate: addresses.map((addr) => ({
+        address: {
+          streetLines: addr.streetLines,
+          city: addr.city,
+          stateOrProvinceCode: addr.stateOrProvinceCode || undefined,
+          postalCode: addr.postalCode || undefined,
+          countryCode: addr.countryCode,
+        },
+      })),
+    },
+    { headers }
+  );
+
+  return (data.output?.resolvedAddresses || []).map((resolved) => ({
+    streetLines: resolved.streetLinesToken || [],
+    city: resolved.city,
+    stateOrProvinceCode: resolved.stateOrProvinceCode,
+    postalCode: resolved.postalCodeToken?.value || null,
+    countryCode: resolved.countryCode,
+    classification: resolved.classification, // BUSINESS | RESIDENTIAL | MIXED | UNKNOWN
+    isDeliveryPointValid: resolved.normalizedStatusNameDPV === true,
+    isResolved: resolved.attributes?.Resolved === true,
+    isMatched: resolved.attributes?.Matched === true,
+    postOfficeBox: resolved.postOfficeBox === true,
+    customerMessages: (resolved.customerMessage || []).filter(Boolean),
+    resolutionMethod: resolved.resolutionMethodName || null,
+    alerts: data.output?.alerts || [],
+  }));
 };
 
 /**
