@@ -41,6 +41,10 @@ const authHeaders = async () => ({
  *
  * packages: [{ weight: { units: "KG", value: 2 }, dimensions: { length, width, height, units: "CM" } }]
  */
+// Strip null/undefined/empty-string fields so FedEx doesn't reject the payload
+const cleanAddress = (addr) =>
+  Object.fromEntries(Object.entries(addr).filter(([, v]) => v !== null && v !== undefined && v !== ""));
+
 export const fedexGetRates = async ({
   senderAddress,
   recipientAddress,
@@ -49,23 +53,33 @@ export const fedexGetRates = async ({
 }) => {
   const headers = await authHeaders();
 
-  const { data } = await axios.post(
-    `${BASE_URL}/rate/v1/rates/quotes`,
-    {
-      accountNumber: { value: process.env.FEDEX_ACCOUNT_NUMBER },
-      requestedShipment: {
-        shipper: { address: senderAddress },
-        recipient: { address: recipientAddress },
-        pickupType: "DROPOFF_AT_FEDEX_LOCATION",
-        preferredCurrency: currency,
-        rateRequestType: ["ACCOUNT", "LIST"],
-        requestedPackageLineItems: packages,
+  let rateData;
+  try {
+    const resp = await axios.post(
+      `${BASE_URL}/rate/v1/rates/quotes`,
+      {
+        accountNumber: { value: process.env.FEDEX_ACCOUNT_NUMBER },
+        requestedShipment: {
+          shipper: { address: cleanAddress(senderAddress) },
+          recipient: { address: cleanAddress(recipientAddress) },
+          pickupType: "DROPOFF_AT_FEDEX_LOCATION",
+          preferredCurrency: currency,
+          rateRequestType: ["ACCOUNT", "LIST"],
+          requestedPackageLineItems: packages,
+        },
       },
-    },
-    { headers }
-  );
+      { headers }
+    );
+    rateData = resp.data;
+  } catch (err) {
+    const body = err.response?.data || {};
+    const msg = body.errors?.[0]?.message || body.message || err.message;
+    const e = new Error(msg);
+    e.status = err.response?.status || 500;
+    throw e;
+  }
 
-  return (data.output?.rateReplyDetails || []).map((detail) => {
+  return (rateData.output?.rateReplyDetails || []).map((detail) => {
     const rateDetail = detail.ratedShipmentDetails?.[0];
     return {
       carrier: "fedex",
@@ -108,8 +122,8 @@ export const fedexCreateShipment = async ({
         labelResponseOptions: "LABEL",
         accountNumber: { value: process.env.FEDEX_ACCOUNT_NUMBER },
         requestedShipment: {
-          shipper: { address: senderAddress, contact: senderContact },
-          recipients: [{ address: recipientAddress, contact: recipientContact }],
+          shipper: { address: cleanAddress(senderAddress), contact: senderContact },
+          recipients: [{ address: cleanAddress(recipientAddress), contact: recipientContact }],
           pickupType: "DROPOFF_AT_FEDEX_LOCATION",
           serviceType,
           packagingType: "YOUR_PACKAGING",
