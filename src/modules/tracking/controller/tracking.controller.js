@@ -8,7 +8,7 @@ import { sendDeliveryStartedEmail } from "../../../utils/emailService.utils.js";
 // FedEx and DHL integrations are commented out pending API approval
 // import { fedexCreateShipment, fedexTrackShipment } from "../../../utils/carriers/fedex.service.js";
 // import { dhlCreateShipment, dhlTrackShipment } from "../../../utils/carriers/dhl.service.js";
-import { fezCreateOrder, fezTrackOrder } from "../../../utils/carriers/fez.service.js";
+import { fezCreateOrder, fezCreateExportOrder, fezCreateImportOrder, fezTrackOrder, resolveWeightId, lookupExportId, lookupImportId } from "../../../utils/carriers/fez.service.js";
 
 
 
@@ -261,11 +261,9 @@ export const createCarrierShipment = async (req, res, next) => {
     const uniqueID    = `HOG-${material._id}`;
     const batchID     = `BATCH-${material._id}`;
 
-    // Look up the review for item value
     const review = await Review.findOne({ materialId: material._id }).sort({ createdAt: -1 }).lean();
     const valueOfItem = review?.totalCost || review?.amountToPay || 5000;
 
-    // Normalize phone to local Nigerian format (max 14 chars, no +234 prefix)
     const normalizePhone = (phone) => {
       if (!phone) return "08000000000";
       let p = String(phone).trim().replace(/\s+/g, "");
@@ -275,29 +273,94 @@ export const createCarrierShipment = async (req, res, next) => {
       return p.slice(0, 14);
     };
 
-    const fezOrder = [{
-      recipientAddress: buyer?.address || "",
-      recipientState:   buyer?.state   || "",
-      recipientName:    buyer?.fullName || buyer?.name || "",
-      recipientPhone:   normalizePhone(buyer?.phoneNumber),
-      recipientEmail:   buyer?.email || undefined,
-      uniqueID,
-      BatchID:          batchID,
-      valueOfItem,
-      weight:           totalWeight,
-      itemDescription:  contentDescription || "Fashion garments",
-    }];
+    const isNigeria = (c) => {
+      const v = String(c || "").toLowerCase().trim();
+      return v === "nigeria" || v === "ng" || v === "";
+    };
 
-    if (!fezOrder[0].recipientState) {
-      return res.status(400).json({
-        success: false,
-        message: "Buyer's Nigerian state is required to create a Fez shipment. Please update the buyer's profile.",
-      });
+    const vendorCountry  = vendorProfile.country || vendorUser?.country || "Nigeria";
+    const buyerCountry   = buyer.country || "Nigeria";
+    const vendorInNg     = isNigeria(vendorCountry);
+    const buyerInNg      = isNigeria(buyerCountry);
+    const pickUpState    = vendorProfile.state || vendorUser?.state || null;
+
+    let fezResult;
+    let resolvedServiceType = "FEZ_STANDARD";
+
+    if (vendorInNg && buyerInNg) {
+      // Domestic: NG → NG
+      if (!buyer.state) {
+        return res.status(400).json({ success: false, message: "Buyer's Nigerian state is required to create a domestic Fez shipment." });
+      }
+      fezResult = await fezCreateOrder([{
+        recipientAddress: buyer.address || "",
+        recipientState:   buyer.state,
+        recipientName:    buyer.fullName || buyer.name || "",
+        recipientPhone:   normalizePhone(buyer.phoneNumber),
+        recipientEmail:   buyer.email || undefined,
+        uniqueID,
+        BatchID: batchID,
+        valueOfItem,
+        weight:  totalWeight,
+        itemDescription: contentDescription || "Fashion garments",
+      }]);
+      resolvedServiceType = "FEZ_STANDARD";
+
+    } else if (vendorInNg && !buyerInNg) {
+      // Export: NG → World
+      const exportLocationId = lookupExportId(buyerCountry);
+      if (!exportLocationId) {
+        return res.status(400).json({ success: false, message: `International export to "${buyer.country}" is not supported by Fez Delivery.` });
+      }
+      const weightId = resolveWeightId(totalWeight);
+      fezResult = await fezCreateExportOrder([{
+        recipientAddress: buyer.address || "",
+        recipientName:    buyer.fullName || buyer.name || "",
+        recipientPhone:   normalizePhone(buyer.phoneNumber),
+        recipientEmail:   buyer.email || undefined,
+        uniqueID,
+        BatchID: batchID,
+        valueOfItem,
+        weight:  totalWeight,
+        weightId,
+        exportLocationId,
+        pickUpState: pickUpState || undefined,
+        itemDescription: contentDescription || "Fashion garments",
+        itemCategory: 2, // Retail Products
+      }]);
+      resolvedServiceType = "FEZ_EXPORT";
+
+    } else if (!vendorInNg && buyerInNg) {
+      // Import: World → NG
+      if (!buyer.state) {
+        return res.status(400).json({ success: false, message: "Buyer's Nigerian state is required to create an international import Fez shipment." });
+      }
+      const importLocationId = lookupImportId(vendorCountry);
+      if (!importLocationId) {
+        return res.status(400).json({ success: false, message: `International import from "${vendorCountry}" is not supported by Fez Delivery. Supported origins: UK, US, India, Australia, Hong Kong, Niger, Palestine.` });
+      }
+      fezResult = await fezCreateImportOrder([{
+        recipientAddress: buyer.address || "",
+        recipientState:   buyer.state,
+        recipientName:    buyer.fullName || buyer.name || "",
+        recipientPhone:   normalizePhone(buyer.phoneNumber),
+        recipientEmail:   buyer.email || undefined,
+        uniqueID,
+        BatchID: batchID,
+        valueOfItem,
+        weight:  totalWeight,
+        quantity: 1,
+        importLocationId,
+        itemDescription: contentDescription || "Fashion garments",
+        itemCategory: 2, // Retail Products
+        businessName: vendorProfile.businessName || "House of GLAME",
+      }]);
+      resolvedServiceType = "FEZ_IMPORT";
+
+    } else {
+      return res.status(400).json({ success: false, message: "Route not supported: at least one party must be in Nigeria." });
     }
 
-    const fezResult = await fezCreateOrder(fezOrder);
-
-    // First waybill returned (keyed by uniqueID)
     const waybillNumber = fezResult.orderNos?.[uniqueID] || Object.values(fezResult.orderNos || {})[0] || null;
 
     // Persist to Tracking
@@ -306,7 +369,7 @@ export const createCarrierShipment = async (req, res, next) => {
     const trackingFields = {
       carrier:               "fez",
       carrierTrackingNumber: waybillNumber,
-      serviceType:           "FEZ_STANDARD",
+      serviceType:           resolvedServiceType,
       labelBase64:           null,
       labelFormat:           null,
       shipmentCreatedAt:     new Date(),
@@ -335,15 +398,16 @@ export const createCarrierShipment = async (req, res, next) => {
       });
     }
 
+    const shipmentLabel = resolvedServiceType === "FEZ_EXPORT" ? "export" : resolvedServiceType === "FEZ_IMPORT" ? "import" : "domestic";
     return res.status(201).json({
       success: true,
-      message: "Fez shipment created successfully",
+      message: `Fez ${shipmentLabel} shipment created successfully`,
       data: {
         trackingId:            track._id,
         carrier:               "fez",
         carrierTrackingNumber: waybillNumber,
         waybillNumber,
-        serviceType:           "FEZ_STANDARD",
+        serviceType:           resolvedServiceType,
       },
     });
   } catch (error) {

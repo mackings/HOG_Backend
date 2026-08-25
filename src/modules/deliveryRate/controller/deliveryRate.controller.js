@@ -10,7 +10,7 @@ import { expressCalculateCost, cargoCalculateCost, regularCalculateCost, resolve
 // FedEx and DHL integrations are commented out pending API approval
 // import { fedexGetRates } from '../../../utils/carriers/fedex.service.js';
 // import { dhlGetRates } from '../../../utils/carriers/dhl.service.js';
-import { fezGetDeliveryCost } from '../../../utils/carriers/fez.service.js';
+import { fezGetDeliveryCost, fezGetExportCost, fezGetImportCost } from '../../../utils/carriers/fez.service.js';
 import { toISOCode } from '../../../utils/carriers/countryCode.utils.js';
 import { resolveCarrierAddress } from '../../../utils/carriers/geocode.utils.js';
 
@@ -371,35 +371,63 @@ export const getCarrierRates = async (req, res, next) => {
 
     const vendorUser = vendor.userId;
 
-    // Total weight from packages, or use weight field directly
     const totalWeight = weight || (packages || []).reduce((sum, p) => sum + (p.weight || 1), 0);
 
-    // Fez is Nigeria-domestic. Derive state names from profiles.
-    const pickUpState = vendor.state || vendorUser?.state || null;
-    const recipientState = buyer.state || null;
+    const pickUpState      = vendor.state || vendorUser?.state || null;
+    const vendorCountry    = (vendor.country || vendorUser?.country || "Nigeria").toLowerCase().trim();
+    const buyerCountry     = (buyer.country || "Nigeria").toLowerCase().trim();
+    const recipientState   = buyer.state || null;
 
-    if (!recipientState) {
+    const isNigeria = (c) => c === "nigeria" || c === "ng" || c === "";
+
+    const vendorInNg = isNigeria(vendorCountry);
+    const buyerInNg  = isNigeria(buyerCountry);
+
+    const errors = {};
+    let rates = [];
+
+    if (vendorInNg && buyerInNg) {
+      // Domestic: NG → NG
+      if (!recipientState) {
+        return res.status(400).json({
+          success: false,
+          message: "Buyer's Nigerian state is required for domestic delivery cost calculation.",
+        });
+      }
+      try {
+        const cost = await fezGetDeliveryCost({ recipientState, pickUpState: pickUpState || undefined, weight: totalWeight });
+        rates = [cost];
+      } catch (err) {
+        errors.fez = err.message;
+      }
+    } else if (vendorInNg && !buyerInNg) {
+      // Export: NG → World
+      try {
+        const cost = await fezGetExportCost({ pickUpState: pickUpState || undefined, countryName: buyer.country, weight: totalWeight });
+        rates = [cost];
+      } catch (err) {
+        errors.fez = err.message;
+      }
+    } else if (!vendorInNg && buyerInNg) {
+      // Import: World → NG
+      if (!recipientState) {
+        return res.status(400).json({
+          success: false,
+          message: "Buyer's Nigerian state is required for international import delivery cost calculation.",
+        });
+      }
+      try {
+        const cost = await fezGetImportCost({ destinationState: recipientState, countryName: vendorUser?.country || vendor.country, weight: totalWeight });
+        rates = [cost];
+      } catch (err) {
+        errors.fez = err.message;
+      }
+    } else {
       return res.status(400).json({
         success: false,
-        message: "Buyer's state is required for delivery cost calculation. Please update the buyer's profile with their Nigerian state.",
+        message: "Route not supported: at least one party (vendor or buyer) must be in Nigeria.",
       });
     }
-
-    let fezResult;
-    const errors = {};
-    try {
-      const cost = await fezGetDeliveryCost({
-        recipientState,
-        pickUpState: pickUpState || undefined,
-        weight: totalWeight,
-      });
-      fezResult = [cost];
-    } catch (err) {
-      errors.fez = err.message;
-      fezResult = [];
-    }
-
-    const rates = fezResult;
 
     return res.status(200).json({
       success: true,
