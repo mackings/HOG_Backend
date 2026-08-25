@@ -35,10 +35,10 @@ const trackingSchema = new mongoose.Schema({
     },
     listingId: [{ type: mongoose.Schema.Types.ObjectId, ref: "Listing" }],
 
-    // Carrier integration fields (FedEx / DHL)
+    // Carrier integration fields
     carrier: {
         type: String,
-        enum: ["fedex", "dhl", "internal"],
+        enum: ["fedex", "dhl", "fez", "internal"],
         default: "internal",
     },
     carrierTrackingNumber: {
