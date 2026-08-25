@@ -7,8 +7,10 @@ import Vendor from '../../vendor/model/vendor.model.js';
 import Material from '../../material/model/material.model.js';
 import PickupCountry from '../model/pickupCountry.model.js';
 import { expressCalculateCost, cargoCalculateCost, regularCalculateCost, resolveDeliveryCurrency } from '../../../utils/shipmentCalcu.distance.js';
-import { fedexGetRates } from '../../../utils/carriers/fedex.service.js';
-import { dhlGetRates } from '../../../utils/carriers/dhl.service.js';
+// FedEx and DHL integrations are commented out pending API approval
+// import { fedexGetRates } from '../../../utils/carriers/fedex.service.js';
+// import { dhlGetRates } from '../../../utils/carriers/dhl.service.js';
+import { fezGetDeliveryCost } from '../../../utils/carriers/fez.service.js';
 import { toISOCode } from '../../../utils/carriers/countryCode.utils.js';
 import { resolveCarrierAddress } from '../../../utils/carriers/geocode.utils.js';
 
@@ -350,17 +352,9 @@ export const getCarrierRates = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid review ID" });
     }
 
-    const {
-      packages,
-      carriers = ["fedex", "dhl"],
-      currency,
-      senderPostalCode,
-      recipientPostalCode,
-      senderCity,
-      recipientCity,
-    } = req.body;
-    if (!packages?.length) {
-      return res.status(400).json({ success: false, message: "packages array is required" });
+    const { packages, weight } = req.body;
+    if (!packages?.length && !weight) {
+      return res.status(400).json({ success: false, message: "packages array or weight is required" });
     }
 
     const review = await Review.findById(reviewId);
@@ -369,7 +363,6 @@ export const getCarrierRates = async (req, res, next) => {
     }
 
     const vendor = await Vendor.findById(review.vendorId).populate("userId");
-    // review.userId = designer (tailor who created the quote); buyer = material owner
     const material = await Material.findById(review.materialId);
     const buyer = await User.findById(material?.userId);
     if (!vendor || !buyer) {
@@ -377,93 +370,40 @@ export const getCarrierRates = async (req, res, next) => {
     }
 
     const vendorUser = vendor.userId;
-    const resolvedCurrency = currency || resolveDeliveryCurrency(buyer.country, vendorUser?.country || vendor.country);
 
-    // FedEx-format addresses — body overrides take precedence over profile/geocoded values
-    const [senderAddress, recipientAddress] = await Promise.all([
-      resolveCarrierAddress(
-        {
-          streetLines: [vendor.address || ""],
-          city: senderCity || vendor.city || "",
-          stateOrProvinceCode: vendor.state?.substring(0, 2).toUpperCase() || "",
-          postalCode: senderPostalCode || vendor.postalCode || null,
-          countryCode: toISOCode(vendorUser?.country),
-        },
-        `${vendor.address}, ${vendor.city || ""}, ${vendorUser?.country || ""}`
-      ),
-      resolveCarrierAddress(
-        {
-          streetLines: [buyer.address || ""],
-          city: recipientCity || buyer.city || "",
-          stateOrProvinceCode: buyer.state?.substring(0, 2).toUpperCase() || "",
-          postalCode: recipientPostalCode || buyer.postalCode || null,
-          countryCode: toISOCode(buyer.country),
-        },
-        `${buyer.address}, ${buyer.city || ""}, ${buyer.country || ""}`
-      ),
-    ]);
+    // Total weight from packages, or use weight field directly
+    const totalWeight = weight || (packages || []).reduce((sum, p) => sum + (p.weight || 1), 0);
 
-    // DHL-format shippers (different schema)
-    const dhlShipper = {
-      postalCode: senderAddress.postalCode,
-      cityName: senderAddress.city,
-      countryCode: senderAddress.countryCode,
-      addressLine1: senderAddress.streetLines[0],
-      typeCode: "business",
-    };
-    const dhlReceiver = {
-      postalCode: recipientAddress.postalCode,
-      cityName: recipientAddress.city,
-      countryCode: recipientAddress.countryCode,
-      addressLine1: recipientAddress.streetLines[0],
-      typeCode: "private",
-    };
+    // Fez is Nigeria-domestic. Derive state names from profiles.
+    const pickUpState = vendor.state || vendorUser?.state || null;
+    const recipientState = buyer.state || null;
 
-    const fedexPackages = packages.map((pkg) => ({
-      weight: { units: "KG", value: pkg.weight || 1 },
-      dimensions: {
-        length: pkg.dimensions?.length || 10,
-        width: pkg.dimensions?.width || 10,
-        height: pkg.dimensions?.height || 10,
-        units: "CM",
-      },
-    }));
-
-    const dhlPackages = packages.map((pkg) => ({
-      weight: pkg.weight || 1,
-      dimensions: {
-        length: pkg.dimensions?.length || 10,
-        width: pkg.dimensions?.width || 10,
-        height: pkg.dimensions?.height || 10,
-      },
-    }));
-
-    // Call enabled carriers in parallel; catch per-carrier errors gracefully
-    const results = await Promise.allSettled([
-      carriers.includes("fedex")
-        ? fedexGetRates({ senderAddress, recipientAddress, packages: fedexPackages, currency: resolvedCurrency === "NGN" ? "USD" : resolvedCurrency })
-        : Promise.resolve([]),
-      carriers.includes("dhl")
-        ? dhlGetRates({ shipperDetails: dhlShipper, receiverDetails: dhlReceiver, packages: dhlPackages })
-        : Promise.resolve([]),
-    ]);
-
-    const [fedexResult, dhlResult] = results;
-
-    const rates = [
-      ...(fedexResult.status === "fulfilled" ? fedexResult.value : []),
-      ...(dhlResult.status === "fulfilled" ? dhlResult.value : []),
-    ];
-
-    const errors = {};
-    if (fedexResult.status === "rejected") {
-      errors.fedex = fedexResult.reason?.response?.data?.errors?.[0]?.message || fedexResult.reason?.message;
+    if (!recipientState) {
+      return res.status(400).json({
+        success: false,
+        message: "Buyer's state is required for delivery cost calculation. Please update the buyer's profile with their Nigerian state.",
+      });
     }
-    if (dhlResult.status === "rejected") errors.dhl = dhlResult.reason?.response?.data?.title || dhlResult.reason?.message;
+
+    let fezResult;
+    const errors = {};
+    try {
+      const cost = await fezGetDeliveryCost({
+        recipientState,
+        pickUpState: pickUpState || undefined,
+        weight: totalWeight,
+      });
+      fezResult = [cost];
+    } catch (err) {
+      errors.fez = err.message;
+      fezResult = [];
+    }
+
+    const rates = fezResult;
 
     return res.status(200).json({
       success: true,
-      message: rates.length > 0 ? "Carrier rates fetched successfully" : "No rates available from the selected carriers",
+      message: rates.length > 0 ? "Carrier rates fetched successfully" : "No rates available",
       rates,
       ...(Object.keys(errors).length > 0 && { carrierErrors: errors }),
     });
