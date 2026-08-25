@@ -5,44 +5,46 @@ const BASE_URL =
     ? "https://api.fezdelivery.co/v1"
     : "https://apisandbox.fezdelivery.co/v1";
 
-// Cached auth — both bearer token and secret-key are required on every call
-let _token = null;
-let _secretKey = null;
+// Cached auth — both bearer token and secret-key required on every call
+let _token      = null;
+let _secretKey  = null;
+let _orgState   = null; // default pickup state from org profile
 let _tokenExpiry = 0;
 
 const authenticate = async () => {
   if (_token && _secretKey && Date.now() < _tokenExpiry) {
-    return { token: _token, secretKey: _secretKey };
+    return { token: _token, secretKey: _secretKey, orgState: _orgState };
   }
 
   const { data } = await axios.post(`${BASE_URL}/user/authenticate`, {
-    user_id: process.env.FEZ_USER_ID,
+    user_id:  process.env.FEZ_USER_ID,
     password: process.env.FEZ_PASSWORD,
   });
 
-  const auth = data.data?.auth || {};
-  const org  = data.data?.organization || {};
+  // Real response shape (verified against sandbox):
+  // data.authDetails.authToken, data.authDetails.expireToken
+  // data.orgDetails["secret-key"], data.orgDetails.orgState
+  _token     = data.authDetails?.authToken;
+  _secretKey = data.orgDetails?.["secret-key"];
+  _orgState  = data.orgDetails?.orgState || null;
 
-  _token     = auth.token || data.token;
-  _secretKey = org.secretKey || data.secretKey;
-
-  // Use server-supplied expiry if present, otherwise 23 hours
-  _tokenExpiry = auth.expiresAt
-    ? new Date(auth.expiresAt).getTime() - 60_000
+  const expireStr = data.authDetails?.expireToken; // e.g. "2026-08-25 13:52:39"
+  _tokenExpiry = expireStr
+    ? new Date(expireStr).getTime() - 60_000
     : Date.now() + 23 * 60 * 60 * 1000;
 
   if (!_token || !_secretKey) {
-    throw new Error("Fez authentication failed: missing token or secret-key in response");
+    throw new Error("Fez authentication failed: missing authToken or secret-key in response");
   }
 
-  return { token: _token, secretKey: _secretKey };
+  return { token: _token, secretKey: _secretKey, orgState: _orgState };
 };
 
 const authHeaders = async () => {
   const { token, secretKey } = await authenticate();
   return {
     Authorization: `Bearer ${token}`,
-    "secret-key": secretKey,
+    "secret-key":  secretKey,
     "Content-Type": "application/json",
   };
 };
@@ -51,16 +53,17 @@ const authHeaders = async () => {
  * Get delivery cost for a domestic Nigeria shipment.
  * POST /order/cost
  *
- * @param {string} recipientState  - Destination Nigeria state name (e.g. "Lagos")
+ * @param {string} recipientState  - Destination Nigeria state (e.g. "Lagos")
  * @param {string} [pickUpState]   - Origin state (defaults to org's configured state)
- * @param {number} [weight]        - Weight in KG (defaults to 0-5 kg tier)
+ * @param {number} [weight]        - Weight in KG
  */
 export const fezGetDeliveryCost = async ({ recipientState, pickUpState, weight }) => {
+  const { orgState } = await authenticate();
   const headers = await authHeaders();
 
   const body = { state: recipientState };
-  if (pickUpState) body.pickUpState = pickUpState;
-  if (weight)      body.weight      = weight;
+  if (pickUpState || orgState) body.pickUpState = pickUpState || orgState;
+  if (weight) body.weight = weight;
 
   let resp;
   try {
@@ -78,23 +81,22 @@ export const fezGetDeliveryCost = async ({ recipientState, pickUpState, weight }
     serviceType: "FEZ_STANDARD",
     serviceName: "Fez Delivery",
     amount:      resp.totalCost,
-    vatAmount:   resp.vat?.amount,
-    vatPercent:  resp.vat?.percentage,
+    baseAmount:  resp.cost?.cost,
+    vatAmount:   resp.vat?.vatAmount,
+    vatPercent:  resp.vat?.vatPercent,
+    surcharges:  resp.surcharge?.items || [],
     currency:    "NGN",
     state:       resp.cost?.state,
   };
 };
 
 /**
- * Create a domestic order and get the waybill number.
- * POST /order  (accepts an array)
+ * Create a domestic order (waybill).
+ * POST /order  (array of order objects)
  *
- * Each item in orders:
- *   { recipientAddress, recipientState, recipientName, recipientPhone,
- *     uniqueID, BatchID, valueOfItem, weight,
- *     recipientEmail?, itemDescription?, additionalDetails? }
- *
- * Returns { carrier, orderNos: { [uniqueID]: waybillNumber } }
+ * Each item: { recipientAddress, recipientState, recipientName, recipientPhone,
+ *              uniqueID, BatchID, valueOfItem, weight,
+ *              recipientEmail?, itemDescription?, additionalDetails? }
  */
 export const fezCreateOrder = async (orders) => {
   const headers = await authHeaders();
@@ -120,6 +122,9 @@ export const fezCreateOrder = async (orders) => {
 /**
  * Track an order by its Fez waybill / order number.
  * GET /order/track/{orderNumber}
+ *
+ * Real response shape:
+ *   { status, description, order: { orderNo, orderStatus, recipientAddress, senderAddress, ... }, history: [...] }
  */
 export const fezTrackOrder = async (orderNumber) => {
   const headers = await authHeaders();
@@ -135,29 +140,31 @@ export const fezTrackOrder = async (orderNumber) => {
     throw e;
   }
 
-  const order = resp.data || resp;
+  const order = resp.order || {};
   return {
     carrier:          "fez",
     orderNumber,
-    status:           order.status || "UNKNOWN",
-    senderName:       order.senderName || null,
+    status:           order.orderStatus || "UNKNOWN",
+    senderName:       order.senderName   || null,
     senderAddress:    order.senderAddress || null,
     recipientName:    order.recipientName || null,
     recipientAddress: order.recipientAddress || null,
+    recipientState:   order.recipientState  || null,
     createdAt:        order.createdAt || null,
-    events: (order.history || []).map((h) => ({
-      timestamp:   h.timestamp || h.date || null,
-      description: h.description || h.status || "",
+    proofOfDelivery:  order.proofOfDelivery || null,
+    events: (resp.history || []).map((h) => ({
+      status:      h.orderStatus || "",
+      timestamp:   h.statusCreationDate || null,
+      description: h.statusDescription  || "",
     })),
   };
 };
 
 /**
- * Get all 37 Nigerian states supported by Fez.
- * GET /states
+ * Get the org's default pickup state (returned during auth).
+ * Useful for pre-filling pickup state in the UI.
  */
-export const fezGetStates = async () => {
-  const headers = await authHeaders();
-  const { data } = await axios.get(`${BASE_URL}/states`, { headers });
-  return data.data || data.states || [];
+export const fezGetOrgState = async () => {
+  const { orgState } = await authenticate();
+  return orgState;
 };

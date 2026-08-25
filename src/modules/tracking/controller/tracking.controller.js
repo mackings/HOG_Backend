@@ -265,11 +265,21 @@ export const createCarrierShipment = async (req, res, next) => {
     const review = await Review.findOne({ materialId: material._id }).sort({ createdAt: -1 }).lean();
     const valueOfItem = review?.totalCost || review?.amountToPay || 5000;
 
+    // Normalize phone to local Nigerian format (max 14 chars, no +234 prefix)
+    const normalizePhone = (phone) => {
+      if (!phone) return "08000000000";
+      let p = String(phone).trim().replace(/\s+/g, "");
+      if (p.startsWith("+234")) p = p.slice(4);
+      else if (p.startsWith("234")) p = p.slice(3);
+      if (!p.startsWith("0")) p = "0" + p;
+      return p.slice(0, 14);
+    };
+
     const fezOrder = [{
       recipientAddress: buyer?.address || "",
       recipientState:   buyer?.state   || "",
       recipientName:    buyer?.fullName || buyer?.name || "",
-      recipientPhone:   buyer?.phoneNumber || "",
+      recipientPhone:   normalizePhone(buyer?.phoneNumber),
       recipientEmail:   buyer?.email || undefined,
       uniqueID,
       BatchID:          batchID,
