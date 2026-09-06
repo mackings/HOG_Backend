@@ -1,0 +1,926 @@
+{
+  "title": "Fez Delivery Integration — API Reference",
+  "version": "3.0.0",
+  "updated": "2026-09-06",
+  "changelog": {
+    "3.0.0": "createStripePayment now uses live Fez delivery cost (removed geocoding). Added Stripe endpoints #6 and #7. Fixed exchange rate direction bug (NGN*rate not NGN/rate). Stripe handles all international routes; Paystack handles Nigeria-only.",
+    "2.0.0": "createPaymentOnline (Paystack) now uses live Fez delivery cost instead of distance-based geocoding. Removed shipmentMethod param; added weight param.",
+    "1.0.0": "Initial Fez integration replacing FedEx/DHL"
+  },
+  "baseUrl": "/api/v1",
+  "authentication": "All endpoints require Bearer token in Authorization header: Authorization: Bearer <jwt>",
+  "carrier": "fez",
+  "note": "FedEx and DHL integrations are commented out pending API approval. All delivery is handled by Fez Delivery.",
+
+  "routeDetection": {
+    "description": "The system automatically detects the delivery route from vendor and buyer country fields in their profiles.",
+    "domestic": "vendor.country = Nigeria AND buyer.country = Nigeria → FEZ_STANDARD",
+    "export": "vendor.country = Nigeria AND buyer.country = foreign → FEZ_EXPORT",
+    "import": "vendor.country = foreign AND buyer.country = Nigeria → FEZ_IMPORT",
+    "unsupported": "Both parties foreign → 400 error"
+  },
+
+  "endpoints": [
+
+    {
+      "id": 1,
+      "name": "Get Carrier Rates (Quote delivery cost before payment)",
+      "description": "Returns live Fez delivery rates for a given order. Automatically detects route type (domestic / export / import) from vendor and buyer country profiles. Domestic returns NGN price; export returns NGN price; import returns origin currency price (£, $, etc.).",
+      "method": "POST",
+      "path": "/api/v1/deliveryRate/carrier-rates/:reviewId",
+      "auth": true,
+      "roles": ["tailor", "user", "admin"],
+      "params": {
+        "reviewId": "MongoDB ObjectId of the review associated with the material order"
+      },
+      "requestBody": {
+        "packages": {
+          "type": "array",
+          "required": "required if weight not provided",
+          "description": "Array of package objects. Weight per package used to calculate total weight.",
+          "example": [
+            { "weight": 1.5, "dimensions": { "length": 30, "width": 20, "height": 10 } }
+          ]
+        },
+        "weight": {
+          "type": "number",
+          "required": "required if packages not provided",
+          "description": "Total shipment weight in kg. Overrides summing package weights.",
+          "example": 2
+        }
+      },
+      "responses": {
+        "200_domestic": {
+          "description": "Nigeria → Nigeria (both parties in Nigeria)",
+          "example": {
+            "success": true,
+            "message": "Carrier rates fetched successfully",
+            "rates": [
+              {
+                "carrier": "fez",
+                "serviceType": "FEZ_STANDARD",
+                "serviceName": "Fez Delivery",
+                "amount": 4500,
+                "baseAmount": 3913.04,
+                "vatAmount": 586.96,
+                "vatPercent": 15,
+                "surcharges": [],
+                "currency": "NGN",
+                "state": "Lagos"
+              }
+            ]
+          }
+        },
+        "200_export": {
+          "description": "Nigeria → International (vendor in Nigeria, buyer abroad)",
+          "example": {
+            "success": true,
+            "message": "Carrier rates fetched successfully",
+            "rates": [
+              {
+                "carrier": "fez",
+                "serviceType": "FEZ_EXPORT",
+                "serviceName": "Fez International Export",
+                "amount": 87395.58,
+                "baseAmount": "75831.31",
+                "vatAmount": 11564.27,
+                "vatPercent": 15.25,
+                "currency": "NGN",
+                "destination": "United States",
+                "weightId": 1,
+                "exportLocationId": 3
+              }
+            ]
+          }
+        },
+        "200_import": {
+          "description": "International → Nigeria (vendor abroad, buyer in Nigeria)",
+          "example": {
+            "success": true,
+            "message": "Carrier rates fetched successfully",
+            "rates": [
+              {
+                "carrier": "fez",
+                "serviceType": "FEZ_IMPORT",
+                "serviceName": "Fez International Import",
+                "amount": 17.17,
+                "baseAmount": "15.30",
+                "vatAmount": 1.87,
+                "vatPercent": 12.25,
+                "currency": "£",
+                "origin": "United Kingdom",
+                "importLocationId": 2
+              }
+            ]
+          }
+        },
+        "400_no_buyer_state": {
+          "description": "Buyer has no Nigerian state set on their profile (required for domestic and import)",
+          "example": {
+            "success": false,
+            "message": "Buyer's Nigerian state is required for domestic delivery cost calculation."
+          }
+        },
+        "400_unsupported_import_country": {
+          "description": "Import from a country Fez does not support",
+          "example": {
+            "success": false,
+            "carrierErrors": {
+              "fez": "Fez international import: origin country \"Germany\" is not supported. Supported: United Kingdom, United States, India, Australia, Hong Kong, Niger, Palestine"
+            },
+            "rates": [],
+            "message": "No rates available"
+          }
+        },
+        "400_unsupported_route": {
+          "description": "Both vendor and buyer are outside Nigeria",
+          "example": {
+            "success": false,
+            "message": "Route not supported: at least one party (vendor or buyer) must be in Nigeria."
+          }
+        },
+        "404": {
+          "example": {
+            "success": false,
+            "message": "Review not found"
+          }
+        }
+      }
+    },
+
+    {
+      "id": 2,
+      "name": "Create Carrier Shipment (after payment confirmed)",
+      "description": "Creates a real Fez shipment and stores the waybill number against the Tracking record. Automatically selects domestic, export, or import Fez flow based on vendor and buyer country. No label is generated (Fez uses waybill numbers, not PDF labels).",
+      "method": "POST",
+      "path": "/api/v1/tracking/createCarrierShipment",
+      "auth": true,
+      "roles": ["tailor"],
+      "requestBody": {
+        "materialId": {
+          "type": "string",
+          "required": true,
+          "description": "MongoDB ObjectId of the material being shipped"
+        },
+        "packages": {
+          "type": "array",
+          "required": true,
+          "description": "Array of package objects. Weight values summed for total shipment weight.",
+          "example": [
+            { "weight": 2 }
+          ]
+        },
+        "contentDescription": {
+          "type": "string",
+          "required": false,
+          "description": "Short description of package contents (default: 'Fashion garments')",
+          "example": "Ankara fabric and tailored suit"
+        }
+      },
+      "responses": {
+        "201_domestic": {
+          "description": "Domestic Nigeria shipment created",
+          "example": {
+            "success": true,
+            "message": "Fez domestic shipment created successfully",
+            "data": {
+              "trackingId": "64f8a2c1e4b0f3d5a1234567",
+              "carrier": "fez",
+              "carrierTrackingNumber": "M1KD25082612",
+              "waybillNumber": "M1KD25082612",
+              "serviceType": "FEZ_STANDARD"
+            }
+          }
+        },
+        "201_export": {
+          "description": "International export shipment created (NG → World)",
+          "example": {
+            "success": true,
+            "message": "Fez export shipment created successfully",
+            "data": {
+              "trackingId": "64f8a2c1e4b0f3d5a1234568",
+              "carrier": "fez",
+              "carrierTrackingNumber": "LZ5C25082629",
+              "waybillNumber": "LZ5C25082629",
+              "serviceType": "FEZ_EXPORT"
+            }
+          }
+        },
+        "201_import": {
+          "description": "International import shipment created (World → NG)",
+          "example": {
+            "success": true,
+            "message": "Fez import shipment created successfully",
+            "data": {
+              "trackingId": "64f8a2c1e4b0f3d5a1234569",
+              "carrier": "fez",
+              "carrierTrackingNumber": "M0YH25082630",
+              "waybillNumber": "M0YH25082630",
+              "serviceType": "FEZ_IMPORT"
+            }
+          }
+        },
+        "400_no_buyer_state": {
+          "example": {
+            "success": false,
+            "message": "Buyer's Nigerian state is required to create a domestic Fez shipment."
+          }
+        },
+        "400_unsupported_export_country": {
+          "example": {
+            "success": false,
+            "message": "International export to \"Mars\" is not supported by Fez Delivery."
+          }
+        },
+        "400_unsupported_import_country": {
+          "example": {
+            "success": false,
+            "message": "International import from \"Germany\" is not supported by Fez Delivery. Supported origins: UK, US, India, Australia, Hong Kong, Niger, Palestine."
+          }
+        },
+        "403": {
+          "example": {
+            "success": false,
+            "message": "Vendor profile not found"
+          }
+        },
+        "404": {
+          "example": {
+            "success": false,
+            "message": "Material not found"
+          }
+        }
+      }
+    },
+
+    {
+      "id": 3,
+      "name": "Initialize Paystack Payment (Fez Delivery Included)",
+      "description": "Initializes a full Paystack payment for a material order. Calls the Fez delivery API live to get the real shipping cost, adds it to the quoted amount, and returns a Paystack authorization URL the buyer opens to pay. The old distance/geocoding formula has been fully removed — delivery cost comes entirely from Fez resp.totalCost.",
+      "method": "POST",
+      "path": "/api/v1/material/createPaymentOnline/:reviewId",
+      "auth": true,
+      "roles": ["user"],
+      "params": {
+        "reviewId": "MongoDB ObjectId of the review (quote) to pay for"
+      },
+      "requestBody": {
+        "amount": {
+          "type": "number",
+          "required": true,
+          "description": "The review totalCost (material + workmanship + platform tax + commission). This is the quote amount the tailor produced.",
+          "example": 66000
+        },
+        "address": {
+          "type": "string",
+          "required": true,
+          "description": "Buyer's full delivery address. Stored on the order record for dispatch purposes only — not used for distance calculation.",
+          "example": "12 Aba Road, Port Harcourt, Rivers State"
+        },
+        "weight": {
+          "type": "number",
+          "required": false,
+          "description": "Estimated shipment weight in kg passed directly to Fez. Defaults to 1 if omitted.",
+          "example": 1.5
+        },
+        "paymentStatus": {
+          "type": "string",
+          "required": false,
+          "description": "Defaults to 'full payment'. Pass 'part payment' for part-pay flows.",
+          "example": "full payment"
+        }
+      },
+      "deliveryRouteLogic": {
+        "description": "Route is detected automatically from buyer and vendor country profiles — no manual selection needed.",
+        "domestic_NG_NG": "Calls fezGetDeliveryCost({ pickUpState: vendor.state, recipientState: buyer.state, weight }) → Fez POST /order/cost",
+        "export_NG_World": "Calls fezGetExportCost({ pickUpState: vendor.state, countryName: buyer.country, weight }) → Fez GET /orders/export-price",
+        "import_World_NG": "Calls fezGetImportCost({ destinationState: buyer.state, countryName: vendor.country, weight }) → Fez POST /orders/import-price"
+      },
+      "howTotalIsCalculated": {
+        "step1": "amount = review.totalCost (material + workmanship + tax + commission — already computed by tailor during createReview)",
+        "step2": "shipping = fezRate.amount (live from Fez API — base cost + VAT + fuel surcharge)",
+        "step3": "grandTotal = amount + shipping",
+        "step4": "Paystack receives grandTotal * 100 (converted to kobo)"
+      },
+      "responses": {
+        "201_domestic": {
+          "description": "Nigeria → Nigeria. Live Fez sandbox data used in test below.",
+          "example_request": {
+            "amount": 66000,
+            "address": "12 Aba Road, Port Harcourt, Rivers State",
+            "weight": 1.5
+          },
+          "example_response": {
+            "success": true,
+            "message": "Payment initialized successfully",
+            "authorizationUrl": "https://checkout.paystack.com/mmu7sw9jo6srwy5",
+            "payment": {
+              "_id": "6a9dbef0d96d1dd86670a025",
+              "userId": "6a8e19d225d0524768fc0932",
+              "vendorId": "6a8e19acb476f5d64a666cc7",
+              "materialId": "6a9dbcd7d96d1dd86670a01c",
+              "reviewId": "6a9dbcd7d96d1dd86670a01d",
+              "totalAmount": 66000,
+              "amountPaid": 71875,
+              "paymentMethod": "Paystack",
+              "paymentReference": "a3f9c12d4e",
+              "deliveryAddress": "12 Aba Road, Port Harcourt, Rivers State",
+              "paymentStatus": "full payment"
+            },
+            "breakdown": {
+              "currency": "NGN",
+              "productCost": 66000,
+              "deliveryFee": 5875,
+              "total": 71875,
+              "deliveryMethod": "Fez Standard (Domestic)"
+            },
+            "payoutBreakdown": {
+              "quotationBase": 55000,
+              "agreedBase": 55000,
+              "buyerMarkdown": 0,
+              "payoutBaseUsed": 55000,
+              "commissionDeducted": 5500,
+              "designerNetCredit": 49500
+            }
+          }
+        },
+        "201_export": {
+          "description": "Nigeria → International. Vendor in Nigeria, buyer abroad.",
+          "example_request": {
+            "amount": 66000,
+            "address": "221B Baker Street, London, UK",
+            "weight": 2
+          },
+          "example_response": {
+            "success": true,
+            "message": "Payment initialized successfully",
+            "authorizationUrl": "https://checkout.paystack.com/XXXXXXXXXXXX",
+            "breakdown": {
+              "currency": "NGN",
+              "productCost": 66000,
+              "deliveryFee": 87396,
+              "total": 153396,
+              "deliveryMethod": "Fez Export (NG → World)"
+            },
+            "payoutBreakdown": {
+              "quotationBase": 55000,
+              "commissionDeducted": 5500,
+              "designerNetCredit": 49500
+            }
+          }
+        },
+        "201_import": {
+          "description": "International → Nigeria. Vendor abroad, buyer in Nigeria.",
+          "example_request": {
+            "amount": 66000,
+            "address": "45 Admiralty Way, Lekki, Lagos",
+            "weight": 2
+          },
+          "example_response": {
+            "success": true,
+            "message": "Payment initialized successfully",
+            "authorizationUrl": "https://checkout.paystack.com/XXXXXXXXXXXX",
+            "breakdown": {
+              "currency": "NGN",
+              "productCost": 66000,
+              "deliveryFee": 17,
+              "total": 66017,
+              "deliveryMethod": "Fez Import (World → NG)"
+            },
+            "note": "Import delivery fee is in the vendor's local currency (e.g. £17.17). The amount is passed to Paystack as NGN — ensure currency conversion is handled at a higher level if needed."
+          }
+        },
+        "400_missing_address": {
+          "example": {
+            "success": false,
+            "message": "Delivery address is required for payment."
+          }
+        },
+        "400_invalid_review": {
+          "example": {
+            "success": false,
+            "message": "Invalid review ID"
+          }
+        },
+        "400_unsupported_route": {
+          "example": {
+            "success": false,
+            "message": "Delivery route not supported"
+          }
+        },
+        "400_mutual_consent_required": {
+          "example": {
+            "success": false,
+            "message": "Payment cannot proceed. Both buyer and vendor must consent to the negotiated offer before payment.",
+            "requiresMutualConsent": true,
+            "buyerConsent": false,
+            "vendorConsent": true,
+            "offerId": "6a8e1a00f45b84e2607c2300"
+          }
+        },
+        "400_paystack_failed": {
+          "example": {
+            "success": false,
+            "message": "Payment initialization failed",
+            "error": "Invalid key"
+          }
+        }
+      }
+    },
+
+    {
+      "id": 4,
+      "name": "Initialize Paystack Part Payment",
+      "description": "Initializes a Paystack part payment for a material order. No delivery fee is charged at this stage — buyer pays the agreed partial amount only. Delivery fee is not included (deliveryFee: 0). Full delivery payment happens at the final payment step.",
+      "method": "POST",
+      "path": "/api/v1/material/createPartPaymentOnline/:reviewId",
+      "auth": true,
+      "roles": ["user"],
+      "params": {
+        "reviewId": "MongoDB ObjectId of the review (quote)"
+      },
+      "requestBody": {
+        "amount": {
+          "type": "number",
+          "required": true,
+          "description": "Partial amount the buyer is paying now (NGN). No delivery fee is added.",
+          "example": 33000
+        },
+        "address": {
+          "type": "string",
+          "required": true,
+          "description": "Buyer's delivery address (stored on order record).",
+          "example": "12 Aba Road, Port Harcourt, Rivers State"
+        }
+      },
+      "responses": {
+        "201": {
+          "example": {
+            "success": true,
+            "message": "Payment initialized successfully",
+            "authorizationUrl": "https://checkout.paystack.com/XXXXXXXXXXXX",
+            "payment": {
+              "amountPaid": 33000,
+              "paymentStatus": "part payment",
+              "paymentMethod": "Paystack"
+            },
+            "breakdown": {
+              "currency": "NGN",
+              "productCost": 33000,
+              "deliveryFee": 0,
+              "total": 33000,
+              "deliveryMethod": "part payment"
+            },
+            "payoutBreakdown": {
+              "quotationBase": 55000,
+              "commissionDeducted": 5500,
+              "designerNetCredit": 49500
+            }
+          }
+        }
+      }
+    },
+
+    {
+      "id": 5,
+      "name": "Initialize Stripe Payment — International (Fez Delivery Included)",
+      "description": "Initializes a Stripe Checkout session for international orders (or any cross-border transaction). Calls the Fez delivery API live for the shipping cost, converts it to USD, and returns a Stripe checkout URL. Replaces the old geocoding+distance delivery formula entirely. Use this endpoint when either the buyer or the vendor is outside Nigeria. For both-Nigerian orders use Paystack (#3) instead.",
+      "method": "POST",
+      "path": "/api/v1/stripe/make-payment/:reviewId",
+      "auth": true,
+      "roles": ["user"],
+      "params": {
+        "reviewId": "MongoDB ObjectId of the review (quote) to pay for"
+      },
+      "requestBody": {
+        "amount": {
+          "type": "number",
+          "required": true,
+          "description": "The review totalCost in NGN (material + workmanship + tax + commission). The endpoint converts to USD internally.",
+          "example": 66000
+        },
+        "address": {
+          "type": "string",
+          "required": true,
+          "description": "Buyer's delivery address. Stored on the order record — not used for distance calculation.",
+          "example": "350 Fifth Avenue, New York, NY 10118"
+        },
+        "weight": {
+          "type": "number",
+          "required": false,
+          "description": "Estimated shipment weight in kg, passed directly to Fez. Defaults to 1 if omitted.",
+          "example": 2
+        },
+        "paymentStatus": {
+          "type": "string",
+          "required": true,
+          "enum": ["full payment", "part payment"],
+          "example": "full payment"
+        }
+      },
+      "exchangeRateLogic": {
+        "field": "review.exchangeRate",
+        "fallback": 0.000650,
+        "meaning": "1 NGN = exchangeRate USD (e.g. 0.000650 means 1 USD ≈ 1538 NGN)",
+        "ngn_to_usd": "productCostNGN * exchangeRate",
+        "usd_to_ngn": "productCostUSD / exchangeRate"
+      },
+      "deliveryRouteLogic": {
+        "export_NG_vendor_to_intl_buyer": "fezGetExportCost({ pickUpState, countryName: buyer.country, weight }) → returns NGN → convert to USD via exchangeRate",
+        "import_intl_vendor_to_NG_buyer":  "fezGetImportCost({ destinationState: buyer.state, countryName: vendor.country, weight }) → returns origin currency ($ or £) → treated as USD for Stripe",
+        "both_international":              "No Fez delivery fee (Fez only covers routes involving Nigeria). deliveryFee = $0.",
+        "both_nigeria":                    "Use Paystack (#3) instead. Stripe still works but is unnecessary."
+      },
+      "paymentCurrencyLogic": {
+        "intl_buyer_ng_vendor":   "Stripe charges buyer in USD (review.totalCostUSD). Vendor wallet credited in NGN.",
+        "ng_buyer_intl_vendor":   "NGN quote converted to USD via exchangeRate. Vendor wallet credited in USD.",
+        "both_international":     "Stripe charges buyer in USD (review.totalCostUSD). Vendor wallet credited in USD.",
+        "both_nigeria":           "Falls through — amount is NGN, no USD conversion."
+      },
+      "responses": {
+        "201_export_NG_to_USA": {
+          "description": "NG tailor → US buyer. Fez export rate returned in NGN, converted to USD for Stripe. Tested live Sep 2026.",
+          "example_request": {
+            "amount": 66000,
+            "address": "350 Fifth Avenue, New York, NY 10118",
+            "weight": 2,
+            "paymentStatus": "full payment"
+          },
+          "example_response": {
+            "success": true,
+            "message": "Stripe checkout created successfully.",
+            "data": {
+              "checkoutUrl": "https://checkout.stripe.com/c/pay/cs_test_b1Pek...",
+              "breakdown": {
+                "currency": "USD",
+                "productCost": 42.9,
+                "deliveryFee": 52.99,
+                "total": 95.89,
+                "deliveryType": "Fez Export (NG → World)"
+              }
+            }
+          },
+          "fez_raw_delivery": {
+            "note": "Fez export → Lagos to USA, 2kg. Raw NGN from Fez API: ₦81,523 → $52.99 USD at rate 0.00065",
+            "fez_amount_ngn": 81523,
+            "exchange_rate": 0.00065,
+            "delivery_usd": 52.99
+          }
+        },
+        "201_import_USA_to_NG": {
+          "description": "US tailor → NG buyer. Fez import rate returned in USD (origin currency). Tested live Sep 2026.",
+          "example_request": {
+            "amount": 66000,
+            "address": "12 Aba Road, Port Harcourt, Rivers State",
+            "weight": 2,
+            "paymentStatus": "full payment"
+          },
+          "example_response": {
+            "success": true,
+            "message": "Stripe checkout created successfully.",
+            "data": {
+              "checkoutUrl": "https://checkout.stripe.com/c/pay/cs_test_b1SPZ...",
+              "breakdown": {
+                "currency": "USD",
+                "productCost": 42.9,
+                "deliveryFee": 232.92,
+                "total": 275.82,
+                "deliveryType": "Fez Import (World → NG)"
+              }
+            }
+          },
+          "fez_raw_delivery": {
+            "note": "Fez import → USA to Nigeria, 2kg. Fez returns $232.92 in origin currency (USD). Used directly.",
+            "fez_amount_origin_currency": 232.92,
+            "currency": "USD"
+          }
+        },
+        "201_both_international": {
+          "description": "US tailor → US buyer. Neither in Nigeria — Fez not applicable. Delivery fee = $0. Tested live Sep 2026.",
+          "example_request": {
+            "amount": 66000,
+            "address": "350 Fifth Avenue, New York, NY 10118",
+            "weight": 2,
+            "paymentStatus": "full payment"
+          },
+          "example_response": {
+            "success": true,
+            "message": "Stripe checkout created successfully.",
+            "data": {
+              "checkoutUrl": "https://checkout.stripe.com/c/pay/cs_test_a1fW5...",
+              "breakdown": {
+                "currency": "USD",
+                "productCost": 42.9,
+                "deliveryFee": 0,
+                "total": 42.9,
+                "deliveryType": "No delivery (Fez not applicable for non-NG routes)"
+              }
+            }
+          }
+        },
+        "400_missing_address": {
+          "example": { "success": false, "message": "Delivery address is required for payment." }
+        },
+        "400_paymentStatus_invalid": {
+          "example": { "success": false, "message": "paymentStatus must be either 'full payment' or 'part payment'" }
+        },
+        "400_stripe_minimum": {
+          "example": {
+            "success": false,
+            "message": "Minimum payment amount for Stripe is $0.50 USD. Your current amount converts to $0.03 USD, which is below the minimum.",
+            "minimumAmountNGN": 770,
+            "minimumAmountUSD": 0.5,
+            "yourAmountUSD": 0.03
+          }
+        },
+        "400_mutual_consent_required": {
+          "example": {
+            "success": false,
+            "message": "Payment cannot proceed. Both buyer and vendor must consent to the negotiated offer before payment.",
+            "requiresMutualConsent": true,
+            "buyerConsent": false,
+            "vendorConsent": true
+          }
+        }
+      }
+    },
+
+    {
+      "id": 6,
+      "name": "Initialize Stripe Part Payment — International",
+      "description": "Initiates a Stripe part payment for international orders. Buyer pays an agreed partial amount in their currency (USD for international buyers, NGN converted to USD for Nigerian buyers). No delivery fee is collected at this stage.",
+      "method": "POST",
+      "path": "/api/v1/stripe/make-payment/:reviewId",
+      "auth": true,
+      "roles": ["user"],
+      "note": "Same endpoint as full payment (#5) — differentiated by paymentStatus: 'part payment' in the body.",
+      "requestBody": {
+        "amount": {
+          "type": "number",
+          "required": true,
+          "description": "Partial amount to pay. For international buyers: USD amount. For Nigerian buyers: NGN amount (converted to USD internally).",
+          "example": 30
+        },
+        "address": {
+          "type": "string",
+          "required": true,
+          "example": "350 Fifth Avenue, New York, NY"
+        },
+        "weight": {
+          "type": "number",
+          "required": false,
+          "example": 2
+        },
+        "paymentStatus": {
+          "type": "string",
+          "required": true,
+          "value": "part payment"
+        }
+      },
+      "responses": {
+        "201": {
+          "example": {
+            "success": true,
+            "message": "Stripe checkout created successfully.",
+            "data": {
+              "checkoutUrl": "https://checkout.stripe.com/c/pay/cs_test_...",
+              "breakdown": {
+                "currency": "USD",
+                "productCost": 30,
+                "deliveryFee": 0,
+                "total": 30,
+                "deliveryType": "Fez Export (NG → World)"
+              }
+            }
+          }
+        }
+      }
+    },
+
+    {
+      "id": 7,
+      "name": "Track Carrier Shipment",
+      "description": "Returns live tracking events for a Fez waybill. Automatically syncs delivered status to the Tracking record in the database. Both the vendor (tailor) and the buyer can call this.",
+      "method": "GET",
+      "path": "/api/v1/tracking/carrier/:carrierTrackingNumber",
+      "auth": true,
+      "roles": ["tailor", "user"],
+      "params": {
+        "carrierTrackingNumber": "Fez waybill number (e.g. M1KD25082612). Returned from createCarrierShipment."
+      },
+      "queryParams": {
+        "carrier": {
+          "required": true,
+          "value": "fez",
+          "description": "Must be 'fez'. FedEx and DHL are disabled."
+        }
+      },
+      "example_request": "GET /api/v1/tracking/carrier/M1KD25082612?carrier=fez",
+      "responses": {
+        "200": {
+          "example": {
+            "success": true,
+            "message": "Tracking info fetched successfully",
+            "data": {
+              "carrier": "fez",
+              "orderNumber": "M1KD25082612",
+              "status": "IN_TRANSIT",
+              "senderName": "House of GLAME",
+              "senderAddress": "5 Adeola Street, Lagos",
+              "recipientName": "Jane Doe",
+              "recipientAddress": "45 Victoria Island, Lagos",
+              "recipientState": "Lagos",
+              "createdAt": "2026-08-22T10:00:00.000Z",
+              "proofOfDelivery": null,
+              "events": [
+                {
+                  "status": "PICKED_UP",
+                  "timestamp": "2026-08-22T10:30:00.000Z",
+                  "description": "Package picked up from sender"
+                },
+                {
+                  "status": "IN_TRANSIT",
+                  "timestamp": "2026-08-22T14:00:00.000Z",
+                  "description": "Package in transit to destination hub"
+                }
+              ]
+            }
+          }
+        },
+        "400_wrong_carrier": {
+          "example": {
+            "success": false,
+            "message": "carrier query param must be 'fez'"
+          }
+        }
+      }
+    }
+  ],
+
+  "supportedCountries": {
+    "export_NG_to_World": {
+      "count": 180,
+      "note": "Country name in buyer.country profile field must match one of these (case-insensitive). Common aliases accepted (e.g. 'USA', 'US', 'United States' all work).",
+      "countries": [
+        "Afghanistan", "Albania", "Algeria", "American Samoa", "Andorra", "Angola",
+        "Anguilla", "Antigua", "Argentina", "Armenia", "Aruba", "Australia", "Austria",
+        "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus",
+        "Belgium", "Belize", "Republic of Benin", "Bermuda", "Bhutan", "Bolivia",
+        "Bonaire", "Bosnia & Herzegovina", "Botswana", "Brazil", "British Virgin Islands",
+        "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cambodia", "Canada",
+        "Canary Islands", "Central African Republic", "Chad", "Chile", "China",
+        "Colombia", "Comoros", "Congo", "Cook Islands", "Costa Rica", "Cote D'Ivoire",
+        "Croatia", "Cuba", "Curacao", "Cyprus", "Czech Republic",
+        "Democratic Republic of Congo", "Denmark", "Djibouti", "Dominica",
+        "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea",
+        "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Falkland Islands", "Faroe Islands",
+        "Fiji", "Finland", "France", "French Guyana", "Gabon", "Gambia", "Georgia",
+        "Germany", "Ghana", "Gibraltar", "Greece", "Greenland", "Grenada", "Guadeloupe",
+        "Guam", "Guatemala", "Guernsey", "Guinea", "Guinea Bissau", "Guyana", "India",
+        "Ireland", "Italy", "Lebanon", "Liberia", "Moldova", "Montenegro", "Namibia",
+        "Nauru", "Nepal", "Nevis", "New Caledonia", "New Zealand", "Nicaragua", "Niger",
+        "Niue", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Panama",
+        "Papua New Guinea", "Paraguay", "Peru", "Poland", "Portugal", "Puerto Rico",
+        "Qatar", "Romania", "Russia", "Rwanda", "Saint Helena", "Samoa", "San Marino",
+        "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles",
+        "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia",
+        "Somaliland", "South Africa", "South Sudan", "Spain", "Sri Lanka",
+        "St. Barthelemy", "St. Eustatius", "St. Kitts", "St. Lucia", "St. Maarten",
+        "St. Vincent", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tahiti",
+        "Taiwan", "Tajikistan", "Tanzania", "Thailand", "The Netherlands",
+        "The Philippines", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago",
+        "Tunisia", "Turkey", "Turkmenistan", "Turks & Caicos", "Tuvalu",
+        "US Virgin Islands", "Uganda", "Ukraine", "United Arab Emirates",
+        "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu",
+        "Vatican City", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
+      ]
+    },
+    "import_World_to_NG": {
+      "count": 7,
+      "note": "Only these 7 origin countries are supported for inbound international shipments. Fez only has collection hubs in these locations.",
+      "countries": [
+        "United Kingdom",
+        "United States",
+        "India",
+        "Australia",
+        "Hong Kong",
+        "Niger",
+        "Palestine"
+      ]
+    }
+  },
+
+  "serviceTypes": {
+    "FEZ_STANDARD": "Domestic Nigeria-to-Nigeria delivery",
+    "FEZ_EXPORT": "International export — Nigeria to World",
+    "FEZ_IMPORT": "International import — World to Nigeria"
+  },
+
+  "pricing_samples": {
+    "note": "All prices are from live Fez sandbox API calls (Sep 2026). These are resp.totalCost values — exactly what gets added to the buyer's Paystack charge.",
+    "domestic_Lagos_to_Rivers_1_5kg": {
+      "note": "Verified via direct Fez sandbox call POST /order/cost",
+      "currency": "NGN",
+      "base": "₦5,375",
+      "vat_7_5_percent": "₦375",
+      "fuel_surcharge_10_percent": "₦500",
+      "total_resp_totalCost": "₦5,875",
+      "paystack_kobo": 587500
+    },
+    "domestic_Lagos_to_Lagos": {
+      "currency": "NGN",
+      "approximate_total": "varies by state — typically ₦2,000–₦6,000 for same/nearby states"
+    },
+    "export_Nigeria_to_USA_2kg": {
+      "note": "Verified via Fez sandbox GET /orders/export-price",
+      "base": "₦75,831.31",
+      "vat_15_25_percent": "₦11,564.27",
+      "total_resp_totalCost": "₦87,395.58",
+      "currency": "NGN"
+    },
+    "import_USA_to_Nigeria_2kg": {
+      "note": "Verified via Fez sandbox POST /orders/import-price",
+      "base": "$205.00",
+      "vat_12_25_percent": "$25.11",
+      "total_resp_totalCost": "$230.11",
+      "currency": "USD"
+    },
+    "import_UK_to_Nigeria_2kg": {
+      "note": "Verified via Fez sandbox POST /orders/import-price",
+      "base": "£15.30",
+      "vat_12_25_percent": "£1.87",
+      "total_resp_totalCost": "£17.17",
+      "currency": "GBP"
+    },
+    "stripe_export_NG_tailor_to_US_buyer_2kg": {
+      "description": "Complete Stripe payment breakdown — NG tailor → US buyer (tested live Sep 2026)",
+      "quote_ngn": 66000,
+      "exchange_rate": 0.00065,
+      "product_cost_usd": 42.9,
+      "fez_export_delivery_ngn": 81523,
+      "fez_export_delivery_usd": 52.99,
+      "grand_total_usd": 95.89,
+      "stripe_cents": 9589,
+      "delivery_type": "Fez Export (NG → World)"
+    },
+    "stripe_import_US_tailor_to_NG_buyer_2kg": {
+      "description": "Complete Stripe payment breakdown — US tailor → NG buyer (tested live Sep 2026)",
+      "quote_ngn": 66000,
+      "exchange_rate": 0.00065,
+      "product_cost_usd": 42.9,
+      "fez_import_delivery_usd": 232.92,
+      "grand_total_usd": 275.82,
+      "stripe_cents": 27582,
+      "delivery_type": "Fez Import (World → NG)",
+      "note": "Fez import returns cost in origin currency ($232.92 USD for US vendor). Passed directly to Stripe."
+    },
+    "stripe_both_international_US_tailor_to_US_buyer": {
+      "description": "Both international — no Fez delivery. Stripe charges product cost only (tested live Sep 2026)",
+      "quote_ngn": 66000,
+      "exchange_rate": 0.00065,
+      "product_cost_usd": 42.9,
+      "fez_delivery_usd": 0,
+      "grand_total_usd": 42.9,
+      "stripe_cents": 4290,
+      "delivery_type": "No delivery (Fez not applicable for non-NG routes)"
+    },
+    "full_payment_example_NG_NG": {
+      "description": "Complete payment breakdown for a domestic Nigerian order (tested live Sep 2026)",
+      "quote": {
+        "materialCost": 35000,
+        "workmanshipCost": 20000,
+        "subTotal": 55000,
+        "tax_10_percent": 5500,
+        "commission_10_percent": 5500,
+        "totalCost_sent_as_amount": 66000
+      },
+      "fez_delivery_Lagos_to_Rivers_1_5kg": 5875,
+      "grand_total_charged_to_buyer": 71875,
+      "paystack_kobo": 7187500,
+      "designer_net_credit": 49500
+    }
+  },
+
+  "paymentGatewayRouting": {
+    "description": "Which payment gateway to use depends on where the buyer is located.",
+    "use_paystack": "Both buyer AND vendor are in Nigeria → POST /api/v1/material/createPaymentOnline/:reviewId",
+    "use_stripe":   "Either buyer OR vendor (or both) is outside Nigeria → POST /api/v1/stripe/make-payment/:reviewId",
+    "currency":     "Paystack charges NGN. Stripe always charges USD."
+  },
+
+  "importantNotes": [
+    "shipmentMethod (express/cargo/regular) is fully removed from BOTH Paystack and Stripe payment endpoints. Do not send it — it is ignored.",
+    "All delivery costs (Paystack and Stripe) come exclusively from the live Fez API (resp.totalCost). No backend geocoding or distance math is used anywhere.",
+    "The correct call flow: (1) GET /deliveryRate/carrier-rates/:reviewId to preview Fez delivery price, (2) POST to the appropriate payment endpoint with amount + address + weight.",
+    "amount in both payment endpoints = review.totalCost (already includes material + workmanship + platform tax + commission). Do NOT add delivery yourself — the endpoint adds it from Fez.",
+    "Exchange rate field on review (review.exchangeRate) defines 1 NGN = X USD (e.g. 0.000650). To convert NGN→USD multiply; to convert USD→NGN divide.",
+    "Stripe import delivery fee: Fez returns cost in origin currency (£ for UK vendors, $ for US vendors). The value is passed directly to Stripe as USD. For UK vendors this creates a slight GBP/USD discrepancy — production should add a proper FX conversion.",
+    "Both-international orders (neither buyer nor vendor in Nigeria) receive $0 delivery fee from Stripe — Fez only supports routes involving Nigeria.",
+    "Fez does not generate PDF shipping labels. The waybillNumber (carrierTrackingNumber) is the shipment identifier.",
+    "Phone numbers stored on buyer/vendor profiles must be Nigerian local format (e.g. 08012345678). The system normalizes +234 prefix automatically.",
+    "Route detection is fully automatic based on buyer.country and vendor.country profile fields. No manual carrier selection needed.",
+    "For export orders, weight is rounded up to the nearest Fez weight tier (0.5kg, 1kg, 1.5kg, 2kg … up to 10kg).",
+    "FEZ_ENV=sandbox in .env uses Fez sandbox API. Change to production for live orders.",
+    "Tracking works for all three service types (FEZ_STANDARD, FEZ_EXPORT, FEZ_IMPORT) using the same waybill format."
+  ]
+}

@@ -5,7 +5,7 @@ import Category from '../../category/model/category.model.js';
 import InitializedOrder from '../../material/model/InitializedOrder.model.js';
 import Transactions from '../../transaction/model/transaction.model.js';
 import { sendTransactionEmail, sendSubscriptionEmail, sendTransactionListingEmail, sendPayoutNotificationEmail, sendPaymentReceivedEmail } from '../../../utils/emailService.utils.js';
-import { cargoCalculateCost, expressCalculateCost, regularCalculateCost, resolveDeliveryCurrency } from "../../../utils/shipmentCalcu.distance.js";
+import { fezGetDeliveryCost, fezGetExportCost, fezGetImportCost } from "../../../utils/carriers/fez.service.js";
 import axios from "axios";
 import crypto from "crypto"
 import mongoose from "mongoose";
@@ -274,7 +274,7 @@ export const makeStripeTransfer = async (req, res, next) => {
 export const createStripePayment = async (req, res, next) => {
   try {
     const { id } = req.user;
-    const { amount, shipmentMethod, address, paymentStatus } = req.body;
+    const { amount, address, weight, paymentStatus } = req.body;
     const { reviewId } = req.params;
 
     if (!address || typeof address !== "string" || !address.trim()) {
@@ -341,81 +341,60 @@ export const createStripePayment = async (req, res, next) => {
     const vendorCountry = vendorUser?.country?.toUpperCase().trim() || '';
     const buyerCountry = user?.country?.toUpperCase().trim() || '';
 
-    const isInternationalVendor = ['UNITED STATES', 'US', 'USA', 'UNITED KINGDOM', 'UK', 'GB'].includes(vendorCountry);
-    const isInternationalBuyer = ['UNITED STATES', 'US', 'USA', 'UNITED KINGDOM', 'UK', 'GB'].includes(buyerCountry);
+    const isInternationalVendor = !['NIGERIA', 'NG', ''].includes(vendorCountry);
+    const isInternationalBuyer  = !['NIGERIA', 'NG', ''].includes(buyerCountry);
+
+    const vendorCountryNorm = (vendorUser?.country || "").toLowerCase().trim();
+    const buyerCountryNorm  = (user.country || "").toLowerCase().trim();
+    const vendorInNg = !isInternationalVendor;
+    const buyerInNg  = !isInternationalBuyer;
+    const itemWeight = Number(weight) || 1;
+    let exchangeRate = review.exchangeRate || 0.000692; // 1 NGN = 0.000692 USD
 
     console.log("\n📋 PAYMENT REQUEST:");
     console.log(`   Review ID: ${review._id}`);
     console.log(`   Buyer Country: ${buyerCountry} (${isInternationalBuyer ? 'International' : 'Nigerian'})`);
     console.log(`   Vendor Country: ${vendorCountry} (${isInternationalVendor ? 'International' : 'Nigerian'})`);
     console.log(`   Payment Status: ${paymentStatus}`);
-    console.log(`   Frontend Amount Sent: ${amount || 'N/A'}`);
+    console.log(`   Weight: ${itemWeight}kg`);
 
-    // Get delivery rate
-    const method = (shipmentMethod || "").trim().toLowerCase();
-    if (!method) {
-      return res.status(400).json({ success: false, message: "shipmentMethod is required" });
+    // Get Fez delivery rate based on route
+    let deliveryFeeNGN = 0;
+    let deliveryFeeUSD = 0;
+    let deliveryServiceLabel = "Fez Delivery";
+
+    if (vendorInNg && !buyerInNg) {
+      // Export: NG vendor → International buyer — Fez returns NGN, convert to USD for Stripe
+      const fezRate = await fezGetExportCost({ pickUpState: vendorUser?.state || "Lagos", countryName: buyerCountryNorm, weight: itemWeight });
+      deliveryFeeNGN = fezRate.amount;
+      deliveryFeeUSD = Math.round(deliveryFeeNGN * exchangeRate * 100) / 100;
+      deliveryServiceLabel = "Fez Export (NG → World)";
+      console.log(`   Fez Export fee: ₦${deliveryFeeNGN} → $${deliveryFeeUSD} USD`);
+    } else if (!vendorInNg && buyerInNg) {
+      // Import: International vendor → NG buyer — Fez returns origin currency ($ or £)
+      const fezRate = await fezGetImportCost({ destinationState: user.state || "", countryName: vendorCountryNorm, weight: itemWeight });
+      // Treat origin currency amount as USD for Stripe (USD and GBP are close enough for test; production would need FX)
+      deliveryFeeUSD = fezRate.amount;
+      deliveryFeeNGN = Math.round(deliveryFeeUSD / exchangeRate);
+      deliveryServiceLabel = "Fez Import (World → NG)";
+      console.log(`   Fez Import fee: ${fezRate.amount} ${fezRate.currency || 'origin currency'} → $${deliveryFeeUSD} USD`);
+    } else if (!vendorInNg && !buyerInNg) {
+      // Both international — Fez not applicable
+      deliveryFeeUSD = 0;
+      deliveryServiceLabel = "No delivery (Fez not applicable for non-NG routes)";
+      console.log(`   Both international — no Fez delivery fee`);
+    } else {
+      // Both NG — should use Paystack, but handle gracefully
+      deliveryFeeNGN = 0;
+      deliveryFeeUSD = 0;
+      deliveryServiceLabel = "Fez Standard (Domestic — use Paystack)";
+      console.log(`   ⚠️  Both Nigerian — should use Paystack not Stripe`);
     }
-
-    let deliveryType;
-    switch (method) {
-      case "express":
-        deliveryType = "Express";
-        break;
-      case "cargo":
-        deliveryType = "Cargo";
-        break;
-      case "regular":
-        deliveryType = "Regular";
-        break;
-      default:
-        return res.status(400).json({ success: false, message: "Invalid shipment method. Choose Express, Cargo, or Regular" });
-    }
-
-    const pickupAddressNormalized = normalizeAddressForGeocode(vendor.address, vendorCountry);
-    const deliveryAddressNormalized = normalizeAddressForGeocode(address, buyerCountry);
-
-    const [deliveryLocation, senderLocation] = await Promise.all([
-      geocodeWithOpenCage(deliveryAddressNormalized),
-      geocodeWithOpenCage(pickupAddressNormalized),
-    ]);
-
-    if (!deliveryLocation || !senderLocation) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid pickup or delivery address provided.",
-        error: {
-          pickupAddress: pickupAddressNormalized,
-          deliveryAddress: deliveryAddressNormalized,
-        },
-      });
-    }
-
-    const deliveryCurrency = resolveDeliveryCurrency(buyerCountry, vendorCountry);
-    const numberOfPackages = 1;
-    let shipmentCost;
-    switch (method) {
-      case "express":
-        shipmentCost = await expressCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency);
-        break;
-      case "cargo":
-        shipmentCost = await cargoCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency);
-        break;
-      case "regular":
-        shipmentCost = await regularCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency);
-        break;
-      default:
-        return res.status(400).json({ success: false, message: "Invalid shipment method. Choose Express, Cargo, or Regular" });
-    }
-
-    const deliveryFeeNGN = deliveryCurrency === "NGN" ? Number(shipmentCost) : 0;
 
     // BACKEND HANDLES ALL CURRENCY LOGIC
     let productCostNGN = 0;
     let productCostUSD = 0;
-    let deliveryFeeUSD = 0;
     let totalCostUSD = 0;
-    let exchangeRate = review.exchangeRate || 0.000692;
 
     // Determine conversion direction based on buyer/vendor countries
     // If Nigerian buyer → International vendor: NGN amounts stored, need to convert NGN→USD (divide)
@@ -448,9 +427,9 @@ export const createStripePayment = async (req, res, next) => {
         console.log(`   Exchange Rate: ${exchangeRate} (1 USD = ${exchangeRate} NGN)`);
       } else if (!isInternationalBuyer && isInternationalVendor) {
         // Nigerian buyer → International vendor
-        // Frontend sends NGN, we convert to USD (divide), vendor receives USD
+        // Convert NGN to USD: multiply by exchangeRate (1 NGN = exchangeRate USD)
         productCostNGN = review.amountToPay || review.totalCost;
-        productCostUSD = Math.round(productCostNGN / exchangeRate * 100) / 100;
+        productCostUSD = Math.round(productCostNGN * exchangeRate * 100) / 100;
 
         console.log(`\n✅ FULL PAYMENT (Nigerian Buyer → International Vendor)`);
         console.log(`   Buyer pays: ₦${productCostNGN.toFixed(2)} NGN`);
@@ -502,9 +481,9 @@ export const createStripePayment = async (req, res, next) => {
         console.log(`   Exchange Rate: ${exchangeRate}`);
       } else if (!isInternationalBuyer && isInternationalVendor) {
         // Nigerian buyer → International vendor
-        // Amount is in NGN, convert to USD for vendor
+        // Amount is in NGN, convert to USD: multiply by exchangeRate (1 NGN = exchangeRate USD)
         productCostNGN = partPaymentAmount;
-        productCostUSD = Math.round(productCostNGN / exchangeRate * 100) / 100;
+        productCostUSD = Math.round(productCostNGN * exchangeRate * 100) / 100;
 
         // Validate against NGN balance
         const remainingBalanceNGN = review.amountToPay || review.totalCost;
@@ -557,18 +536,12 @@ export const createStripePayment = async (req, res, next) => {
 
     // Calculate delivery fee and total based on who is international
     if (isInternationalBuyer || isInternationalVendor) {
-      // If either party is international, we're using Stripe (USD)
-      if (deliveryCurrency === "USD") {
-        deliveryFeeUSD = Math.round(Number(shipmentCost) * 100) / 100;
-      } else {
-        deliveryFeeUSD = Math.round(deliveryFeeNGN / exchangeRate * 100) / 100;
-      }
-
+      // deliveryFeeUSD already set from Fez call above
       totalCostUSD = productCostUSD + deliveryFeeUSD;
 
       console.log(`\n💳 STRIPE CHARGE BREAKDOWN:`);
       console.log(`   Product Cost: $${productCostUSD.toFixed(2)}`);
-      console.log(`   Delivery Fee: $${deliveryFeeUSD.toFixed(2)} (${deliveryType})`);
+      console.log(`   Delivery Fee: $${deliveryFeeUSD.toFixed(2)} (${deliveryServiceLabel})`);
       console.log(`   Total: $${totalCostUSD.toFixed(2)}`);
 
       // Stripe minimum amount validation ($0.50 USD)
@@ -653,7 +626,7 @@ export const createStripePayment = async (req, res, next) => {
       lineItems.push({
         price_data: {
           currency: "USD",
-          product_data: { name: `Delivery Fee (${deliveryType})` },
+          product_data: { name: `Delivery Fee (${deliveryServiceLabel})` },
           unit_amount: Math.round(deliveryFeeUSD * 100),
         },
         quantity: 1,
@@ -670,7 +643,7 @@ export const createStripePayment = async (req, res, next) => {
         productCostUSD: productCostUSD.toFixed(2),
         deliveryFeeUSD: deliveryFeeUSD.toFixed(2),
         totalCostUSD: totalCostUSD.toFixed(2),
-        deliveryType,
+        deliveryType: deliveryServiceLabel,
       },
     });
 
@@ -688,7 +661,7 @@ export const createStripePayment = async (req, res, next) => {
           productCost: Number(productCostUSD.toFixed(2)),
           deliveryFee: Number(deliveryFeeUSD.toFixed(2)),
           total: Number(totalCostUSD.toFixed(2)),
-          deliveryType,
+          deliveryType: deliveryServiceLabel,
         },
       },
     });

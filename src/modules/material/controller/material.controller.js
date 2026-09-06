@@ -5,7 +5,7 @@ import Category from '../../category/model/category.model.js';
 import InitializedOrder from '../../material/model/InitializedOrder.model.js';
 import Transactions from '../../transaction/model/transaction.model.js';
 import { sendTransactionEmail, sendSubscriptionEmail, sendTransactionListingEmail } from '../../../utils/emailService.utils.js';
-import { cargoCalculateCost, expressCalculateCost, regularCalculateCost, resolveDeliveryCurrency } from "../../../utils/shipmentCalcu.distance.js";
+import { fezGetDeliveryCost, fezGetExportCost, fezGetImportCost } from "../../../utils/carriers/fez.service.js";
 import axios from "axios";
 import crypto from "crypto"
 import mongoose from "mongoose";
@@ -389,7 +389,7 @@ export const searchMaterials = async (req, res, next) => {
 export const createPaymentOnline = async (req, res, next) => {
   try {
     const { id } = req.user;
-    const { amount, shipmentMethod, address, paymentStatus } = req.body;
+    const { amount, address, weight, paymentStatus } = req.body;
     const { reviewId } = req.params;
 
     if (!address || typeof address !== "string" || !address.trim()) {
@@ -455,55 +455,39 @@ export const createPaymentOnline = async (req, res, next) => {
     }
 
     const vendorUser = await User.findById(vendor.userId);
-    const pickupAddress = normalizeAddressForGeocode(vendor.address, vendorUser?.country || user.country);
-    const deliveryAddress = normalizeAddressForGeocode(address, user.country);
-    const deliveryCurrency = resolveDeliveryCurrency(user.country, vendorUser?.country || vendor.country);
+    const deliveryAddress = String(address || "").trim();
 
-    const deliveryLocation = await geocodeWithFallback(deliveryAddress);
-    if (!deliveryLocation) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid deliveryAddress provided",
-        error: `Geocoding failed for deliveryAddress: ${deliveryAddress}`,
-      });
+    const isNgCountry = (c) => {
+      const n = String(c || "").toLowerCase().trim();
+      return n === "nigeria" || n === "ng" || n === "";
+    };
+
+    const vendorCountry = (vendorUser?.country || "Nigeria").toLowerCase().trim();
+    const buyerCountry  = (user.country || "Nigeria").toLowerCase().trim();
+    const vendorInNg    = isNgCountry(vendorCountry);
+    const buyerInNg     = isNgCountry(buyerCountry);
+    const itemWeight    = Number(weight) || 1;
+
+    let fezRate;
+    let deliveryServiceLabel;
+
+    if (vendorInNg && buyerInNg) {
+      const pickUpState    = vendorUser?.state || "Lagos";
+      const recipientState = user.state || "";
+      fezRate = await fezGetDeliveryCost({ pickUpState, recipientState, weight: itemWeight });
+      deliveryServiceLabel = "Fez Standard (Domestic)";
+    } else if (vendorInNg && !buyerInNg) {
+      fezRate = await fezGetExportCost({ pickUpState: vendorUser?.state || "Lagos", countryName: buyerCountry, weight: itemWeight });
+      deliveryServiceLabel = "Fez Export (NG → World)";
+    } else if (!vendorInNg && buyerInNg) {
+      fezRate = await fezGetImportCost({ destinationState: user.state || "", countryName: vendorCountry, weight: itemWeight });
+      deliveryServiceLabel = "Fez Import (World → NG)";
+    } else {
+      return res.status(400).json({ success: false, message: "Delivery route not supported" });
     }
 
-    const senderLocation = await geocodeWithFallback(pickupAddress);
-    if (!senderLocation) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid pickupAddress provided",
-        error: `Geocoding failed for pickupAddress: ${pickupAddress}`,
-      });
-    }
-
-    // Shipment costs
-    const numberOfPackages = 1;
-    const method = (shipmentMethod || "").trim().toLowerCase();
-    if (!method) {
-    return res.status(400).json({ success: false, message: "shipmentMethod is required" });
-    }
-
-    let shipmentCost;
-
-    switch (method) {
-    case "express":
-        shipmentCost = await expressCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency);
-        break;
-    case "cargo":
-        shipmentCost = await cargoCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency);
-        break;
-    case "regular":
-        shipmentCost = await regularCalculateCost(deliveryLocation, senderLocation, numberOfPackages, deliveryCurrency);
-        break;
-    default:
-        return res.status(400).json({
-        success: false,
-        message: "Invalid shipment method. Choose Express, Cargo, or Regular.",
-        });
-    }
-    const shipping = Math.round(shipmentCost);
-    const cost = Number(amount)
+    const shipping  = Math.round(fezRate.amount);
+    const cost      = Number(amount);
     const totalCost = Math.round(shipping + cost);
     
     const paymentReference = crypto.randomBytes(5).toString("hex");
@@ -554,7 +538,7 @@ export const createPaymentOnline = async (req, res, next) => {
         metadata: {
           custom_fields: [
             { display_name: "Product Amount", variable_name: "product_amount", value: cost },
-            { display_name: `Delivery Fee (${method})`, variable_name: "delivery_fee", value: shipping },
+            { display_name: `Delivery Fee (${deliveryServiceLabel})`, variable_name: "delivery_fee", value: shipping },
             { display_name: "Total", variable_name: "total_amount", value: totalCost },
           ],
         },
@@ -579,7 +563,7 @@ export const createPaymentOnline = async (req, res, next) => {
           productCost: cost,
           deliveryFee: shipping,
           total: totalCost,
-          deliveryMethod: method,
+          deliveryMethod: deliveryServiceLabel,
         },
         payoutBreakdown,
       });
