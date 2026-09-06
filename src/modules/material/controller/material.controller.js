@@ -486,7 +486,16 @@ export const createPaymentOnline = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Delivery route not supported" });
     }
 
-    const shipping  = Math.round(fezRate.amount);
+    // For import (World→NG), fezGetImportCost returns origin currency (USD/GBP).
+    // Convert to NGN so Paystack receives a consistent NGN total.
+    let shippingNGN;
+    if (!vendorInNg && buyerInNg) {
+      const xRate = review.exchangeRate || 0.000692; // 1 NGN = xRate USD
+      shippingNGN = Math.round(fezRate.amount / xRate);
+    } else {
+      shippingNGN = Math.round(fezRate.amount); // domestic & export already NGN
+    }
+    const shipping  = shippingNGN;
     const cost      = Number(amount);
     const totalCost = Math.round(shipping + cost);
     
@@ -590,9 +599,9 @@ export const createPartPaymentOnline = async (req, res, next) => {
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-    const { amount, address } = req.body;
+    const { amount, address, weight } = req.body;
     const { reviewId } = req.params;
-    
+
     if (!address || typeof address !== "string" || !address.trim()) {
       return res.status(400).json({
         success: false,
@@ -610,16 +619,54 @@ export const createPartPaymentOnline = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Material not found" });
     }
 
-
     const vendor = await Vendor.findById(review.vendorId);
     const materialOwner = await User.findById(material.userId);
     if (!vendor || !materialOwner) {
       return res.status(404).json({ success: false, message: "Vendor or Material Owner has not yet update material cost" });
     }
 
+    const vendorUser = await User.findById(vendor.userId);
+
+    const isNgCountry = (c) => {
+      const n = String(c || "").toLowerCase().trim();
+      return n === "nigeria" || n === "ng" || n === "";
+    };
+
+    const vendorCountry = (vendorUser?.country || "Nigeria").toLowerCase().trim();
+    const buyerCountry  = (user.country || "Nigeria").toLowerCase().trim();
+    const vendorInNg    = isNgCountry(vendorCountry);
+    const buyerInNg     = isNgCountry(buyerCountry);
+    const itemWeight    = Number(weight) || 1;
+
+    // Delivery is only charged on the first installment (amountPaid === 0 means nothing settled yet)
+    const isFirstInstallment = !review.amountPaid || Number(review.amountPaid) === 0;
+    let deliveryFeeNGN = 0;
+    let deliveryServiceLabel = "Part Payment (no delivery)";
+
+    if (isFirstInstallment) {
+      let fezRate;
+      if (vendorInNg && buyerInNg) {
+        fezRate = await fezGetDeliveryCost({ pickUpState: vendorUser?.state || "Lagos", recipientState: user.state || "", weight: itemWeight });
+        deliveryFeeNGN = Math.round(fezRate.amount);
+        deliveryServiceLabel = "Fez Standard (Domestic)";
+      } else if (vendorInNg && !buyerInNg) {
+        fezRate = await fezGetExportCost({ pickUpState: vendorUser?.state || "Lagos", countryName: buyerCountry, weight: itemWeight });
+        deliveryFeeNGN = Math.round(fezRate.amount);
+        deliveryServiceLabel = "Fez Export (NG → World)";
+      } else if (!vendorInNg && buyerInNg) {
+        fezRate = await fezGetImportCost({ destinationState: user.state || "", countryName: vendorCountry, weight: itemWeight });
+        // fezGetImportCost returns origin currency (USD/GBP) — convert to NGN for Paystack
+        const xRate = review.exchangeRate || 0.000692;
+        deliveryFeeNGN = Math.round(fezRate.amount / xRate);
+        deliveryServiceLabel = "Fez Import (World → NG)";
+      }
+      // Both outside Nigeria: no Fez delivery applicable — delivery stays 0
+    }
+
+    const installmentAmount = Number(amount);
+    const totalCharge = Math.round(installmentAmount + deliveryFeeNGN);
+
     const paymentMethod = "Paystack";
-    // const orderPercent = amount * 0.1;
-    // const totalCost = Math.round(shipmentCost + amount + orderPercent);
     const paymentReference = crypto.randomBytes(5).toString("hex");
 
     const order = await InitializedOrder.create({
@@ -629,8 +676,8 @@ export const createPartPaymentOnline = async (req, res, next) => {
         clothMaterial: material.clothMaterial,
         color: material.color,
         brand: material.brand,
-        measurement: material.measurement,   
-        sampleImage: material.sampleImage, 
+        measurement: material.measurement,
+        sampleImage: material.sampleImage,
       }],
       totalAmount: review.totalCost,
       paymentMethod,
@@ -639,18 +686,16 @@ export const createPartPaymentOnline = async (req, res, next) => {
       vendorId: vendor._id,
       materialId: material._id,
       reviewId,
-      amountPaid: amount,
-      paymentStatus: "part payment" 
+      amountPaid: totalCharge,
+      paymentStatus: "part payment",
+      deliveryFee: deliveryFeeNGN,
     });
 
     const countryCurrencyMapping = {
       nigeria: "NGN",
-      // "united kingdom": "GBP",
-      // "united states": "USD",
     };
 
     const userCountry = user.country?.toLowerCase().trim();
-
     const userCurrency = countryCurrencyMapping[userCountry] || "NGN";
 
     const paystackUrl = "https://api.paystack.co/transaction/initialize";
@@ -658,14 +703,15 @@ export const createPartPaymentOnline = async (req, res, next) => {
         paystackUrl,
         {
             email: user.email,
-            amount: order.amountPaid * 100,
+            amount: totalCharge * 100, // Paystack accepts kobo
             currency: userCurrency,
-            reference: order.paymentReference,
+            reference: paymentReference,
             callback_url: `${process.env.FRONTEND_URL}/payment-success`,
             metadata: {
               custom_fields: [
-                { display_name: "Part Payment Amount", variable_name: "part_payment_amount", value: order.amountPaid },
-                { display_name: "Delivery Fee", variable_name: "delivery_fee", value: 0 },
+                { display_name: "Part Payment Amount", variable_name: "part_payment_amount", value: installmentAmount },
+                { display_name: `Delivery Fee (${deliveryServiceLabel})`, variable_name: "delivery_fee", value: deliveryFeeNGN },
+                { display_name: "Total Charged", variable_name: "total_charged", value: totalCharge },
               ],
             },
         },
@@ -676,7 +722,7 @@ export const createPartPaymentOnline = async (req, res, next) => {
             },
         }
     );
-    
+
     if (paystackResponse.status === 200) {
       const payoutBreakdown = buildPayoutBreakdown(review);
       return res.status(201).json({
@@ -686,15 +732,16 @@ export const createPartPaymentOnline = async (req, res, next) => {
         payment: order,
         breakdown: {
           currency: userCurrency,
-          productCost: order.amountPaid,
-          deliveryFee: 0,
-          total: order.amountPaid,
-          deliveryMethod: "part payment",
+          installmentAmount,
+          deliveryFee: deliveryFeeNGN,
+          total: totalCharge,
+          deliveryMethod: deliveryServiceLabel,
+          isFirstInstallment,
         },
         payoutBreakdown,
-      });  
-    }else {
-      await InitializedOrder.findByIdAndDelete(order._id);  
+      });
+    } else {
+      await InitializedOrder.findByIdAndDelete(order._id);
       return res.status(400).json({ success: false, message: "Payment initialization failed", error: paystackResponse.data.message });
     }      
     } catch (error) {
