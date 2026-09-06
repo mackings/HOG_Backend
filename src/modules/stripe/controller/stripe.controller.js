@@ -417,14 +417,13 @@ export const createStripePayment = async (req, res, next) => {
     if (paymentStatus === "full payment") {
       if (isInternationalBuyer && !isInternationalVendor) {
         // International buyer → Nigerian vendor
-        // Frontend sends USD, we charge USD, vendor receives NGN (multiply)
-        productCostUSD = review.amountToPayUSD || review.totalCostUSD || 0;
-        productCostNGN = Math.round(productCostUSD * exchangeRate * 100) / 100;
+        // Review stores NGN; convert to USD for Stripe. NGN→USD: multiply by exchangeRate.
+        productCostNGN = review.amountToPay || review.totalCost;
+        productCostUSD = Math.round(productCostNGN * exchangeRate * 100) / 100;
 
         console.log(`\n✅ FULL PAYMENT (International Buyer → Nigerian Vendor)`);
-        console.log(`   Buyer pays: $${productCostUSD.toFixed(2)} USD`);
-        console.log(`   Vendor receives: ₦${productCostNGN.toFixed(2)} NGN`);
-        console.log(`   Exchange Rate: ${exchangeRate} (1 USD = ${exchangeRate} NGN)`);
+        console.log(`   Agreed price: ₦${productCostNGN} NGN → $${productCostUSD.toFixed(2)} USD`);
+        console.log(`   Exchange Rate: ${exchangeRate}`);
       } else if (!isInternationalBuyer && isInternationalVendor) {
         // Nigerian buyer → International vendor
         // Convert NGN to USD: multiply by exchangeRate (1 NGN = exchangeRate USD)
@@ -436,12 +435,13 @@ export const createStripePayment = async (req, res, next) => {
         console.log(`   Converted to: $${productCostUSD.toFixed(2)} USD`);
         console.log(`   Exchange Rate: ${exchangeRate} (1 USD = ${exchangeRate} NGN, divide NGN by this)`);
       } else if (isInternationalBuyer && isInternationalVendor) {
-        // International buyer → International vendor (both USD)
-        productCostUSD = review.amountToPayUSD || review.totalCostUSD || 0;
-        productCostNGN = 0;
+        // International buyer → International vendor
+        // Review stores NGN; convert to USD for Stripe
+        productCostNGN = review.amountToPay || review.totalCost;
+        productCostUSD = Math.round(productCostNGN * exchangeRate * 100) / 100;
 
-        console.log(`\n✅ FULL PAYMENT (International → International, USD only)`);
-        console.log(`   Charging: $${productCostUSD.toFixed(2)} USD`);
+        console.log(`\n✅ FULL PAYMENT (International → International)`);
+        console.log(`   Agreed price: ₦${productCostNGN} NGN → $${productCostUSD.toFixed(2)} USD`);
       } else {
         // Nigerian buyer → Nigerian vendor (NGN only, shouldn't use Stripe)
         productCostNGN = review.amountToPay || review.totalCost;
@@ -456,19 +456,19 @@ export const createStripePayment = async (req, res, next) => {
 
       if (isInternationalBuyer && !isInternationalVendor) {
         // International buyer → Nigerian vendor
-        // Amount is in USD, convert to NGN for vendor
-        productCostUSD = partPaymentAmount;
-        productCostNGN = Math.round(productCostUSD * exchangeRate * 100) / 100;
+        // Review stores NGN; amount from request is also NGN; convert to USD for Stripe
+        productCostNGN = partPaymentAmount;
+        productCostUSD = Math.round(productCostNGN * exchangeRate * 100) / 100;
 
-        // Validate against USD balance
-        const remainingBalanceUSD = review.amountToPayUSD || review.totalCostUSD || 0;
-        if (productCostUSD > remainingBalanceUSD) {
+        // Validate against NGN balance
+        const remainingBalanceNGN = review.amountToPay || review.totalCost;
+        if (productCostNGN > remainingBalanceNGN) {
           return res.status(400).json({
             success: false,
-            message: `Part payment amount ($${productCostUSD}) exceeds remaining balance ($${remainingBalanceUSD})`
+            message: `Part payment amount (₦${productCostNGN}) exceeds remaining balance (₦${remainingBalanceNGN})`
           });
         }
-        if (productCostUSD <= 0) {
+        if (productCostNGN <= 0) {
           return res.status(400).json({
             success: false,
             message: "Part payment amount must be greater than 0"
@@ -476,8 +476,7 @@ export const createStripePayment = async (req, res, next) => {
         }
 
         console.log(`\n✅ PART PAYMENT (International Buyer → Nigerian Vendor)`);
-        console.log(`   Buyer pays: $${productCostUSD.toFixed(2)} USD`);
-        console.log(`   Vendor receives: ₦${productCostNGN.toFixed(2)} NGN`);
+        console.log(`   Buyer pays: ₦${productCostNGN} NGN → $${productCostUSD.toFixed(2)} USD`);
         console.log(`   Exchange Rate: ${exchangeRate}`);
       } else if (!isInternationalBuyer && isInternationalVendor) {
         // Nigerian buyer → International vendor
@@ -505,20 +504,21 @@ export const createStripePayment = async (req, res, next) => {
         console.log(`   Converted to: $${productCostUSD.toFixed(2)} USD`);
         console.log(`   Exchange Rate: ${exchangeRate}`);
       } else if (isInternationalBuyer && isInternationalVendor) {
-        // International → International (USD only)
-        productCostUSD = partPaymentAmount;
-        productCostNGN = 0;
+        // International → International
+        // Review stores NGN; convert to USD for Stripe
+        productCostNGN = partPaymentAmount;
+        productCostUSD = Math.round(productCostNGN * exchangeRate * 100) / 100;
 
-        const remainingBalanceUSD = review.amountToPayUSD || review.totalCostUSD || 0;
-        if (productCostUSD > remainingBalanceUSD) {
+        const remainingBalanceNGN = review.amountToPay || review.totalCost;
+        if (productCostNGN > remainingBalanceNGN) {
           return res.status(400).json({
             success: false,
-            message: `Part payment amount ($${productCostUSD}) exceeds remaining balance ($${remainingBalanceUSD})`
+            message: `Part payment amount (₦${productCostNGN}) exceeds remaining balance (₦${remainingBalanceNGN})`
           });
         }
 
         console.log(`\n✅ PART PAYMENT (International → International)`);
-        console.log(`   Charging: $${productCostUSD.toFixed(2)} USD`);
+        console.log(`   ₦${productCostNGN} NGN → $${productCostUSD.toFixed(2)} USD`);
       } else {
         // Nigerian → Nigerian (shouldn't use Stripe)
         productCostNGN = partPaymentAmount;
