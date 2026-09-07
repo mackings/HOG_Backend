@@ -493,7 +493,7 @@ export const createPaymentOnline = async (req, res, next) => {
     //   > 1  → "1 USD = X NGN"  (e.g. 1323)       → ngnPerUsd = rate
     let shippingNGN;
     if (!vendorInNg && buyerInNg) {
-      const rawRate  = review.exchangeRate || 0.000692;
+      const rawRate  = review.exchangeRate || 1500;
       const ngnPerUsd = rawRate > 1 ? rawRate : 1 / rawRate;
       shippingNGN = Math.round(fezRate.amount * ngnPerUsd);
     } else {
@@ -660,7 +660,7 @@ export const createPartPaymentOnline = async (req, res, next) => {
       } else if (!vendorInNg && buyerInNg) {
         fezRate = await fezGetImportCost({ destinationState: user.state || "", countryName: vendorCountry, weight: itemWeight });
         // fezGetImportCost returns origin currency (USD/GBP) — convert to NGN for Paystack
-        const rawRate  = review.exchangeRate || 0.000692;
+        const rawRate  = review.exchangeRate || 1500;
         const ngnPerUsd = rawRate > 1 ? rawRate : 1 / rawRate;
         deliveryFeeNGN = Math.round(fezRate.amount * ngnPerUsd);
         deliveryServiceLabel = "Fez Import (World → NG)";

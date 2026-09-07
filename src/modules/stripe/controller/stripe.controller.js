@@ -353,7 +353,7 @@ export const createStripePayment = async (req, res, next) => {
     //   < 1  → "1 NGN = X USD"  (e.g. 0.00065)  → use as-is
     //   > 1  → "1 USD = X NGN"  (e.g. 1323)      → invert to get NGN→USD multiplier
     // After normalization exchangeRate is always "1 NGN = X USD" (< 1).
-    const rawRate = review.exchangeRate || 0.000692;
+    const rawRate = review.exchangeRate || 1500;
     let exchangeRate = rawRate > 1 ? 1 / rawRate : rawRate;
 
     console.log("\n📋 PAYMENT REQUEST:");
