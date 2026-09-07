@@ -488,10 +488,14 @@ export const createPaymentOnline = async (req, res, next) => {
 
     // For import (World→NG), fezGetImportCost returns origin currency (USD/GBP).
     // Convert to NGN so Paystack receives a consistent NGN total.
+    // review.exchangeRate can be stored in two formats:
+    //   < 1  → "1 NGN = X USD"  (e.g. 0.00065)   → ngnPerUsd = 1 / rate
+    //   > 1  → "1 USD = X NGN"  (e.g. 1323)       → ngnPerUsd = rate
     let shippingNGN;
     if (!vendorInNg && buyerInNg) {
-      const xRate = review.exchangeRate || 0.000692; // 1 NGN = xRate USD
-      shippingNGN = Math.round(fezRate.amount / xRate);
+      const rawRate  = review.exchangeRate || 0.000692;
+      const ngnPerUsd = rawRate > 1 ? rawRate : 1 / rawRate;
+      shippingNGN = Math.round(fezRate.amount * ngnPerUsd);
     } else {
       shippingNGN = Math.round(fezRate.amount); // domestic & export already NGN
     }
@@ -656,8 +660,9 @@ export const createPartPaymentOnline = async (req, res, next) => {
       } else if (!vendorInNg && buyerInNg) {
         fezRate = await fezGetImportCost({ destinationState: user.state || "", countryName: vendorCountry, weight: itemWeight });
         // fezGetImportCost returns origin currency (USD/GBP) — convert to NGN for Paystack
-        const xRate = review.exchangeRate || 0.000692;
-        deliveryFeeNGN = Math.round(fezRate.amount / xRate);
+        const rawRate  = review.exchangeRate || 0.000692;
+        const ngnPerUsd = rawRate > 1 ? rawRate : 1 / rawRate;
+        deliveryFeeNGN = Math.round(fezRate.amount * ngnPerUsd);
         deliveryServiceLabel = "Fez Import (World → NG)";
       }
       // Both outside Nigeria: no Fez delivery applicable — delivery stays 0
