@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { register, verifyToken, login, forgotPassword, resetPassword, updateProfile, uploadImage, getProfile,
   uploadBillImage, getAllusers, getAllTailor, getUserCurrency, getUserWalletBalance,
-  changeTemporaryPassword
+  changeTemporaryPassword, deleteAccount
   } from '../controller/user.controller.js';
 import { isAuth } from '../../../middlewares/auth.middleware.js';
 import { imageUpload, imageKitUpload } from '../../../utils/imagekit.js';
@@ -23,6 +23,7 @@ router.get('/getAllusers', getAllusers );
 router.get('/getAllTailor', getAllTailor );
 router.get('/getUserCurrency', isAuth, getUserCurrency );
 router.get('/getUserWalletBalance', isAuth, getUserWalletBalance );
+router.delete('/deleteAccount', isAuth, deleteAccount );
 
 
 

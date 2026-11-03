@@ -539,3 +539,46 @@ export const getUserWalletBalance = async (req, res, next) => {
     next(error);
   }
 };
+
+export const deleteAccount = async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (user.isDeleted) {
+      return res.status(400).json({ success: false, message: "Account already deleted" });
+    }
+
+    const anonymisedEmail = `deleted_${userId}@deleted.hog`;
+
+    await User.findByIdAndUpdate(userId, {
+      isDeleted: true,
+      deletedAt: new Date(),
+      isBlocked: true,
+      fullName: "Deleted User",
+      email: anonymisedEmail,
+      phoneNumber: null,
+      address: "deleted",
+      image: null,
+      billImage: null,
+      password: await bcrypt.hash(Math.random().toString(36), 10),
+    });
+
+    await Token.deleteMany({ userId });
+
+    return res.status(200).json({
+      success: true,
+      message: "Account deleted successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
